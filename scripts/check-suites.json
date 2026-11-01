@@ -205,5 +205,20 @@
       "args": ["scripts/test-ts.mjs", "test/integration/resource-access.ts"],
       "artifacts": ["artifacts/tests/test/integration/resource-access.test.cjs"]
     }
+  ],
+  "M02-C": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": [
+        "scripts/test-ts.mjs",
+        "test/app-permissions.ts",
+        "test/log-query.ts"
+      ],
+      "artifacts": [
+        "artifacts/tests/test/app-permissions.test.cjs",
+        "artifacts/tests/test/log-query.test.cjs"
+      ]
+    }
   ]
 }
