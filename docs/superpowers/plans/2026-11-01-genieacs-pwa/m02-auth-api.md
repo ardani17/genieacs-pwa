@@ -1,13 +1,13 @@
 # M02 — Identitas dan adapter API Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use
-> superpowers:subagent-driven-development (recommended) or
-> superpowers:executing-plans to implement this plan task-by-task. Steps use
-> checkbox (`- [ ]`) syntax for tracking.
+> **Implementation note:** Dokumen ini adalah rencana kerja dan referensi proses.
+> Penyebutan superpower seperti `superpowers:subagent-driven-development` atau
+> `superpowers:executing-plans` bersifat dokumentatif (bukan instruksi runtime).
+> Langkah ditulis dengan checkbox (`- [ ]`) untuk pelacakan progres.
 >
 > Sesi ini hanya dokumentasi. Paket berstatus Planned; eksekusi hanya ketika
-> prasyarat merged, desain ditinjau dan tiket pelaksanaan dipilih. Agen
-> low-thinking mengambil satu paket/PR, bukan seluruh milestone sekaligus.
+> prasyarat merged, desain ditinjau, dan tiket pelaksanaan dipilih. Cakupan
+> pelaksanaan tetap satu paket/PR per iterasi.
 
 **Goal:** Identitas dan adapter API dengan acceptance tiap paket yang dapat
 ditinjau mandiri.
