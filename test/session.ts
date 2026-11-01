@@ -102,6 +102,142 @@ void test("token lifetime verification enforces the 8h cap", async () => {
   assert.equal(verifySession(`${header}.${noExp}.${sig2}`, secret), null);
 });
 
+// Hand-sign a token with the LISTENER's secret so the middleware (not
+// just the helper) is what rejects invalid lifetimes.
+async function signWithSecret(
+  secret: string,
+  claims: Record<string, unknown>,
+): Promise<string> {
+  const { createHmac } = await import("node:crypto");
+  const header = Buffer.from(
+    JSON.stringify({ alg: "HS256", typ: "JWT" }),
+  ).toString("base64url");
+  const payload = Buffer.from(JSON.stringify(claims)).toString("base64url");
+  const sig = createHmac("sha256", secret)
+    .update(`${header}.${payload}`)
+    .digest("base64url");
+  return `${header}.${payload}.${sig}`;
+}
+
+void test("middleware enforces session lifetime claims on real requests", async () => {
+  const secret = process.env["GENIEACS_UI_JWT_SECRET"];
+  assert.ok(secret, "GENIEACS_UI_JWT_SECRET must be set by the harness");
+  const now = Math.floor(Date.now() / 1000);
+
+  const cases: {
+    name: string;
+    claims: Record<string, unknown>;
+    ok: boolean;
+  }[] = [
+    {
+      name: "no exp",
+      claims: { username: "operator", authMethod: "local" },
+      ok: false,
+    },
+    {
+      name: "no iat",
+      claims: { username: "operator", authMethod: "local", exp: now + 3600 },
+      ok: false,
+    },
+    {
+      name: "non-finite exp",
+      claims: {
+        username: "operator",
+        authMethod: "local",
+        iat: now,
+        exp: Number.POSITIVE_INFINITY,
+      },
+      ok: false,
+    },
+    {
+      name: "24h lifetime",
+      claims: {
+        username: "operator",
+        authMethod: "local",
+        iat: now - 3600,
+        exp: now - 3600 + 86400,
+      },
+      ok: false,
+    },
+    {
+      name: "expired",
+      claims: {
+        username: "operator",
+        authMethod: "local",
+        iat: now - 7200,
+        exp: now - 60,
+      },
+      ok: false,
+    },
+    {
+      name: "valid 8h",
+      claims: {
+        username: "operator",
+        authMethod: "local",
+        iat: now - 14400,
+        exp: now - 14400 + 28800,
+      },
+      ok: true,
+    },
+  ];
+
+  const app = await startApp();
+  try {
+    for (const c of cases) {
+      const token = await signWithSecret(secret, c.claims);
+      const res = await fetch(`${app.baseUrl}/api/session`, {
+        headers: { Cookie: `genieacs-ui-jwt=${token}` },
+        signal: AbortSignal.timeout(5000),
+      });
+      if (c.ok) assert.equal(res.status, 200, `${c.name} must be accepted`);
+      else assert.equal(res.status, 401, `${c.name} must be rejected`);
+    }
+  } finally {
+    await app.stop();
+  }
+});
+
+void test("session DTO expiry comes from the validated token and does not slide", async () => {
+  const secret = process.env["GENIEACS_UI_JWT_SECRET"];
+  assert.ok(secret, "GENIEACS_UI_JWT_SECRET must be set by the harness");
+  const now = Math.floor(Date.now() / 1000);
+  // Issued 4h ago with an absolute 8h lifetime: 4h remain. A sliding
+  // implementation would report now+8h instead of iat+8h.
+  const iat = now - 14400;
+  const token = await signWithSecret(secret, {
+    username: "operator",
+    authMethod: "local",
+    iat,
+    exp: iat + 28800,
+  });
+
+  const app = await startApp();
+  try {
+    const first = await fetch(`${app.baseUrl}/api/session`, {
+      headers: { Cookie: `genieacs-ui-jwt=${token}` },
+      signal: AbortSignal.timeout(5000),
+    });
+    assert.equal(first.status, 200);
+    const dto1 = (await first.json()) as { expiresAt: string };
+    const expectedMs = (iat + 28800) * 1000;
+    assert.ok(
+      Math.abs(Date.parse(dto1.expiresAt) - expectedMs) < 5000,
+      `expiresAt must match the token exp (${dto1.expiresAt})`,
+    );
+
+    // Polling does not move the expiry.
+    await new Promise((r) => setTimeout(r, 1200));
+    const second = await fetch(`${app.baseUrl}/api/session`, {
+      headers: { Cookie: `genieacs-ui-jwt=${token}` },
+      signal: AbortSignal.timeout(5000),
+    });
+    const dto2 = (await second.json()) as { expiresAt: string };
+    assert.equal(dto2.expiresAt, dto1.expiresAt);
+  } finally {
+    await app.stop();
+  }
+});
+
 void test("self password change uses native semantics and safe errors", async () => {
   const app = await startApp();
   try {

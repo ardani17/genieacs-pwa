@@ -25,7 +25,8 @@ export function diagnosticTarget(
   device: Record<string, unknown>,
 ): DiagnosticTarget {
   const entry = device[CR_URL_PATH] as
-    { value?: [unknown, string] } | undefined;
+    | { value?: [unknown, string] }
+    | undefined;
   const raw = entry?.value?.[0];
   if (typeof raw !== "string" || !raw)
     throw new DiagnosticValidationError("device has no connection request URL");

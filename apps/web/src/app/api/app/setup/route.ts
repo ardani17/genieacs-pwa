@@ -99,30 +99,16 @@ export async function POST(request: Request): Promise<NextResponse> {
         { status: 409, headers: { "Cache-Control": "no-store" } },
       );
 
-    // Native /init expects users as an array of {username, password,
-    // roles[]}; it hashes with native salt/pbkdf2 and seeds the admin
-    // permission set alongside.
+    // Native /init installer contract: users as {username, password,
+    // roles[]} — the engine hashes the CHOSEN password with native
+    // salt/pbkdf2 and seeds the admin permission set (including the
+    // app-level vpn/logs grants) in the same call. admin/admin is never
+    // created, so there is no default-credential window.
     const upstream = await engineFetch("/init", {
       method: "POST",
       body: JSON.stringify({
-        users: [{ username: "admin", password: body.password, roles: ["admin"] }],
-        permissions: [
-          { role: "admin", resource: "devices", access: 3, validate: "true" },
-          { role: "admin", resource: "faults", access: 3, validate: "true" },
-          { role: "admin", resource: "files", access: 3, validate: "true" },
-          { role: "admin", resource: "presets", access: 3, validate: "true" },
-          { role: "admin", resource: "provisions", access: 3, validate: "true" },
-          { role: "admin", resource: "config", access: 3, validate: "true" },
-          { role: "admin", resource: "permissions", access: 3, validate: "true" },
-          { role: "admin", resource: "users", access: 3, validate: "true" },
-          {
-            role: "admin",
-            resource: "virtualParameters",
-            access: 3,
-            validate: "true",
-          },
-          { role: "admin", resource: "vpn", access: 3, validate: "true" },
-          { role: "admin", resource: "logs", access: 3, validate: "true" },
+        users: [
+          { username: "admin", password: body.password, roles: ["admin"] },
         ],
       }),
     });
@@ -130,6 +116,19 @@ export async function POST(request: Request): Promise<NextResponse> {
       return NextResponse.json(
         { ok: true, data: { created: true }, requestId: "setup" },
         { headers: { "Cache-Control": "no-store" } },
+      );
+    if (upstream.status === 400)
+      return NextResponse.json(
+        {
+          ok: false,
+          error: {
+            code: "VALIDATION",
+            message: "Payload admin ditolak oleh initializer",
+            retryable: false,
+          },
+          requestId: "setup",
+        },
+        { status: 400, headers: { "Cache-Control": "no-store" } },
       );
     return NextResponse.json(
       {

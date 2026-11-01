@@ -30,7 +30,8 @@ export function ParameterBrowser({ device }: { device: FlatDevice }) {
     for (const [path, entry] of Object.entries(device)) {
       if (path.startsWith("_")) continue;
       const attr = entry as
-        { value?: [unknown, string]; valueTimestamp?: number } | undefined;
+        | { value?: [unknown, string]; valueTimestamp?: number }
+        | undefined;
       const masked = SECRET_PATTERN.test(path);
       all.push({
         path,

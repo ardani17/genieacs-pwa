@@ -24,8 +24,24 @@ export function issueSession(
   });
 }
 
-// A token is valid only when iat/exp are finite numbers, the lifetime
-// stays within the 8h cap and it has not expired. No renewal anywhere.
+// Claim rules shared by every verification path (the koa middleware and
+// the helper): iat/exp must be finite numbers, the lifetime must stay
+// within the 8h cap and the token must not have expired. No renewal
+// anywhere.
+export function validateSessionClaims(
+  claims: SessionClaims,
+  now = Math.floor(Date.now() / 1000),
+): SessionClaims | null {
+  const { iat, exp } = claims;
+  if (typeof iat !== "number" || typeof exp !== "number") return null;
+  if (!Number.isFinite(iat) || !Number.isFinite(exp)) return null;
+  if (exp - iat > SESSION_MAX_AGE_SECONDS) return null;
+  if (exp <= now) return null;
+  return claims;
+}
+
+// A token is valid only when its signature verifies AND the claim rules
+// above hold.
 export function verifySession(
   token: string,
   secret: string,
@@ -37,12 +53,7 @@ export function verifySession(
   } catch {
     return null;
   }
-  const { iat, exp } = claims;
-  if (typeof iat !== "number" || typeof exp !== "number") return null;
-  if (!Number.isFinite(iat) || !Number.isFinite(exp)) return null;
-  if (exp - iat > SESSION_MAX_AGE_SECONDS) return null;
-  if (exp <= now) return null;
-  return claims;
+  return validateSessionClaims(claims, now);
 }
 
 export interface SafeSessionInput {
@@ -52,6 +63,11 @@ export interface SafeSessionInput {
   uiConfig: Record<string, unknown>;
   configRevision: string;
   upstreamVersion?: string;
+  // Expiry of the VALIDATED token (claims exp). When absent the caller
+  // had no verified claims to draw from; the DTO then falls back to
+  // now+8h, which callers must avoid by always introspecting through
+  // the middleware.
+  tokenExpiresAt?: string;
 }
 
 // The safe session DTO: selected fields ONLY — never the users snapshot
@@ -71,9 +87,9 @@ export function toSafeSession(input: SafeSessionInput): {
     username: input.username,
     roles: input.roles,
     permissionSets: input.permissionSets,
-    expiresAt: new Date(
-      Date.now() + SESSION_MAX_AGE_SECONDS * 1000,
-    ).toISOString(),
+    expiresAt:
+      input.tokenExpiresAt ??
+      new Date(Date.now() + SESSION_MAX_AGE_SECONDS * 1000).toISOString(),
     configRevision: input.configRevision,
     uiConfig: input.uiConfig,
     appVersion: VERSION,

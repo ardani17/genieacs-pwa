@@ -2,27 +2,37 @@ import { NextResponse } from "next/server";
 import {
   engineFetch,
   requireSameOrigin,
+  clientIpForRateLimit,
+  APP_COOKIE_NAME,
 } from "../../../../server/genieacs-client";
 
 export const dynamic = "force-dynamic";
 
 const PUBLIC_ORIGIN = process.env.PUBLIC_ORIGIN ?? "http://localhost:3000";
-const APP_COOKIE = "app-session";
 
 // In-memory failed-login limiter: 10 failures per (ip, username) per 15
 // minutes. Single-process bound; the deployment runs one web instance.
+// The ip part comes from clientIpForRateLimit: client-supplied
+// X-Forwarded-For is discarded unless the deployment configured trusted
+// proxy hops, so rotating the header cannot open fresh buckets.
 const WINDOW_MS = 15 * 60 * 1000;
 const MAX_FAILURES = 10;
 const failures = new Map<string, { count: number; windowStart: number }>();
 
-function tooManyFailedAttempts(key: string): boolean {
+function limitStatus(
+  key: string,
+): { limited: boolean; retryAfterSeconds: number } {
   const entry = failures.get(key);
-  if (!entry) return false;
-  if (Date.now() - entry.windowStart > WINDOW_MS) {
+  if (!entry) return { limited: false, retryAfterSeconds: 0 };
+  const elapsed = Date.now() - entry.windowStart;
+  if (elapsed > WINDOW_MS) {
     failures.delete(key);
-    return false;
+    return { limited: false, retryAfterSeconds: 0 };
   }
-  return entry.count >= MAX_FAILURES;
+  return {
+    limited: entry.count >= MAX_FAILURES,
+    retryAfterSeconds: Math.max(1, Math.ceil((WINDOW_MS - elapsed) / 1000)),
+  };
 }
 
 function recordFailure(key: string): void {
@@ -67,10 +77,10 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
 
-  const ip =
-    request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
+  const ip = clientIpForRateLimit(request);
   const limitKey = `${ip}|${body.username ?? ""}`;
-  if (tooManyFailedAttempts(limitKey))
+  const limit = limitStatus(limitKey);
+  if (limit.limited)
     return NextResponse.json(
       {
         ok: false,
@@ -81,7 +91,13 @@ export async function POST(request: Request): Promise<NextResponse> {
         },
         requestId: "login",
       },
-      { status: 429, headers: { "Cache-Control": "no-store" } },
+      {
+        status: 429,
+        headers: {
+          "Cache-Control": "no-store",
+          "Retry-After": String(limit.retryAfterSeconds),
+        },
+      },
     );
 
   let upstream: Response;
@@ -149,7 +165,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       status: 200,
       headers: {
         "Cache-Control": "no-store",
-        "Set-Cookie": `${APP_COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=28800${secure ? "; Secure" : ""}`,
+        "Set-Cookie": `${APP_COOKIE_NAME}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=28800${secure ? "; Secure" : ""}`,
       },
     },
   );
