@@ -42,5 +42,20 @@
         "artifacts/tests/test/security/script-permissions.test.cjs"
       ]
     }
+  ],
+  "M01-S2": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": [
+        "scripts/test-ts.mjs",
+        "test/security/nbi-query.ts",
+        "test/security/nbi-route.ts"
+      ],
+      "artifacts": [
+        "artifacts/tests/test/security/nbi-query.test.cjs",
+        "artifacts/tests/test/security/nbi-route.test.cjs"
+      ]
+    }
   ]
 }

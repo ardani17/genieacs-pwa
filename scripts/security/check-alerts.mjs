@@ -22,6 +22,7 @@ const MAX_OUTPUT_BYTES = 5 * 1024 * 1024;
 
 // One entry per alert package; later packages append their suites here.
 const ALERT_SUITES = {
+  "M01-S2": ["test/security/nbi-query.ts", "test/security/nbi-route.ts"],
   "M01-S1": [
     "test/security/script-validation.ts",
     "test/security/script-permissions.ts",
