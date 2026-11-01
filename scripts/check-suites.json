@@ -87,5 +87,13 @@
         "artifacts/tests/test/security/like-pattern.test.cjs"
       ]
     }
+  ],
+  "M01-S5": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/test-ts.mjs", "test/security/cwmp-cookie.ts"],
+      "artifacts": ["artifacts/tests/test/security/cwmp-cookie.test.cjs"]
+    }
   ]
 }
