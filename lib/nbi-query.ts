@@ -200,10 +200,12 @@ function validateFieldOperatorBody(
       validateNode(value, limits, depth + 1, {});
       return;
     case "$type":
-      if (!(
-        typeof value === "string" ||
-        (typeof value === "number" && Number.isInteger(value))
-      ))
+      if (
+        !(
+          typeof value === "string" ||
+          (typeof value === "number" && Number.isInteger(value))
+        )
+      )
         fail("operator_shape", "$type requires a string or number");
       return;
     default:
