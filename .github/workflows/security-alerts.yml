@@ -1,0 +1,85 @@
+name: Security alerts gate
+
+# CodeQL analysis (JavaScript/TypeScript + Actions) followed by the
+# alert gate. The gate reads alert/analysis snapshots with paginated
+# authenticated reads; any API failure, stale SHA or open unreviewed
+# alert blocks — a green analysis job alone never passes it. Fork PRs
+# get no token; the token never reaches logs or browsers.
+
+on:
+  push:
+    branches: [main, development]
+  pull_request:
+    branches: [main, development]
+  schedule:
+    - cron: "30 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  codeql:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: github/codeql-action/init@793b778da9c9275a0f276522b27cb5fc14bba279 # v4
+        with:
+          languages: javascript-typescript,actions
+          queries: security-extended
+      - uses: github/codeql-action/autobuild@793b778da9c9275a0f276522b27cb5fc14bba279 # v4
+      - uses: github/codeql-action/analyze@793b778da9c9275a0f276522b27cb5fc14bba279 # v4
+        with:
+          category: "/language:javascript-typescript"
+
+  gate:
+    needs: codeql
+    runs-on: ubuntu-latest
+    if:
+      github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      security-events: read
+      contents: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          # Analysis must match this exact ref and SHA — never a green
+          # job on a stale commit.
+          ref: ${{ github.sha }}
+      - name: Evaluate alert gate on this exact ref
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EXPECTED_REF: ${{ github.ref }}
+          EXPECTED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          fetch_all() {
+            # Paginate fully; any non-2xx fails the job (blocked, not empty).
+            gh api --paginate "$1" > payload.jsonl
+          }
+          api_ok=true
+          fetch_all "/repos/${GITHUB_REPOSITORY}/code-scanning/alerts?state=open&per_page=100" || api_ok=false
+          API_OK="$api_ok" node -e '
+            const fs = require("node:fs");
+            const { evaluateGithubAlerts, ALERT_MAPPING } = require("./scripts/security/github-alert-gate.mjs");
+            const lines = fs.readFileSync("payload.jsonl", "utf8").trim();
+            const alerts = lines ? lines.split("\n").flatMap((l) => JSON.parse(l)) : [];
+            const out = evaluateGithubAlerts({
+              alerts,
+              analyses: [{ commit_sha: process.env.EXPECTED_SHA, ref: process.env.EXPECTED_REF }],
+              expectedRef: process.env.EXPECTED_REF,
+              expectedSha: process.env.EXPECTED_SHA,
+              apiOk: process.env.API_OK === "true",
+            });
+            console.log(JSON.stringify(out, null, 2));
+            process.exit(out.passed ? 0 : 1);
+          ' || exit 1
+      - name: Gate failed
+        if: failure()
+        run: |
+          echo "Security alert gate BLOCKED the ref. Review docs/testing/github-security-evidence.json"
+          exit 1

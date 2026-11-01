@@ -22,6 +22,7 @@ const MAX_OUTPUT_BYTES = 5 * 1024 * 1024;
 
 // One entry per alert package; later packages append their suites here.
 const ALERT_SUITES = {
+  "M01-S9": ["scripts/security/github-alert-gate.test.mjs"],
   "M01-S8": [
     "test/security/xmpp-scram.ts",
     "test/security/xmpp-negotiation.ts",
