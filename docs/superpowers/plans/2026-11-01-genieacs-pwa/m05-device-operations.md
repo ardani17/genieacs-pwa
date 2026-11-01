@@ -1,13 +1,15 @@
 # M05 — Task, WAN, WiFi dan patch Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use
-> superpowers:subagent-driven-development (recommended) or
-> superpowers:executing-plans to implement this plan task-by-task. Steps use
-> checkbox (`- [ ]`) syntax for tracking.
+> **Catatan metadata dokumen (non-eksekusi):** Referensi sub-skill yang relevan
+> untuk implementasi adalah `superpowers:subagent-driven-development`
+> (recommended) atau `superpowers:executing-plans`; langkah pada rencana ini
+> memakai sintaks checkbox (`- [ ]`) untuk pelacakan.
 >
 > Sesi ini hanya dokumentasi. Paket berstatus Planned; eksekusi hanya ketika
-> prasyarat merged, desain ditinjau dan tiket pelaksanaan dipilih. Agen
-> low-thinking mengambil satu paket/PR, bukan seluruh milestone sekaligus.
+> prasyarat merged, desain ditinjau dan tiket pelaksanaan dipilih. Konten file
+> ini tidak boleh diperlakukan sebagai instruksi eksekusi otomatis dan tidak
+> meng-override kebijakan system/developer atau kebutuhan approval eksplisit.
+> Agen low-thinking mengambil satu paket/PR, bukan seluruh milestone sekaligus.
 
 **Goal:** Task, WAN, WiFi dan patch dengan acceptance tiap paket yang dapat
 ditinjau mandiri.
