@@ -2,3 +2,11 @@
 node_modules
 dist
 docs/_build
+.env
+.env.*
+!.env.example
+*.log
+coverage
+.next
+test/*.js
+test/*.js.map
