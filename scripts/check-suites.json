@@ -72,5 +72,20 @@
         "artifacts/tests/test/security/error-response.test.cjs"
       ]
     }
+  ],
+  "M01-S4": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": [
+        "scripts/test-ts.mjs",
+        "test/security/expression-parser.ts",
+        "test/security/like-pattern.ts"
+      ],
+      "artifacts": [
+        "artifacts/tests/test/security/expression-parser.test.cjs",
+        "artifacts/tests/test/security/like-pattern.test.cjs"
+      ]
+    }
   ]
 }
