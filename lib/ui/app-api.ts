@@ -7,6 +7,8 @@ import { toSafeSession } from "./session.ts";
 import { changeOwnPassword } from "./self-password.ts";
 import { sendSafeLegacyError } from "./safe-error.ts";
 import { authorizeAppResource } from "./app-permissions.ts";
+import { runDeviceDiagnostics } from "./device-diagnostics.ts";
+import * as db from "./db.ts";
 import { buildLogQuery } from "./log-query.ts";
 
 const router = new Router();
@@ -186,6 +188,35 @@ router.get("/app/vpn/status", async (ctx) => {
     controllerReachable: false,
     lastSuccessAt: null,
   });
+});
+
+// POST /app/devices/:id/diagnostics — devices:2 + the caller's device
+// filter decide access FIRST; the target is then derived server-side from
+// the authorized device. Only the device id comes from the browser.
+router.post("/app/devices/:id/diagnostics", async (ctx) => {
+  if (!ctx.state.user?.username) return void (ctx.status = 401);
+
+  const authorizer = ctx.state.authorizer;
+  const filter = authorizer.getFilter("devices", 2);
+  if (!authorizer.hasAccess("devices", 2)) return void (ctx.status = 403);
+
+  // Fetch the device THROUGH the permission filter: a filtered-out
+  // device is 404 to this caller.
+  const { value: device } = await db
+    .query("devices", [filter, ["=", ["PARAM", "DeviceID.ID"], ctx.params.id]])
+    .next();
+  if (!device) return void (ctx.status = 404);
+
+  const controllerAvailable = process.env["DIAGNOSTICS_CONTROLLER"] === "1";
+  const result = await runDeviceDiagnostics(
+    device as Record<string, unknown>,
+    controllerAvailable,
+  );
+
+  ctx.status = 200;
+  ctx.type = "application/json";
+  ctx.set("Cache-Control", "no-store");
+  ctx.body = JSON.stringify(result);
 });
 
 // Health for internal callers reuses /status from the root router.
