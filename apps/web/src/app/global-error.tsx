@@ -1,7 +1,10 @@
 "use client";
 
+import { useEffect } from "react";
+import { captureClientError } from "@/components/error-reporter";
+
 // Root error boundary (renders outside the layout): safe message plus
-// request id; never renders error stacks or raw payloads.
+// request id; the report goes to the centralized sink.
 export default function GlobalError({
   error,
   reset,
@@ -9,6 +12,10 @@ export default function GlobalError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
+  useEffect(() => {
+    captureClientError(error, "global");
+  }, [error]);
+
   const requestId = error.digest ?? "unknown";
   return (
     <html lang="id">
