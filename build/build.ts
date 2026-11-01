@@ -141,11 +141,19 @@ function generateSymbol(id: string, svgStr: string): string {
 async function getBuildMetadata(): Promise<string> {
   const date = new Date().toISOString().slice(2, 10).replaceAll("-", "");
 
-  const [commit, diff, newFiles] = await Promise.all([
-    execAsync("git rev-parse HEAD"),
-    execAsync("git diff HEAD"),
-    execAsync("git ls-files --others --exclude-standard"),
-  ]).then((res) => res.map((r) => r.stdout.trim()));
+  let commit: string, diff: string, newFiles: string;
+  try {
+    [commit, diff, newFiles] = await Promise.all([
+      execAsync("git rev-parse HEAD"),
+      execAsync("git diff HEAD"),
+      execAsync("git ls-files --others --exclude-standard"),
+    ]).then((res) => res.map((r) => r.stdout.trim()));
+  } catch (err) {
+    // Building outside a git checkout (docker build context carries no
+    // .git): fall back to a date-based marker. The image label carries
+    // the source revision instead.
+    return date + "docker";
+  }
 
   if (!diff && !newFiles) return date + commit.slice(0, 4);
 
