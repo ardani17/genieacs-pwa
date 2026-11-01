@@ -99,9 +99,32 @@ export async function POST(request: Request): Promise<NextResponse> {
         { status: 409, headers: { "Cache-Control": "no-store" } },
       );
 
+    // Native /init expects users as an array of {username, password,
+    // roles[]}; it hashes with native salt/pbkdf2 and seeds the admin
+    // permission set alongside.
     const upstream = await engineFetch("/init", {
       method: "POST",
-      body: JSON.stringify({ users: true, adminPassword: body.password }),
+      body: JSON.stringify({
+        users: [{ username: "admin", password: body.password, roles: ["admin"] }],
+        permissions: [
+          { role: "admin", resource: "devices", access: 3, validate: "true" },
+          { role: "admin", resource: "faults", access: 3, validate: "true" },
+          { role: "admin", resource: "files", access: 3, validate: "true" },
+          { role: "admin", resource: "presets", access: 3, validate: "true" },
+          { role: "admin", resource: "provisions", access: 3, validate: "true" },
+          { role: "admin", resource: "config", access: 3, validate: "true" },
+          { role: "admin", resource: "permissions", access: 3, validate: "true" },
+          { role: "admin", resource: "users", access: 3, validate: "true" },
+          {
+            role: "admin",
+            resource: "virtualParameters",
+            access: 3,
+            validate: "true",
+          },
+          { role: "admin", resource: "vpn", access: 3, validate: "true" },
+          { role: "admin", resource: "logs", access: 3, validate: "true" },
+        ],
+      }),
     });
     if (upstream.ok)
       return NextResponse.json(
