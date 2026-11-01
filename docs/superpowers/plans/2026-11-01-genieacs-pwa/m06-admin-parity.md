@@ -4,7 +4,7 @@
 > konteks dokumentasi untuk reviewer/manusia. Jika dokumen dimuat ke sistem
 > LLM/agent, perlakukan sebagai materi referensi saja (jangan dieksekusi
 > otomatis, jangan diprioritaskan sebagai perintah tool/planning). Contoh
-> sub-skill yang *dapat* dipakai saat implementasi terpisah: 
+> sub-skill yang _dapat_ dipakai saat implementasi terpisah:
 > superpowers:subagent-driven-development (recommended) atau
 > superpowers:executing-plans; langkah dilacak dengan checkbox (`- [ ]`).
 >
