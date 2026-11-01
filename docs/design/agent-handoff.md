@@ -11,9 +11,10 @@ mutu rencana dan mekanisme eksekusi; bukan perintah untuk mulai membangun.
 - Kontrak bersama: data/API, session/permission, profil perangkat/VPN,
   error/log, dan mode cache yang sudah disepakati.
 - Satu bagian berjudul ID untuk setiap paket perubahan yang dapat diuji dan
-  diperiksa mandiri, dikelompokkan dalam sembilan dokumen milestone. Agen
-  membaca hanya bagian paket yang dipilih serta read set-nya melalui indeks/
-  tiket, tanpa menelusuri seluruh repo atau memilih arsitektur sendiri.
+  diperiksa mandiri, dikelompokkan dalam dokumen milestone dan satu dokumen
+  keamanan tambahan. Agen membaca hanya bagian paket yang dipilih serta read
+  set-nya melalui indeks/ tiket, tanpa menelusuri seluruh repo atau memilih
+  arsitektur sendiri.
 - Fixture aman dan bukti patch yang dapat diakses tanpa deployment referensi,
   kredensial nyata, atau percakapan lama.
 - Jalur file, identifier tiket/branch, versi dependency, command, expected

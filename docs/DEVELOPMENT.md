@@ -142,5 +142,5 @@ simpan secret dan data operasional di luar Git. Folder GenieACS lokal yang lama
 digunakan sebagai referensi parameter dan perilaku modem.
 
 [Indeks rencana M01–M09](superpowers/plans/2026-11-01-genieacs-pwa.md) memuat
-34paket rinci, kontrak, tes, logging, security gate, branch dan tiket Linear.
+43paket rinci, kontrak, tes, logging, security gate, branch dan tiket Linear.
 Dokumen ini belum mengimplementasikan frontend, upgrade dependency atau deploy.

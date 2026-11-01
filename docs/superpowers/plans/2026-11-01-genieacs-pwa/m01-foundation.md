@@ -44,6 +44,9 @@ dan security gate pada security-upgrade.md.
   perintah konkret, plus file yang dicantumkan; perubahan arsitektur/dependency
   lain direvisi melalui rencana.
 
+[Rangkaian sembilan paket alert GitHub](m01-security-alerts.md) wajib selesai
+sesudah M01-B dan sebelum M01-C. Dependabot#1 esbuild tetap M01-B.
+
 ---
 
 ## M01-A — Tooling, inventaris keamanan dan harness terisolasi
@@ -360,8 +363,8 @@ referensi tidak disentuh.
 
 **Linear:**
 [ARD-166](https://linear.app/ardani/issue/ARD-166/m01-c-scaffold-frontend-patched-dan-boundary-kontrak).
-**Status:** Planned / Backlog. **Prasyarat:** M01-B. **Branch:**
-`feature/m01-c`.
+**Status:** Planned / Backlog. **Prasyarat:** M01-B dan M01-S1–S9 merged (gate
+ARD-206). **Branch:** `feature/m01-c`.
 
 **Read set:**
 

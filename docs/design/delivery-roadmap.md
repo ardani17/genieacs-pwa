@@ -4,15 +4,15 @@ Status: rencana lengkap untuk review. Semua implementasi M01–M09 masih Backlog
 Sesi ini hanya menyiapkan dokumen, rencana dan Linear. Setup#1/security policy#3
 sudah merged ke development; inventaris read-only ARD-154 selesai.
 
-[Indeks34paket](../superpowers/plans/2026-11-01-genieacs-pwa.md) adalah titik
+[Indeks43paket](../superpowers/plans/2026-11-01-genieacs-pwa.md) adalah titik
 masuk agen. Baca satu paket dan read set-nya, kerjakan satu PR, kemudian review
 sebelum paket berikutnya. Kontrak ada di [contracts.md](contracts.md), bukti
 parity di [feature-parity.md](feature-parity.md).
 
 | Milestone | Parent Linear                                      | Paket             | Hasil dan gate                                                                                                                                                   |
 | --------- | -------------------------------------------------- | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| M00       | [ARD-153](https://linear.app/ardani/issue/ARD-153) | Desain/inventaris | Q1–Q22 dan tambahan keamanan/versi dicatat, kontrak/ADR/glosarium/parity/34paket ditinjau; tidak membangun aplikasi.                                             |
-| M01       | [ARD-155](https://linear.app/ardani/issue/ARD-155) | A–F               | Inventory+security gate, dependency backend compatible, frontend patched, Docker terisolasi, JSON logger, Vector/VictoriaLogs. Sink gagal tidak menggantung app. |
+| M00       | [ARD-153](https://linear.app/ardani/issue/ARD-153) | Desain/inventaris | Q1–Q22 dan tambahan keamanan/versi dicatat, kontrak/ADR/glosarium/parity/43paket ditinjau; tidak membangun aplikasi.                                             |
+| M01       | [ARD-155](https://linear.app/ardani/issue/ARD-155) | A–F+S1–S9         | Inventory+security gate, dependency backend compatible, frontend patched, Docker terisolasi, JSON logger, Vector/VictoriaLogs. Sink gagal tidak menggantung app. |
 | M02       | [ARD-156](https://linear.app/ardani/issue/ARD-156) | A–C               | Native identity8jam, permission live, safe bootstrap, BFF allowlist/pagination/stream/error, vpn/log permission. 401/403/filter/validator/timeout teruji.        |
 | M03       | [ARD-157](https://linear.app/ardani/issue/ARD-157) | A–C               | Tema biru-putih, komponen/navigasi/login/setup mobile, status terpisah/error tracing;360/768/1440px, keyboard/focus/console gate.                                |
 | M04       | [ARD-158](https://linear.app/ardani/issue/ARD-158) | A–C               | Fixture/profile/filter, overview/list/server pagination/CSV, detail/rawparams/diagnosis baca; native customconfig dan permission tetap bekerja.                  |
@@ -62,3 +62,12 @@ tidak diklaim sebagai verifikasi perangkat fisik. Dukungan writable vendor/
 firmware baru memerlukan bukti dan profil; saat ini tiga profil ZTE menjadi
 acuan, Huawei/FiberHome/generic TR181 tetap extensible dengan status dukungan
 yang jujur.
+
+## Tambahan keamanan GitHub
+
+[Register 17 alert](github-security-alerts.md) dan
+[rencana sembilan paket](../superpowers/plans/2026-11-01-genieacs-pwa/m01-security-alerts.md)
+masuk M01: A → B → S1…S9 → C…F. Validasi script critical lebih dahulu, kemudian
+NBI/input/ReDoS/crypto dan gate closure. Seluruhnya Backlog; frontend ARD-166
+terblokir ARD-206 sampai gate keamanan terverifikasi. Esbuild Dependabot#1 tetap
+M01-B/ARD-165. Total **43 paket**, dengan 15 child M01.

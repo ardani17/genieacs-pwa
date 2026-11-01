@@ -668,3 +668,13 @@ failure tests (VPN/DB/log/cache/session) dan backup restore lulus, perangkat uji
 nyata yang diklaim verified lulus CWMP+trafik relevan. Ketika lab belum
 tersedia, tiket verifikasi tetap blocked/backlog; jangan mengubah klaim verified
 atau menandai milestone release selesai.
+
+## Gate temuan keamanan GitHub
+
+[Rencana M01-S1–S9](../superpowers/plans/2026-11-01-genieacs-pwa/m01-security-alerts.md)
+dan [register 17 alert](github-security-alerts.md) memperluas fondasi M01
+sebelum frontend. Backend diperbaiki secara terbatas pada boundary validasi
+script AST, query NBI, escaping error/CSV, parser LIKE/cookie dan kriptografi
+per protokol. Job scanner sukses tidak menggantikan pemeriksaan alert
+terbuka/scan SHA/ref. Residual protokol legacy harus direview manusia dan diuji
+interoperabilitas CPE.

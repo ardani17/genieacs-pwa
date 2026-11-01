@@ -52,3 +52,13 @@ Nilai versi pada [security-upgrade.md](security-upgrade.md) adalah snapshot
 riset. Agen pelaksana wajib mengecek ulang advisory dan graph sebelum
 merge/release; temuan baru memperbarui rencana keamanan, bukan melemahkan
 pemeriksaan.
+
+## Tambahan pengguna — alert GitHub
+
+Seluruh temuan
+[Code Scanning](https://github.com/ardani17/genieacs-pwa/security/code-scanning)
+dan [Dependabot](https://github.com/ardani17/genieacs-pwa/security/dependabot)
+diminta masuk planning. Snapshot API 16 CodeQL+1 Dependabot dipetakan pada
+[register](github-security-alerts.md), sembilan paket M01-S1–S9 dan 43 paket
+total. Perbaikan source/dependency serta penutupan alert tetap pekerjaan
+implementasi; sesi ini hanya memperbarui dokumen/tiket dan dependency gate.

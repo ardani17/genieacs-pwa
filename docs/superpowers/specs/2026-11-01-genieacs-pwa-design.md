@@ -13,7 +13,7 @@ PWA, kapasitas/migrasi dan release. Kontrak yang menghubungkannya memakai nama
 dan DTO yang sama. Keputusan jangka panjang dicatat pada docs/adr dan istilah
 domain pada GLOSSARY.md.
 
-[Indeks34paket](../plans/2026-11-01-genieacs-pwa.md) memuat M01–M09, dependensi
+[Indeks43paket](../plans/2026-11-01-genieacs-pwa.md) memuat M01–M09, dependensi
 Linear, branch dan command. [Security upgrade](../../design/security-upgrade.md)
 menetapkan riset Context7/advisory dan blocker development;
 [release policy](../../design/release-policy.md) menetapkan
@@ -23,3 +23,8 @@ Tahap ini hanya dokumentasi. Pengguna meninjau desain ini sebagai hasil konkret;
 implementasi, test runtime/lab, dependency upgrade dan publikasi tag belum
 dilakukan. Semua gate yang memerlukan hardware/credential/advisory terbaru tetap
 diperiksa pada paket yang menanganinya.
+
+Seluruh [alert GitHub](../../design/github-security-alerts.md) masuk fondasi M01
+melalui sembilan paket S1–S9 sebelum M01-C. Risiko legacy crypto direview
+manusia; gate closure memeriksa exact scan commit/ref, bukan hanya job CI
+sukses. Source, lockfile dan state alert belum diubah.

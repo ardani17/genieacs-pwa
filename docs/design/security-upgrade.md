@@ -153,3 +153,23 @@ Critical/high menjadi tiket prioritas tinggi segera; target triage1hari dan
 patch tervalidasi≤72jam adalah sasaran operasi, bukan jaminan upstream patch.
 M09 mengaudit ulang sebelum tag rilis. `npm audit fix --force`, pengabaian peer,
 dan perintah audit dengan error yang ditelan bukan prosedur upgrade.
+
+## Alert GitHub repository yang wajib masuk rencana
+
+API terautentikasi pada 1 November 2026 menemukan 16 CodeQL open (2 critical, 12
+high, 2 medium) dan 1 Dependabot low (esbuild).
+[Register dan mapping](github-security-alerts.md) memuat nomor/rule/path/
+severity, source commit, tiket dan acceptance.
+[Snapshot JSON](github-security-alerts.json) adalah bukti metadata, bukan
+konfirmasi exploit.
+
+M01-S1–S9 (ARD-198–ARD-206) masuk setelah M01-B dan sebelum M01-C. Validator
+script memakai AST-only Acorn8.19.0 (pin runtime root, lock diaudit), disusul
+NBI query allowlist, escaping/XSS, parser/LIKE, cookie CWMP dan crypto per
+protokol. Dependabot#1 tetap ARD-165, target esbuild0.28.2≥fixed0.28.1.
+
+Job CodeQL SUCCESS belum membuktikan semua alert tertutup. S9 memeriksa exact
+commit/ref, instance/category, pagination/freshness dan review risiko manusia.
+Legacy MD5/HMAC-SHA1 tidak diganti sepihak sehingga protokol CPE putus; risiko
+yang diterima tetap risk_accepted dengan expiry, bukan fixed. Tidak ada dismiss,
+suppression atau perubahan scan pada sesi dokumentasi ini.

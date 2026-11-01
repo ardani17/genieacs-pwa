@@ -43,7 +43,8 @@ pemulihan aplikasi dengan peringatan logging degraded.
 ## Bukti yang membatasi rancangan
 
 - Baseline source GenieACS `v1.2.16`. PR setup #1 dan security policy #3 sudah
-  merged ke development; PR release #4 terlihat terbuka saat pemeriksaan.
+  merged ke development. PR release #4 sudah merged ke main@be5dcb0 pada
+  snapshot alert GitHub berikutnya.
 - Snapshot read-only sebelumnya membuktikan patch UI/build, source lib/bin
   baseline, serta konfigurasi/provision referensi. Saat pemeriksaan terakhir
   container referensi berhenti. Sesi ini tidak menyalakan atau mengubahnya.
@@ -84,3 +85,12 @@ pemulihan aplikasi dengan peringatan logging degraded.
 tetap Backlog sampai dokumen ditinjau dan tahap pelaksanaan dimulai secara
 terpisah. Rencana tidak menandai uji simulasi sebagai bukti trafik WiFi/LAN
 nyata atau dukungan Huawei/FiberHome yang belum diverifikasi.
+
+## Tambahan alert GitHub
+
+16 CodeQL open dan 1 Dependabot open dipetakan ke
+[register keamanan](github-security-alerts.md). Sembilan paket S1–S9/ARD-198–206
+dikerjakan pada M01 sebelum frontend baru. Kompilasi untuk validasi script
+dibedakan dari eksekusi admin yang disengaja; crypto wire legacy tidak diubah
+sepihak. Scan SUCCESS bukan bukti bersih; exact ref/commit dan review risiko
+menjadi gate. PR release#4 sudah merged ke main@be5dcb0 saat pembacaan API ini.
