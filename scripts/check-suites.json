@@ -192,5 +192,18 @@
       "args": ["scripts/test-ts.mjs", "test/session.ts"],
       "artifacts": ["artifacts/tests/test/session.test.cjs"]
     }
+  ],
+  "M02-B": [
+    {
+      "cwd": "apps/web",
+      "command": "npm",
+      "args": ["run", "test"]
+    },
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/test-ts.mjs", "test/integration/resource-access.ts"],
+      "artifacts": ["artifacts/tests/test/integration/resource-access.test.cjs"]
+    }
   ]
 }
