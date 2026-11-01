@@ -85,6 +85,13 @@ const options = {
 
   XMPP_JID: { type: "string", default: "" },
   XMPP_PASSWORD: { type: "string", default: "" },
+  // Legacy XMPP SASL fallbacks — both default OFF. Enabling either is an
+  // explicit admin risk decision (see
+  // docs/operations/legacy-protocol-crypto.md); TLS stays mandatory
+  // regardless. Server-side deployment configuration only, never browser
+  // input.
+  XMPP_ALLOW_LEGACY_SHA1: { type: "bool", default: false },
+  XMPP_ALLOW_PLAIN: { type: "bool", default: false },
 };
 
 const allConfig: { [name: string]: string | number } = {};

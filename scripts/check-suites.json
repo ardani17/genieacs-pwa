@@ -111,5 +111,20 @@
       "args": ["scripts/test-ts.mjs", "test/security/udp-cr-auth.ts"],
       "artifacts": ["artifacts/tests/test/security/udp-cr-auth.test.cjs"]
     }
+  ],
+  "M01-S8": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": [
+        "scripts/test-ts.mjs",
+        "test/security/xmpp-scram.ts",
+        "test/security/xmpp-negotiation.ts"
+      ],
+      "artifacts": [
+        "artifacts/tests/test/security/xmpp-scram.test.cjs",
+        "artifacts/tests/test/security/xmpp-negotiation.test.cjs"
+      ]
+    }
   ]
 }
