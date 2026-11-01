@@ -16,6 +16,7 @@ export interface NavItem {
 export const FEATURE_AVAILABILITY: Record<string, boolean> = {
   "/overview": true,
   "/devices": true,
+  "/devices/[id]": true,
   "/tasks": false,
   "/faults": false,
   "/diagnostics/logs": false,

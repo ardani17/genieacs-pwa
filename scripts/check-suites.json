@@ -289,5 +289,23 @@
       "command": "npm",
       "args": ["run", "test"]
     }
+  ],
+  "M04-C": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/test-ts.mjs", "test/device-diagnostics.ts"],
+      "artifacts": ["artifacts/tests/test/device-diagnostics.test.cjs"]
+    },
+    {
+      "cwd": "apps/web",
+      "command": "npm",
+      "args": ["run", "typecheck"]
+    },
+    {
+      "cwd": "apps/web",
+      "command": "npm",
+      "args": ["run", "test"]
+    }
   ]
 }
