@@ -220,5 +220,12 @@
         "artifacts/tests/test/log-query.test.cjs"
       ]
     }
+  ],
+  "M03-A": [
+    {
+      "cwd": "apps/web",
+      "command": "npm",
+      "args": ["run", "test"]
+    }
   ]
 }
