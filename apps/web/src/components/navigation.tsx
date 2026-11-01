@@ -14,8 +14,8 @@ export interface NavItem {
 // Route availability: modules not yet merged are hidden until they land
 // (feature availability map) — navigation never links to unbuilt pages.
 export const FEATURE_AVAILABILITY: Record<string, boolean> = {
-  "/overview": false,
-  "/devices": false,
+  "/overview": true,
+  "/devices": true,
   "/tasks": false,
   "/faults": false,
   "/diagnostics/logs": false,

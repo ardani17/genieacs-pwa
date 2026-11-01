@@ -54,20 +54,20 @@ export function readQuotedJsString(
   throw new StringScanError(start, "unterminated string");
 }
 
-function interpretEscapes(str): string {
-  const escapes = {
+function interpretEscapes(str: string): string {
+  const escapes: Record<string, string> = {
     b: "\b",
     f: "\f",
     n: "\n",
     r: "\r",
     t: "\t",
   };
-  return str.replace(/\\(u[0-9a-fA-F]{4}|[^u])/g, (_, escape) => {
+  return str.replace(/\\(u[0-9a-fA-F]{4}|[^u])/g, (_, escape: string) => {
     const type = escape.charAt(0);
     const hex = escape.slice(1);
     if (type === "u") return String.fromCharCode(parseInt(hex, 16));
 
-    if (escapes.hasOwnProperty(type)) return escapes[type];
+    if (Object.hasOwn(escapes, type)) return escapes[type];
 
     return type;
   });
@@ -409,7 +409,7 @@ export function parseList(str: string): Expression[] {
 export function stringify(exp: Expression, level = 0): string {
   if (!Array.isArray(exp)) return JSON.stringify(exp);
 
-  const opLevels = {
+  const opLevels: Record<string, number> = {
     OR: 10,
     AND: 11,
     NOT: 12,
@@ -433,7 +433,7 @@ export function stringify(exp: Expression, level = 0): string {
 
   const op = exp[0].toUpperCase();
 
-  function wrap(e): string {
+  function wrap(e: string): string {
     if (opLevels[op] <= level) return `(${e})`;
     else return e;
   }

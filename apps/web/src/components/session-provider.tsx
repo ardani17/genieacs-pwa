@@ -50,11 +50,11 @@ export function SessionProvider({
   const clear = useCallback(() => setState({ phase: "anonymous" }), []);
 
   useEffect(() => {
-    if (initial.phase !== "authenticated") return;
+    if (initial.phase !== "authenticated") return undefined;
     const interval = setInterval(refresh, 30_000);
-    const onFocus = () => void refresh();
+    const onFocus = (): void => void refresh();
     window.addEventListener("focus", onFocus);
-    return () => {
+    return (): void => {
       clearInterval(interval);
       window.removeEventListener("focus", onFocus);
     };
