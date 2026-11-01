@@ -1,9 +1,10 @@
 # M07 — VPN, log dan alamat ACS Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use
-> superpowers:subagent-driven-development (recommended) or
-> superpowers:executing-plans to implement this plan task-by-task. Steps use
-> checkbox (`- [ ]`) syntax for tracking.
+> **Catatan proses (informasional):** Dokumen ini mencatat alur kerja yang
+> *umumnya* memakai superpowers:subagent-driven-development (disarankan) atau
+> superpowers:executing-plans untuk implementasi bertahap. Checklist tetap
+> memakai sintaks checkbox (`- [ ]`) untuk pelacakan. Bukan instruksi eksekusi
+> otomatis untuk agent/tool tanpa kebijakan allowlist dan konfirmasi.
 >
 > Sesi ini hanya dokumentasi. Paket berstatus Planned; eksekusi hanya ketika
 > prasyarat merged, desain ditinjau dan tiket pelaksanaan dipilih. Agen
