@@ -1,0 +1,45 @@
+version: 2
+
+updates:
+  # Backend/runtime manifest at the repository root. Grouped per subsystem,
+  # review-only: Dependabot never auto-merges here.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      backend-production:
+        patterns:
+          - koa
+          - "@koa*"
+          - mongodb
+          - bson
+          - esbuild
+          - svgo
+          - typescript
+      backend-development:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - koa
+          - "@koa*"
+          - mongodb
+          - bson
+          - esbuild
+          - svgo
+          - typescript
+
+  # Pinned CI actions are tracked too, but only as review PRs.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      ci-actions:
+        patterns:
+          - "*"
+
+# The apps/web npm manifest is added by the frontend scaffold package
+# (M01-C); extend this file in that package, not ad hoc.

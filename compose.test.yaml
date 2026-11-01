@@ -1,0 +1,53 @@
+# Isolated verification stack for the genieacs-pwa check project.
+#
+# Everything mutating or verifying runs under project name
+# `genieacs-pwa-check` with its own volumes; the Mongo instance is a
+# throwaway fixture (dummy credentials below are intentionally not secrets)
+# and never publishes ports to the host. The verify service reuses the
+# pinned tooling image and targets database `genieacs_plan_test`, enforced
+# again by scripts/check.mjs's MONGO_URL guard.
+
+name: genieacs-pwa-check
+
+services:
+  mongo:
+    image: mongo:8.0.34@sha256:b9924c330a8bbc5800fe9c69f04a84e221eca7b28fd049a0354147d9908fa142
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: check_fixture
+      MONGO_INITDB_ROOT_PASSWORD: check-fixture-only
+      MONGO_INITDB_DATABASE: genieacs_plan_test
+    volumes:
+      - verify_mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 10s
+    restart: unless-stopped
+
+  verify:
+    build:
+      context: .
+      dockerfile: docker/development/Dockerfile
+    image: genieacs-pwa-verify:local
+    init: true
+    working_dir: /workspace
+    environment:
+      GIT_CONFIG_COUNT: "1"
+      GIT_CONFIG_KEY_0: safe.directory
+      GIT_CONFIG_VALUE_0: /workspace
+      MONGO_URL: mongodb://check_fixture:check-fixture-only@mongo:27017/genieacs_plan_test
+    volumes:
+      - .:/workspace
+      - verify_modules:/workspace/node_modules
+      - npm_cache:/root/.npm
+    depends_on:
+      mongo:
+        condition: service_healthy
+    command: ["node", "scripts/check.mjs", "all"]
+
+volumes:
+  verify_mongo_data:
+  verify_modules:
+  npm_cache:
