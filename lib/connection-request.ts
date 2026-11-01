@@ -8,6 +8,11 @@ import * as extensions from "./extensions.ts";
 import * as debug from "./debug.ts";
 import XmppClient from "./xmpp-client.ts";
 import * as config from "../lib/config.ts";
+import {
+  buildUdpCrSignature,
+  generateUdpCrId,
+  validateUdpCrTarget,
+} from "./udp-cr-auth.ts";
 import { encodeEntities, parseAttrs, Element } from "./xml-parser.ts";
 import * as logger from "../lib/logger.ts";
 
@@ -178,6 +183,7 @@ export async function udpConnectionRequest(
   deviceId: string,
 ): Promise<void> {
   const now = Date.now();
+  ({ host, port } = validateUdpCrTarget(host, port));
 
   const client = dgram.createSocket({ type: "udp4", reuseAddr: true });
   // When a device is NAT'ed, the UDP Connection Request must originate from
@@ -197,13 +203,18 @@ export async function udpConnectionRequest(
   if (password == null) password = "";
   while (username != null && password != null) {
     const ts = Math.trunc(now / 1000);
-    const id = Math.trunc(Math.random() * 4294967295);
+    // CSPRNG message id (was Math.random) and cnonce, per Annex G.
+    const id = generateUdpCrId();
     const cn = crypto.randomBytes(8).toString("hex");
-    const sig = crypto
-      .createHmac("sha1", password)
-      .update(`${ts}${id}${username}${cn}`)
-      .digest("hex");
-    const uri = `http://${host}:${port}?ts=${ts}&id=${id}&un=${username}&cn=${cn}&sig=${sig}`;
+    // Signature over the exact ts+id+un+cn concatenation, protocol-only.
+    const sig = buildUdpCrSignature({
+      timestamp: ts,
+      id,
+      username,
+      cnonce: cn,
+      password,
+    });
+    const uri = `http://${host}:${port}?ts=${ts}&id=${id}&un=${encodeURIComponent(username)}&cn=${cn}&sig=${sig}`;
     const msg = `GET ${uri} HTTP/1.1\r\nHost: ${host}:${port}\r\n\r\n`;
     const message = Buffer.from(msg);
 
@@ -212,7 +223,15 @@ export async function udpConnectionRequest(
         client.send(message, 0, message.length, port, host, (err: Error) => {
           if (err) reject(err);
           else resolve();
-          if (_debug) debug.outgoingUdpMessage(host, deviceId, port, msg);
+          // Debug output carries the request line without the query
+          // string: username and signature never reach any log.
+          if (_debug)
+            debug.outgoingUdpMessage(
+              host,
+              deviceId,
+              port,
+              `GET http://${host}:${port}?… HTTP/1.1`,
+            );
         });
       });
     }
