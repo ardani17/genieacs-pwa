@@ -70,3 +70,15 @@ jobs:
           done
           test -n "$(find dist/public -name '*.js' -print -quit)"
           test -n "$(find dist/public -name '*.css' -print -quit)"
+      - name: Install frontend dependencies
+        run: npm ci --prefix apps/web --no-audit --no-fund
+      - name: Lint frontend
+        run: npm run lint --prefix apps/web
+      - name: Typecheck frontend
+        run: npm run typecheck --prefix apps/web
+      - name: Frontend unit tests
+        run: npm run test --prefix apps/web
+      - name: Build frontend and verify standalone server
+        run: |
+          npm run build --prefix apps/web
+          test -f apps/web/.next/standalone/apps/web/server.js

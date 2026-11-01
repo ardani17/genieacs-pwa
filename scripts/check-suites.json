@@ -133,5 +133,24 @@
       "command": "node",
       "args": ["--test", "scripts/security/github-alert-gate.test.mjs"]
     }
+  ],
+  "M01-C": [
+    {
+      "cwd": ".",
+      "command": "npm",
+      "args": ["--prefix", "apps/web", "run", "typecheck"]
+    },
+    {
+      "cwd": ".",
+      "command": "npm",
+      "args": ["--prefix", "apps/web", "run", "test"],
+      "artifacts": []
+    },
+    {
+      "cwd": ".",
+      "command": "npm",
+      "args": ["--prefix", "apps/web", "run", "build"],
+      "artifacts": ["apps/web/.next/BUILD_ID"]
+    }
   ]
 }
