@@ -575,7 +575,7 @@ router.post("/devices/:id/tasks", async (ctx) => {
     if (!device) return void (ctx.status = 404);
 
     const validate = authorizer.getValidator("devices", device);
-    for (const t of ctx.request.body) {
+    for (const t of ctx.request.body as unknown[]) {
       if (!validate("task", t)) {
         logUnauthorizedWarning(log);
         return void (ctx.status = 403);
@@ -686,7 +686,10 @@ router.post("/devices/:id/tags", async (ctx) => {
   }
 
   try {
-    await db.updateDeviceTags(ctx.params.id, ctx.request.body);
+    await db.updateDeviceTags(
+      ctx.params.id,
+      ctx.request.body as Record<string, boolean>,
+    );
   } catch (error) {
     log.message += " failed";
     logger.accessWarn(log);
@@ -729,7 +732,7 @@ router.put("/users/:id/password", async (ctx) => {
       !(await apiFunctions.authLocal(
         ctx.state.configSnapshot,
         username,
-        ctx.request.body.authPassword,
+        (ctx.request.body as { authPassword?: string }).authPassword,
       ))
     ) {
       logUnauthorizedWarning(log);
@@ -742,7 +745,8 @@ router.put("/users/:id/password", async (ctx) => {
     return void (ctx.status = 403);
   }
 
-  const newPassword = ctx.request.body.newPassword;
+  const newPassword = (ctx.request.body as { newPassword?: string })
+    .newPassword;
 
   if (ctx.state.user) {
     const filter = and(authorizer.getFilter("users", 3), [

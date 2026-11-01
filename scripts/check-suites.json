@@ -16,5 +16,16 @@
         "artifacts/security/lock-hashes.json"
       ]
     }
+  ],
+  "M01-B": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/test-ts.mjs", "test/db.ts", "test/security-compat.ts"],
+      "artifacts": [
+        "artifacts/tests/test/db.test.cjs",
+        "artifacts/tests/test/security-compat.test.cjs"
+      ]
+    }
   ]
 }
