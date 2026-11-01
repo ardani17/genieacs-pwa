@@ -19,6 +19,76 @@ interface Status {
   overview: boolean;
 }
 
+// Installer-provided initial users: the chosen password is hashed with
+// the NATIVE salt/pbkdf2 (never stored or logged raw). The upstream
+// wizard keeps sending `users: true`, which seeds the historical
+// default admin/admin only when no users exist yet.
+export interface SeedUser {
+  username: string;
+  password: string;
+  roles?: string[];
+}
+
+export class InitValidationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "InitValidationError";
+  }
+}
+
+function normalizeSeedUsers(options: Record<string, unknown>): SeedUser[] {
+  if (Array.isArray(options["users"])) {
+    const users = options["users"] as SeedUser[];
+    for (const u of users) {
+      if (
+        !u ||
+        typeof u.username !== "string" ||
+        !/^[A-Za-z0-9._-]{1,64}$/.test(u.username)
+      )
+        throw new InitValidationError("invalid installer username");
+      if (
+        typeof u.password !== "string" ||
+        u.password.length < 8 ||
+        u.password.length > 1024
+      )
+        throw new InitValidationError(
+          "installer password must be 8..1024 characters",
+        );
+      if (
+        u.roles !== undefined &&
+        (!Array.isArray(u.roles) ||
+          u.roles.some((r) => typeof r !== "string" || !r))
+      )
+        throw new InitValidationError("invalid installer roles");
+    }
+    if (!users.length) throw new InitValidationError("empty installer users");
+    return users;
+  }
+  return [{ username: "admin", password: "admin", roles: ["admin"] }];
+}
+
+// Admin permission bootstrap. The installation-level app resources
+// (vpn/logs) are granted alongside the upstream resource set so a
+// fresh install does not end with an admin that the app UI locks out.
+const DEFAULT_ADMIN_PERMISSIONS = [
+  { role: "admin", resource: "devices", access: 3, validate: "true" },
+  { role: "admin", resource: "faults", access: 3, validate: "true" },
+  { role: "admin", resource: "files", access: 3, validate: "true" },
+  { role: "admin", resource: "presets", access: 3, validate: "true" },
+  { role: "admin", resource: "provisions", access: 3, validate: "true" },
+  { role: "admin", resource: "config", access: 3, validate: "true" },
+  { role: "admin", resource: "permissions", access: 3, validate: "true" },
+  { role: "admin", resource: "users", access: 3, validate: "true" },
+  {
+    role: "admin",
+    resource: "virtualParameters",
+    access: 3,
+    validate: "true",
+  },
+  { role: "admin", resource: "vpn", access: 3, validate: "true" },
+  { role: "admin", resource: "logs", access: 3, validate: "true" },
+] as const;
+
 const BOOTSTRAP_SCRIPT = `
 const now = Date.now();
 
@@ -89,31 +159,19 @@ export async function getStatus(): Promise<Status> {
   };
 }
 
-export async function seed(options: Record<string, boolean>): Promise<void> {
+export async function seed(
+  options: Record<string, boolean | SeedUser[]>,
+): Promise<void> {
   const resources = {};
   const proms = [];
 
   if (options.users) {
-    resources["permissions"] = [
-      { role: "admin", resource: "devices", access: 3, validate: "true" },
-      { role: "admin", resource: "faults", access: 3, validate: "true" },
-      { role: "admin", resource: "files", access: 3, validate: "true" },
-      { role: "admin", resource: "presets", access: 3, validate: "true" },
-      { role: "admin", resource: "provisions", access: 3, validate: "true" },
-      { role: "admin", resource: "config", access: 3, validate: "true" },
-      { role: "admin", resource: "permissions", access: 3, validate: "true" },
-      { role: "admin", resource: "users", access: 3, validate: "true" },
-      {
-        role: "admin",
-        resource: "virtualParameters",
-        access: 3,
-        validate: "true",
-      },
-    ];
+    resources["permissions"] = DEFAULT_ADMIN_PERMISSIONS.map((p) => ({ ...p }));
 
-    resources["users"] = [
-      { username: "admin", password: "admin", roles: ["admin"] },
-    ];
+    resources["users"] = normalizeSeedUsers(options).map((u) => ({
+      ...u,
+      roles: u.roles ?? ["admin"],
+    }));
   }
 
   if (options.filters) {

@@ -32,6 +32,13 @@ router.get("/session", async (ctx) => {
       permissionSets: ctx.state.authorizer.getPermissionSets(),
       uiConfig: ui as unknown as Record<string, unknown>,
       configRevision: revision,
+      // Expiry comes from the VALIDATED token claims (the middleware
+      // rejects tokens without finite iat/exp), so polling never slides
+      // the session forward.
+      tokenExpiresAt:
+        typeof ctx.state.user.exp === "number"
+          ? new Date(ctx.state.user.exp * 1000).toISOString()
+          : undefined,
     }),
   );
 });

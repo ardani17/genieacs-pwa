@@ -8,11 +8,16 @@ import koaJwt from "koa-jwt";
 import * as config from "./config.ts";
 import api from "./ui/api.ts";
 import appApi from "./ui/app-api.ts";
-import { issueSession, SESSION_MAX_AGE_SECONDS } from "./ui/session.ts";
+import {
+  issueSession,
+  SESSION_MAX_AGE_SECONDS,
+  validateSessionClaims,
+} from "./ui/session.ts";
 import Authorizer from "./common/authorizer.ts";
 import * as logger from "./logger.ts";
 import * as localCache from "./ui/local-cache.ts";
 import { PermissionSet } from "./types.ts";
+import type { SessionClaims } from "./ui/session.ts";
 import { authLocal } from "./api-functions.ts";
 import * as init from "./init.ts";
 import { version as VERSION } from "../package.json";
@@ -62,6 +67,13 @@ koa.use(
     passthrough: true,
     cookie: JWT_COOKIE,
     isRevoked: async (ctx, token) => {
+      // The middleware is the enforcement point for the session
+      // lifetime contract: tokens without finite iat/exp or with a
+      // lifetime beyond the 8h absolute cap are revoked here (signature
+      // alone is not enough).
+      const claims = validateSessionClaims(token as SessionClaims);
+      if (!claims) return true;
+
       if (token["authMethod"] === "local") {
         return !localCache.getUsers(ctx.state.configSnapshot)[
           token["username"]
@@ -212,7 +224,16 @@ router.post("/init", async (ctx) => {
     if (!ctx.state.authorizer.hasAccess("provisions", 3))
       status["presets"] = false;
   }
-  await init.seed(status);
+  try {
+    await init.seed(status);
+  } catch (err) {
+    if (err instanceof init.InitValidationError) {
+      ctx.status = 400;
+      ctx.body = err.message;
+      return;
+    }
+    throw err;
+  }
   ctx.body = "";
 });
 
