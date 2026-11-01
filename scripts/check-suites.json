@@ -1,0 +1,20 @@
+{
+  "M01-A": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["--test", "scripts/security/inventory.test.mjs"]
+    },
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/security/inventory.mjs"],
+      "artifacts": [
+        "artifacts/security/root-inventory.json",
+        "artifacts/security/web-inventory.json",
+        "artifacts/security/advisory-response.json",
+        "artifacts/security/lock-hashes.json"
+      ]
+    }
+  ]
+}
