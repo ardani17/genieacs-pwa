@@ -103,5 +103,13 @@
       "args": ["scripts/test-ts.mjs", "test/security/http-digest.ts"],
       "artifacts": ["artifacts/tests/test/security/http-digest.test.cjs"]
     }
+  ],
+  "M01-S7": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/test-ts.mjs", "test/security/udp-cr-auth.ts"],
+      "artifacts": ["artifacts/tests/test/security/udp-cr-auth.test.cjs"]
+    }
   ]
 }
