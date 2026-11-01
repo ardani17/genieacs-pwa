@@ -3,12 +3,13 @@ import {
   engineFetch,
   nativeCookieFrom,
   requireSameOrigin,
+  APP_COOKIE_NAME,
 } from "../../../../server/genieacs-client";
 
 export const dynamic = "force-dynamic";
 
 const PUBLIC_ORIGIN = process.env.PUBLIC_ORIGIN ?? "http://localhost:3000";
-const APP_COOKIE = "app-session";
+
 
 export async function POST(request: Request): Promise<NextResponse> {
   const sameOrigin = requireSameOrigin(request, PUBLIC_ORIGIN);
@@ -39,7 +40,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       status: 200,
       headers: {
         "Cache-Control": "no-store",
-        "Set-Cookie": `${APP_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure ? "; Secure" : ""}`,
+        "Set-Cookie": `${APP_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure ? "; Secure" : ""}`,
       },
     },
   );

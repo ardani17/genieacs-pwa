@@ -7,12 +7,18 @@ import { NextResponse } from "next/server";
 
 export const GENIEACS_UI_URL = process.env.GENIEACS_UI_URL ?? "http://ui:7583";
 const NATIVE_COOKIE = "genieacs-ui-jwt";
+// ONE cookie contract end to end (contracts.md "Identitas dan
+// otorisasi" #1): the BFF stores the native JWT under the NATIVE cookie
+// name, so login, logout, the dashboard layout and every BFF reader
+// agree without per-route constants.
+export const APP_COOKIE_NAME = NATIVE_COOKIE;
 
 export interface UpstreamInit {
   method?: string;
   body?: string;
   cookie?: string | null;
   timeoutMs?: number;
+  requestId?: string;
 }
 
 export async function engineFetch(
@@ -24,6 +30,9 @@ export async function engineFetch(
   };
   if (init.body !== undefined) headers["Content-Type"] = "application/json";
   if (init.cookie) headers["Cookie"] = `${NATIVE_COOKIE}=${init.cookie}`;
+  // Correlation: a valid UUID requestId travels to the engine so log
+  // lines join across the BFF -> engine hop.
+  if (init.requestId) headers["X-Request-Id"] = init.requestId;
 
   return fetch(`${GENIEACS_UI_URL}${path}`, {
     method: init.method ?? "GET",
@@ -32,6 +41,28 @@ export async function engineFetch(
     signal: AbortSignal.timeout(init.timeoutMs ?? 10_000),
     cache: "no-store",
   });
+}
+
+// Client address for rate limiting. X-Forwarded-For is client-settable:
+// it is honored ONLY when the deployment sits behind
+// TRUSTED_PROXY_HOPS trusted proxies (each appending the peer it saw),
+// taking the entry that many hops from the right. With the default 0
+// the header is discarded entirely — rotating it cannot open new
+// buckets.
+export function clientIpForRateLimit(request: Request): string {
+  const hops = Number(process.env.TRUSTED_PROXY_HOPS ?? "0");
+  if (Number.isInteger(hops) && hops > 0) {
+    const xff = request.headers.get("x-forwarded-for");
+    if (xff) {
+      const parts = xff
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const index = parts.length - hops;
+      if (index >= 0) return parts[index];
+    }
+  }
+  return "direct";
 }
 
 // Copy a response body through WITHOUT upstream Set-Cookie leakage.
@@ -54,9 +85,11 @@ export async function passJson(
 
 export function nativeCookieFrom(cookieHeader: string | null): string | null {
   if (!cookieHeader) return null;
+  // The BFF session cookie carries the native JWT under the native
+  // name (APP_COOKIE_NAME); anything else in the header is ignored.
   for (const part of cookieHeader.split(";")) {
     const [name, ...rest] = part.trim().split("=");
-    if (name === NATIVE_COOKIE) return rest.join("=");
+    if (name === APP_COOKIE_NAME) return rest.join("=");
   }
   return null;
 }

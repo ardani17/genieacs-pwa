@@ -99,47 +99,36 @@ export async function POST(request: Request): Promise<NextResponse> {
         { status: 409, headers: { "Cache-Control": "no-store" } },
       );
 
-    // Native /init treats `users` as a boolean flag: it ALWAYS creates
-    // admin/admin plus the default admin permission set (a users array is
-    // ignored). Two-step installer, both native endpoints:
-    //   1. POST /init            -> create admin with the default password
-    //   2. PUT /users/admin/password (authPassword: default) -> set the
-    //      operator's chosen password. No new account schema.
-    const initRes = await engineFetch("/init", {
+    // Native /init installer contract: users as {username, password,
+    // roles[]} — the engine hashes the CHOSEN password with native
+    // salt/pbkdf2 and seeds the admin permission set (including the
+    // app-level vpn/logs grants) in the same call. admin/admin is never
+    // created, so there is no default-credential window.
+    const upstream = await engineFetch("/init", {
       method: "POST",
-      body: JSON.stringify({ users: true, provisions: true }),
+      body: JSON.stringify({
+        users: [
+          { username: "admin", password: body.password, roles: ["admin"] },
+        ],
+      }),
     });
-    if (!initRes.ok)
+    if (upstream.ok)
+      return NextResponse.json(
+        { ok: true, data: { created: true }, requestId: "setup" },
+        { headers: { "Cache-Control": "no-store" } },
+      );
+    if (upstream.status === 400)
       return NextResponse.json(
         {
           ok: false,
           error: {
-            code: "BACKEND_UNAVAILABLE",
-            message: "Gagal membuat admin",
-            retryable: true,
+            code: "VALIDATION",
+            message: "Payload admin ditolak oleh initializer",
+            retryable: false,
           },
           requestId: "setup",
         },
-        { status: 502, headers: { "Cache-Control": "no-store" } },
-      );
-
-    // The seed invalidates the ui-local-cache hash; the password change
-    // authenticates the CURRENT (default) password via authLocal, which
-    // reads the users snapshot — give the revision window a moment.
-    await new Promise((r) => setTimeout(r, 5500));
-
-    const defaultPassword = "admin";
-    const pwRes = await engineFetch("/api/users/admin/password", {
-      method: "PUT",
-      body: JSON.stringify({
-        authPassword: defaultPassword,
-        newPassword: body.password,
-      }),
-    });
-    if (pwRes.status === 200 || pwRes.status === 204)
-      return NextResponse.json(
-        { ok: true, data: { created: true }, requestId: "setup" },
-        { headers: { "Cache-Control": "no-store" } },
+        { status: 400, headers: { "Cache-Control": "no-store" } },
       );
     return NextResponse.json(
       {
