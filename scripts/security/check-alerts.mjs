@@ -22,6 +22,7 @@ const MAX_OUTPUT_BYTES = 5 * 1024 * 1024;
 
 // One entry per alert package; later packages append their suites here.
 const ALERT_SUITES = {
+  "M01-S5": ["test/security/cwmp-cookie.ts"],
   "M01-S4": [
     "test/security/expression-parser.ts",
     "test/security/like-pattern.ts",
