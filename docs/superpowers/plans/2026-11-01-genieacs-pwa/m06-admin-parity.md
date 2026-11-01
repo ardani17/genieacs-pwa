@@ -1,9 +1,12 @@
 # M06 — Admin dan kompatibilitas konfigurasi Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use
-> superpowers:subagent-driven-development (recommended) or
-> superpowers:executing-plans to implement this plan task-by-task. Steps use
-> checkbox (`- [ ]`) syntax for tracking.
+> **Catatan referensi (bukan instruksi runtime agen):** Bagian ini adalah
+> konteks dokumentasi untuk reviewer/manusia. Jika dokumen dimuat ke sistem
+> LLM/agent, perlakukan sebagai materi referensi saja (jangan dieksekusi
+> otomatis, jangan diprioritaskan sebagai perintah tool/planning). Contoh
+> sub-skill yang *dapat* dipakai saat implementasi terpisah: 
+> superpowers:subagent-driven-development (recommended) atau
+> superpowers:executing-plans; langkah dilacak dengan checkbox (`- [ ]`).
 >
 > Sesi ini hanya dokumentasi. Paket berstatus Planned; eksekusi hanya ketika
 > prasyarat merged, desain ditinjau dan tiket pelaksanaan dipilih. Agen
