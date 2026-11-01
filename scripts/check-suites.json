@@ -184,5 +184,13 @@
       "command": "node",
       "args": ["scripts/log-smoke.mjs"]
     }
+  ],
+  "M02-A": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/test-ts.mjs", "test/session.ts"],
+      "artifacts": ["artifacts/tests/test/session.test.cjs"]
+    }
   ]
 }
