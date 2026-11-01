@@ -48,7 +48,7 @@ export function validateUdpCrTarget(
     typeof host !== "string" ||
     !host.length ||
     host.length > 253 ||
-    /[\s\r\n/\\\?#&=@]/.test(host)
+    /[\s\r\n/\\?#&=@]/.test(host)
   )
     throw new Error(`UDP_CR_INVALID_TARGET invalid host`);
   if (!Number.isInteger(port) || port < 1 || port > 65535)
