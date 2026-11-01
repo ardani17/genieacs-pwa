@@ -17,6 +17,7 @@ import { stringify as yamlStringify } from "../common/yaml.ts";
 import { ResourceLockedError } from "../common/errors.ts";
 import { acquireLock, releaseLock } from "../lock.ts";
 import { collections } from "../db/db.ts";
+import { quoteCsvCell, sendSafeLegacyError } from "./safe-error.ts";
 
 const router = new Router();
 export default router;
@@ -109,7 +110,7 @@ router.get(`/devices/:id.csv`, async (ctx) => {
       new Date(p.objectTimestamp).toJSON(),
       p.writable,
       new Date(p.writableTimestamp).toJSON(),
-      `"${String(value).replace(/"/g, '""')}"`,
+      quoteCsvCell(value),
       type,
       new Date(p.valueTimestamp).toJSON(),
       p.notification,
@@ -268,8 +269,9 @@ for (const [resource, flags] of Object.entries(resources)) {
 
     ctx.body = Readable.from(
       (async function* () {
-        yield Object.keys(columns).map((k) => `"${k.replace(/"/, '""')}"`) +
-          "\n";
+        yield Object.keys(columns)
+          .map((k) => quoteCsvCell(k))
+          .join(",") + "\n";
         for await (const obj of db.query(resource, filter, options)) {
           const arr = Object.values(columns).map((exp) => {
             const v = evaluate(exp, obj, null, (e) => {
@@ -309,7 +311,7 @@ for (const [resource, flags] of Object.entries(resources)) {
             });
 
             if (Array.isArray(v) || v == null) return "";
-            if (typeof v === "string") return `"${v.replace(/"/g, '""')}"`;
+            if (typeof v === "string") return quoteCsvCell(v);
             return v;
           });
           yield arr.join(",") + "\n";
@@ -403,8 +405,12 @@ for (const [resource, flags] of Object.entries(resources)) {
         if (err instanceof ResourceLockedError) {
           log.message += " failed";
           logger.accessWarn(log);
-          ctx.status = 503;
-          ctx.body = err.message;
+          sendSafeLegacyError(
+            ctx,
+            503,
+            "resource_locked",
+            "The resource is locked by another operation; retry shortly.",
+          );
           return;
         }
         throw err;
@@ -445,11 +451,29 @@ for (const [resource, flags] of Object.entries(resources)) {
       } catch (err) {
         log.message += " failed";
         logger.accessWarn(log);
-        ctx.body = `${err.name}: ${err.message}`;
-        // Parse-only script validation marks oversize payloads 413;
-        // everything else keeps the historical 400.
-        return void (ctx.status =
-          (err as { exposeStatus?: number }).exposeStatus ?? 400);
+        // Parse-only script validation failures already carry a safe
+        // message (code + position/size only); every other failure gets a
+        // fixed allowlisted text. The response is text/plain with nosniff
+        // so reflected text is never rendered as HTML.
+        if (
+          err instanceof Error &&
+          (err as { code?: string }).code === "VALIDATION"
+        ) {
+          sendSafeLegacyError(
+            ctx,
+            (err as { exposeStatus?: number }).exposeStatus ?? 400,
+            "validation_failed",
+            err.message,
+          );
+        } else {
+          sendSafeLegacyError(
+            ctx,
+            400,
+            "put_failed",
+            "The resource could not be updated.",
+          );
+        }
+        return;
       }
 
       logger.accessInfo(log);
@@ -696,8 +720,13 @@ router.post("/devices/:id/tags", async (ctx) => {
   } catch (error) {
     log.message += " failed";
     logger.accessWarn(log);
-    ctx.body = error.message;
-    return void (ctx.status = 400);
+    sendSafeLegacyError(
+      ctx,
+      400,
+      "tags_update_failed",
+      "The device tags could not be updated.",
+    );
+    return;
   }
 
   logger.accessInfo(log);

@@ -57,5 +57,20 @@
         "artifacts/tests/test/security/nbi-route.test.cjs"
       ]
     }
+  ],
+  "M01-S3": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": [
+        "scripts/test-ts.mjs",
+        "test/security/escaping.ts",
+        "test/security/error-response.ts"
+      ],
+      "artifacts": [
+        "artifacts/tests/test/security/escaping.test.cjs",
+        "artifacts/tests/test/security/error-response.test.cjs"
+      ]
+    }
   ]
 }
