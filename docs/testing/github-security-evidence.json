@@ -1,0 +1,154 @@
+{
+  "schemaVersion": 1,
+  "scope": "Evidence mapping for the 16 CodeQL + 1 Dependabot alerts in the 2026-11-01 snapshot (docs/design/github-security-alerts.json). Alert closure is only claimed as fixed_verified after the security-alerts workflow scans the exact ref/SHA; until the branch is pushed and scanned, every entry stays needs_validation. Residual protocol-crypto findings are risk_accepted via reviewed exceptions with expiry, never silently fixed.",
+  "sourceSnapshot": {
+    "checkedAt": "2026-11-01T14:24:50Z",
+    "analysisRef": "refs/heads/main",
+    "analysisCommit": "be5dcb0e0d4f94b7a59b1f625c4b35a6340e6e3",
+    "planningSourceCommit": "1942b51c995fdb0a6480e5745e0134c05b2a1916"
+  },
+  "alerts": {
+    "1": {
+      "package": "M01-S3",
+      "ticket": "ARD-200",
+      "state": "needs_validation",
+      "tests": ["test/security/escaping.ts"]
+    },
+    "2": {
+      "package": "M01-S3",
+      "ticket": "ARD-200",
+      "state": "needs_validation",
+      "tests": ["test/security/escaping.ts"]
+    },
+    "3": {
+      "package": "M01-S4",
+      "ticket": "ARD-201",
+      "state": "needs_validation",
+      "tests": [
+        "test/security/like-pattern.ts",
+        "test/security/expression-parser.ts"
+      ]
+    },
+    "4": {
+      "package": "M01-S3",
+      "ticket": "ARD-200",
+      "state": "needs_validation",
+      "tests": ["test/security/error-response.ts"]
+    },
+    "5": {
+      "package": "M01-S3",
+      "ticket": "ARD-200",
+      "state": "needs_validation",
+      "tests": ["test/security/error-response.ts"]
+    },
+    "6": {
+      "package": "M01-S3",
+      "ticket": "ARD-200",
+      "state": "needs_validation",
+      "tests": ["test/security/error-response.ts"]
+    },
+    "7": {
+      "package": "M01-S2",
+      "ticket": "ARD-199",
+      "state": "needs_validation",
+      "tests": ["test/security/nbi-query.ts", "test/security/nbi-route.ts"]
+    },
+    "8": {
+      "package": "M01-S2",
+      "ticket": "ARD-199",
+      "state": "needs_validation",
+      "tests": ["test/security/nbi-query.ts", "test/security/nbi-route.ts"]
+    },
+    "9": {
+      "package": "M01-S1",
+      "ticket": "ARD-198",
+      "state": "needs_validation",
+      "tests": [
+        "test/security/script-validation.ts",
+        "test/security/script-permissions.ts"
+      ]
+    },
+    "10": {
+      "package": "M01-S1",
+      "ticket": "ARD-198",
+      "state": "needs_validation",
+      "tests": ["test/security/script-validation.ts"]
+    },
+    "11": {
+      "package": "M01-S6",
+      "ticket": "ARD-203",
+      "state": "risk_accepted_pending_scan",
+      "tests": ["test/security/http-digest.ts"],
+      "exception": {
+        "reason": "HTTP Digest MD5 is a TR-069 wire requirement; removal needs a CPE lab",
+        "scope": "lib/auth.ts digest (CWMP handshake only)",
+        "cwe": "CWE-327",
+        "compensation": "algorithm allowlist + label/hash consistency; TLS termination where deployed; management network only",
+        "owner": "human-reviewer",
+        "expiresAt": "2026-11-30T00:00:00.000Z"
+      }
+    },
+    "12": {
+      "package": "M01-S7",
+      "ticket": "ARD-204",
+      "state": "risk_accepted_pending_scan",
+      "tests": ["test/security/udp-cr-auth.ts"],
+      "exception": {
+        "reason": "UDP Connection Request HMAC-SHA1 fixed by TR-069 Annex G",
+        "scope": "lib/udp-cr-auth.ts (protocol-only)",
+        "cwe": "CWE-327",
+        "compensation": "isolated helper; CSPRNG ids; target validation; no secrets logged",
+        "owner": "human-reviewer",
+        "expiresAt": "2026-11-30T00:00:00.000Z"
+      }
+    },
+    "13": {
+      "package": "M01-S8",
+      "ticket": "ARD-205",
+      "state": "risk_accepted_pending_scan",
+      "tests": ["test/security/xmpp-scram.ts"],
+      "exception": {
+        "reason": "SCRAM-SHA-1 legacy path behind explicit XMPP_ALLOW_LEGACY_SHA1",
+        "scope": "lib/xmpp-scram.ts legacy branch only",
+        "cwe": "CWE-327",
+        "compensation": "verified TLS mandatory; flag defaults off; SCRAM-SHA-256 preferred",
+        "owner": "human-reviewer",
+        "expiresAt": "2026-11-30T00:00:00.000Z"
+      }
+    },
+    "14": {
+      "package": "M01-S8",
+      "ticket": "ARD-205",
+      "state": "needs_validation",
+      "tests": [
+        "test/security/xmpp-scram.ts",
+        "test/security/xmpp-negotiation.ts"
+      ]
+    },
+    "15": {
+      "package": "M01-S4",
+      "ticket": "ARD-201",
+      "state": "needs_validation",
+      "tests": ["test/security/expression-parser.ts"]
+    },
+    "16": {
+      "package": "M01-S5",
+      "ticket": "ARD-202",
+      "state": "needs_validation",
+      "tests": ["test/security/cwmp-cookie.ts"]
+    },
+    "dependabot1": {
+      "package": "M01-B",
+      "ticket": "ARD-165",
+      "state": "needs_validation",
+      "advisory": "GHSA-g7r4-m6w7-qqqr",
+      "resolution": "esbuild 0.28.2 exact in npm-shrinkwrap (>= min fixed 0.28.1); resolved graph audited in genieacs-pwa-check; GitHub alert closes on main after release",
+      "tests": ["test/db.ts", "test/security-compat.ts"]
+    }
+  },
+  "gate": {
+    "workflow": ".github/workflows/security-alerts.yml",
+    "evaluator": "scripts/security/github-alert-gate.mjs",
+    "rule": "analysis on exact expectedSha/ref; API error/stale/missing => blocked; open unreviewed required alerts block; exceptions need reason/scope/owner/expiry <= 30 days"
+  }
+}

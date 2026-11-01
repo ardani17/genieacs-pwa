@@ -126,5 +126,12 @@
         "artifacts/tests/test/security/xmpp-negotiation.test.cjs"
       ]
     }
+  ],
+  "M01-S9": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["--test", "scripts/security/github-alert-gate.test.mjs"]
+    }
   ]
 }
