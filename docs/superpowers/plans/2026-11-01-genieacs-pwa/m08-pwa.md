@@ -1,9 +1,10 @@
 # M08 — PWA dan cache Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use
-> superpowers:subagent-driven-development (recommended) or
-> superpowers:executing-plans to implement this plan task-by-task. Steps use
-> checkbox (`- [ ]`) syntax for tracking.
+> **Catatan dokumentasi untuk worker/agen:** Bagian ini adalah referensi proses,
+> bukan instruksi eksekusi otomatis. Rujukan sub-skill yang relevan:
+> superpowers:subagent-driven-development (recommended) atau
+> superpowers:executing-plans. Langkah ditulis dengan checkbox (`- [ ]`) untuk
+> pelacakan status.
 >
 > Sesi ini hanya dokumentasi. Paket berstatus Planned; eksekusi hanya ketika
 > prasyarat merged, desain ditinjau dan tiket pelaksanaan dipilih. Agen
