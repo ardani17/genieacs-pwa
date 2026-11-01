@@ -68,6 +68,13 @@ services:
     environment:
       PUBLIC_ORIGIN: http://localhost:3000
       NODE_ENV: production
+      # No engine UI in this stack: the health route must report
+      # backendReachable:false and still return 200 — that IS the
+      # VPN-independent-dashboard acceptance.
+      ENGINE_STATUS_URL: http://127.0.0.1:1/status
+    ports:
+      # Host-side loopback probe port for the M01-D acceptance.
+      - "127.0.0.1:5300:3000"
     depends_on:
       mongo:
         condition: service_healthy

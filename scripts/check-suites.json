@@ -152,5 +152,16 @@
       "args": ["--prefix", "apps/web", "run", "build"],
       "artifacts": ["apps/web/.next/BUILD_ID"]
     }
+  ],
+  "M01-D": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": [
+        "--test",
+        "scripts/preflight.test.mjs",
+        "scripts/compose-static.test.mjs"
+      ]
+    }
   ]
 }

@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-11-02T00:00:00.000Z",
+  "images": {
+    "node": {
+      "reference": "node:24.22.2-bookworm-slim",
+      "digest": "sha256:c86ecead9e55a5210ac1727de38a4ca840bf03dcaf34dc9749addbf383b1920c",
+      "verifiedVia": "docker buildx imagetools inspect"
+    },
+    "mongo": {
+      "reference": "mongo:8.0.34",
+      "digest": "sha256:b9924c330a8bbc5800fe9c69f04a84e221eca7b28fd049a0354147d9908fa142",
+      "verifiedVia": "docker buildx imagetools inspect"
+    },
+    "debian": {
+      "reference": "debian:bookworm-slim",
+      "digest": "sha256:99c0b25c46d0214d5a2091092e7908907dcaecd6a962cde0ac700acee222b6f3",
+      "verifiedVia": "docker buildx imagetools inspect"
+    },
+    "caddy": {
+      "reference": "caddy:2.11.7",
+      "digest": "sha256:36c24ad91a7ff7bc4c87fe22bfa8df3c4b18da0773d73fc12ee2c52b98c0bb7e",
+      "verifiedVia": "docker buildx imagetools inspect"
+    }
+  },
+  "packages": {
+    "distribution": "debian bookworm",
+    "xl2tpd": "1.3.18-1",
+    "ppp": "2.4.9-1+1.1+b1",
+    "iproute2": "6.1.0-3",
+    "source": "apt-cache policy inside debian:bookworm-slim at the checkedAt date"
+  },
+  "notes": "Digests must be re-verified (docker buildx imagetools inspect) whenever an image tag is updated; tag updates go through a plan revision."
+}

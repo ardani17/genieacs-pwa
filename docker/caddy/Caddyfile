@@ -1,0 +1,24 @@
+{
+	# Automatic HTTPS issuance is disabled: certificates are provided by
+	# the operator through read-only file mounts.
+	auto_https off
+	admin off
+}
+
+{$PUBLIC_ORIGIN} {
+	tls /certs/tls.crt /certs/tls.key
+
+	# Do not trust client-supplied forwarding headers; Caddy is the
+	# outermost edge here and sets its own address information.
+	header {
+		-Forwarded
+	}
+
+	# Device tasks can legitimately run long; keep the task timeout above
+	# the engine's 300s task horizon.
+	reverse_proxy web:3000 {
+		transport http {
+			response_header_timeout 310s
+		}
+	}
+}
