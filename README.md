@@ -1,5 +1,13 @@
 # GenieACS
 
+## GenieACS PWA fork
+
+This fork starts from upstream `v1.2.16`. `main` holds release history,
+`development` integrates changes, and feature branches target `development`. The
+custom Next.js/PWA frontend is planned. See
+[the development guide](docs/DEVELOPMENT.md) for branch conventions, Docker
+tooling, and verification commands. The upstream README continues below.
+
 GenieACS is a high performance Auto Configuration Server (ACS) for remote
 management of TR-069 enabled devices. It utilizes a declarative and fault
 tolerant configuration engine for automating complex provisioning scenarios at
