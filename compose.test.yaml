@@ -44,6 +44,7 @@ services:
       GENIEACS_MONGODB_CONNECTION_URL: mongodb://check_fixture:check-fixture-only@mongo:27017/genieacs_plan_test?authSource=admin
       GENIEACS_UI_JWT_SECRET: check-fixture-jwt-secret
       LOG_URL: http://victorialogs:9428
+      SEED_HOST: mongo:27017
     volumes:
       - .:/workspace
       - verify_modules:/workspace/node_modules

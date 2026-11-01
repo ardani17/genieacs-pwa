@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "note": "UI component fixture: every component type plus nested containers, expressions, anchors, charts, DANGEROUS inputs (must be rejected by renderers) and unknown types (must be ignored gracefully).",
+  "overview": {
+    "charts": [
+      {
+        "type": "chart",
+        "chartType": "line",
+        "label": "Inform per 24 jam",
+        "expression": "count(inform)"
+      },
+      {
+        "type": "chart",
+        "chartType": "bar",
+        "label": "Offline per seri",
+        "expression": "offline"
+      }
+    ]
+  },
+  "index": {
+    "components": [
+      { "type": "string", "label": "ID Perangkat", "parameter": "DeviceID.ID" },
+      {
+        "type": "string",
+        "label": "Serial",
+        "parameter": "DeviceID.SerialNumber"
+      },
+      {
+        "type": "container",
+        "label": "Grup WAN",
+        "components": [
+          {
+            "type": "string",
+            "label": "IP",
+            "parameter": "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.ExternalIPAddress"
+          },
+          {
+            "type": "expression",
+            "label": "Status",
+            "expression": "online ? \"ONLINE\" : \"OFFLINE\""
+          }
+        ]
+      },
+      { "type": "anchor", "label": "Detail", "url": "/devices/{{DEVICE_ID}}" },
+      {
+        "type": "chart",
+        "label": "Trafik",
+        "chartType": "line",
+        "expression": "bytes"
+      },
+      {
+        "type": "dangerous-raw-html",
+        "label": "<img onerror=alert(1)>",
+        "html": "<img src=x onerror=alert(1)>"
+      },
+      { "type": "totally-unknown-type", "label": "Komponen masa depan" }
+    ]
+  },
+  "filters": [
+    { "label": "Online", "expression": "online" },
+    { "label": "PPPoE", "expression": "DeviceID.ID LIKE \"TEST-%\"" }
+  ]
+}

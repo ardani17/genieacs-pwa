@@ -1,0 +1,8 @@
+{
+  "name": "@genieacs-pwa/device-profiles",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/resolve.ts",
+  "types": "src/resolve.ts"
+}

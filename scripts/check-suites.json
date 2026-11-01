@@ -251,5 +251,25 @@
       "command": "npm",
       "args": ["run", "typecheck"]
     }
+  ],
+  "M04-A": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": [
+        "scripts/test-ts.mjs",
+        "packages/device-profiles/src/resolve.test.ts",
+        "apps/web/src/features/devices/query.test.ts"
+      ],
+      "artifacts": [
+        "artifacts/tests/packages/device-profiles/src/resolve.test.test.cjs",
+        "artifacts/tests/apps/web/src/features/devices/query.test.test.cjs"
+      ]
+    },
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["--test", "scripts/fixtures/seed.test.mjs"]
+    }
   ]
 }
