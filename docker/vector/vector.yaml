@@ -1,0 +1,78 @@
+# Vector collector: reads the application NDJSON logs read-only,
+# validates/redacts via VRL (malformed rows are DROPPED, never passed
+# through unsanitized), buffers up to 1GiB on disk when VictoriaLogs is
+# unavailable, and ships newline-delimited gzip JSON to the insert API.
+# The collector API and the VictoriaLogs port stay on the internal
+# network — nothing is published.
+
+data_dir: /var/lib/vector
+
+sources:
+  app_logs:
+    type: file
+    include:
+      - /logs/*/*.ndjson
+    read_from: beginning
+    # Persistent checkpoints survive restarts; the source volume is
+    # mounted read-only, checkpoints live in data_dir.
+    ignore_checkpoints: false
+    oldest_first: true
+    max_line_bytes: 1048576
+
+transforms:
+  validate_and_redact:
+    inputs: [app_logs]
+    type: remap
+    drop_on_error: true
+    source: |
+      # The file source wraps each line as {file, host, message, ...};
+      # replace the whole event with the parsed JSON. A malformed line
+      # fails parse_json! and is dropped (never forwarded raw).
+      . = parse_json!(.message)
+
+      # Strict schema gate: anything missing required fields is dropped.
+      if !exists(.message) || !is_string(.message) { abort }
+      if !exists(.event) || !is_string(.event) { abort }
+      if !exists(.service) || !is_string(.service) { abort }
+      if !exists(.timestamp) || !is_string(.timestamp) { abort }
+      if !is_string(.level) { .level = "info" }
+      if !is_string(.environment) { .environment = "test" }
+      .schemaVersion = 1
+
+      # Field-level redaction (defense in depth — the application
+      # logger already redacts keys AND sensitive path suffixes before
+      # persisting). Vector deletes a fixed sensitive-key set from
+      # details; del() on a guarded path cannot fail.
+      if exists(.details) && is_object(.details) {
+        if exists(.details.password) { del(.details.password) }
+        if exists(.details.secret) { del(.details.secret) }
+        if exists(.details.token) { del(.details.token) }
+        if exists(.details.authorization) { del(.details.authorization) }
+        if exists(.details.cookie) { del(.details.cookie) }
+        if exists(.details.apikey) { del(.details.apikey) }
+        if exists(.details.presharedkey) { del(.details.presharedkey) }
+        if exists(.details.credentials) { del(.details.credentials) }
+        if exists(.details.privatekey) { del(.details.privatekey) }
+        if exists(.details.newpassword) { del(.details.newpassword) }
+      }
+
+sinks:
+  victorialogs:
+    inputs: [validate_and_redact]
+    type: http
+    uri: http://victorialogs:9428/insert/jsonline?_stream_fields=installationId,environment,service&_time_field=timestamp&_msg_field=message
+    method: post
+    encoding:
+      codec: json
+    framing:
+      method: newline_delimited
+    compression: gzip
+    request:
+      timeout_secs: 10
+      retry_attempts: 5
+      retry_initial_backoff_secs: 1
+      retry_max_duration_secs: 30
+    buffer:
+      type: disk
+      max_size: 1073741824
+      when_full: block
