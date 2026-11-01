@@ -163,5 +163,13 @@
         "scripts/compose-static.test.mjs"
       ]
     }
+  ],
+  "M01-E": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/test-ts.mjs", "test/app-logger.ts"],
+      "artifacts": ["artifacts/tests/test/app-logger.test.cjs"]
+    }
   ]
 }

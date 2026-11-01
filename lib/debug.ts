@@ -7,6 +7,14 @@ import { getSocketEndpoints } from "./server.ts";
 
 const DEBUG_FILE = "" + config.get("DEBUG_FILE");
 const DEBUG_FORMAT = "" + config.get("DEBUG_FORMAT");
+// The raw debug sink (full request/response bodies) is OFF by default:
+// it persists unredacted protocol payloads. Opting in via
+// GENIEACS_DEBUG_RAW=1 is an explicit operator decision for an
+// authorized device/window (max 5 minutes; see operations docs); the
+// structured application logger (lib/app-logger.ts) redacts at field
+// level and is the default record.
+const DEBUG_RAW_ENABLED =
+  DEBUG_FILE !== "" && process.env["GENIEACS_DEBUG_RAW"] === "1";
 
 const connectionTimestamps = new WeakMap<Socket, Date>();
 
@@ -41,6 +49,7 @@ export function incomingHttpRequest(
     body: body,
   };
 
+  if (!DEBUG_RAW_ENABLED) return;
   if (DEBUG_FORMAT === "yaml")
     appendFileSync(DEBUG_FILE, "---\n" + stringify(msg));
   else if (DEBUG_FORMAT === "json")
