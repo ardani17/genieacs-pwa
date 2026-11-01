@@ -28,3 +28,4 @@ apps/web/.next/
 secrets/
 *.secret
 docker/deployment/*.env
+apps/web/tsconfig.tsbuildinfo
