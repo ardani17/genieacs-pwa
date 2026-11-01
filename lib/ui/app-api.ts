@@ -6,6 +6,8 @@ import { getUiConfig, getUsers } from "./local-cache.ts";
 import { toSafeSession } from "./session.ts";
 import { changeOwnPassword } from "./self-password.ts";
 import { sendSafeLegacyError } from "./safe-error.ts";
+import { authorizeAppResource } from "./app-permissions.ts";
+import { buildLogQuery } from "./log-query.ts";
 
 const router = new Router();
 
@@ -62,6 +64,128 @@ router.post("/password", async (ctx) => {
 
   ctx.status = 204;
   ctx.set("Cache-Control", "no-store");
+});
+
+// POST /api/app/logs — permission logs:3 + bounded query executed
+// against the internal log store (fixed origin), 5s budget, NDJSON
+// passthrough of checked fields only.
+router.post("/app/logs", async (ctx) => {
+  if (!ctx.state.user?.username) return void (ctx.status = 401);
+  try {
+    authorizeAppResource(ctx.state.authorizer, "logs", 3);
+  } catch {
+    return void (ctx.status = 403);
+  }
+
+  const filters = ctx.request.body as Record<string, unknown>;
+  let q;
+  try {
+    q = buildLogQuery(filters as never);
+  } catch (err) {
+    ctx.status = 400;
+    ctx.type = "application/json";
+    ctx.set("Cache-Control", "no-store");
+    ctx.body = JSON.stringify({
+      ok: false,
+      error: {
+        code: "VALIDATION",
+        message: (err as Error).message,
+        retryable: false,
+      },
+      requestId: "app-logs",
+    });
+    return;
+  }
+
+  const logUrl = process.env["LOG_URL"];
+  if (!logUrl) {
+    ctx.status = 503;
+    ctx.type = "application/json";
+    ctx.set("Cache-Control", "no-store");
+    ctx.body = JSON.stringify({
+      ok: false,
+      error: {
+        code: "BACKEND_UNAVAILABLE",
+        message: "Log store unavailable",
+        retryable: true,
+      },
+      requestId: "app-logs",
+    });
+    return;
+  }
+
+  let response: Response;
+  try {
+    const params = new URLSearchParams({
+      query: q.query,
+      limit: String(q.limit),
+      offset: String(q.offset),
+      start: Math.floor(Date.parse(q.start) / 1000) + "s",
+      end: Math.floor(Date.parse(q.end) / 1000) + "s",
+    });
+    response = await fetch(logUrl + "/select/logsql/query", {
+      method: "POST",
+      body: params,
+      signal: AbortSignal.timeout(5000),
+    });
+  } catch {
+    ctx.status = 503;
+    ctx.type = "application/json";
+    ctx.set("Cache-Control", "no-store");
+    ctx.body = JSON.stringify({
+      ok: false,
+      error: {
+        code: "BACKEND_UNAVAILABLE",
+        message: "Log store unavailable",
+        retryable: true,
+      },
+      requestId: "app-logs",
+    });
+    return;
+  }
+
+  if (!response.ok) {
+    ctx.status = 503;
+    ctx.type = "application/json";
+    ctx.set("Cache-Control", "no-store");
+    ctx.body = JSON.stringify({
+      ok: false,
+      error: {
+        code: "BACKEND_UNAVAILABLE",
+        message: "Log store unavailable",
+        retryable: true,
+      },
+      requestId: "app-logs",
+    });
+    return;
+  }
+
+  ctx.status = 200;
+  ctx.type = "application/x-ndjson";
+  ctx.set("Cache-Control", "no-store");
+  ctx.body = await response.text();
+});
+
+// GET /api/app/vpn/status — vpn:1 to read, honest unconfigured/unavailable
+// until the controller management arrives (M07).
+router.get("/app/vpn/status", async (ctx) => {
+  if (!ctx.state.user?.username) return void (ctx.status = 401);
+  try {
+    authorizeAppResource(ctx.state.authorizer, "vpn", 1);
+  } catch {
+    return void (ctx.status = 403);
+  }
+
+  ctx.status = 200;
+  ctx.type = "application/json";
+  ctx.set("Cache-Control", "no-store");
+  ctx.body = JSON.stringify({
+    state: "unconfigured",
+    reason: "vpn controller management not deployed yet",
+    observedAt: new Date().toISOString(),
+    controllerReachable: false,
+    lastSuccessAt: null,
+  });
 });
 
 // Health for internal callers reuses /status from the root router.
