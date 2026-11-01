@@ -171,5 +171,18 @@
       "args": ["scripts/test-ts.mjs", "test/app-logger.ts"],
       "artifacts": ["artifacts/tests/test/app-logger.test.cjs"]
     }
+  ],
+  "M01-F": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/test-ts.mjs", "test/integration/log-pipeline.ts"],
+      "artifacts": ["artifacts/tests/test/integration/log-pipeline.test.cjs"]
+    },
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/log-smoke.mjs"]
+    }
   ]
 }

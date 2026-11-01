@@ -124,6 +124,41 @@ services:
       retries: 3
       start_period: 10s
 
+  victorialogs:
+    image: victoriametrics/victoria-logs:v1.53.0@sha256:251121fa882af99b95ba0c230a4a2f412ea602d2698c64a96c58dc9842bb755d
+    restart: unless-stopped
+    logging: *logging
+    command:
+      - -retentionPeriod=14d
+      - -retention.maxDiskSpaceUsageBytes=10000000000
+      - -storage.minFreeDiskSpaceBytes=2147483648
+      - -httpListenAddr=:9428
+    volumes:
+      - victoria_logs_data:/storage
+    # No healthcheck CLI in the image and no shell: the external probe
+    # (scripts/log-smoke.mjs) reads GET /health; 9428 stays internal.
+    networks:
+      - app
+
+  vector:
+    image: timberio/vector:0.61.0-debian@sha256:f6c23b5a7e16fb2838d33619ef7acf4bad2289a7cf22bc90efc2371f520c4ea2
+    restart: unless-stopped
+    logging: *logging
+    user: "10001:10001"
+    read_only: true
+    volumes:
+      # Application NDJSON logs: read-only source.
+      - app_logs:/logs:ro
+      # Separate writable volume for checkpoints + the 1GiB disk buffer.
+      - vector_buffer:/var/lib/vector
+    configs:
+      - source: vector_config
+        target: /etc/vector/vector.yaml
+    depends_on:
+      - victorialogs
+    networks:
+      - app
+
   web:
     build:
       context: .
@@ -140,6 +175,9 @@ services:
       NODE_ENV: production
       PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-http://localhost:3000}
       ENGINE_STATUS_URL: http://ui:7583/status
+      APP_LOG_FILE: /logs/web/app.ndjson
+    volumes:
+      - app_logs:/logs
     # Web must NOT depend on vpn health: the dashboard stays up when the
     # tunnel is down.
     depends_on:
@@ -150,9 +188,16 @@ services:
     networks:
       - app
 
+configs:
+  vector_config:
+    file: ./docker/vector/vector.yaml
+
 networks:
   app:
     driver: bridge
 
 volumes:
   mongo_data:
+  app_logs:
+  vector_buffer:
+  victoria_logs_data:

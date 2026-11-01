@@ -43,10 +43,12 @@ services:
       # secrets).
       GENIEACS_MONGODB_CONNECTION_URL: mongodb://check_fixture:check-fixture-only@mongo:27017/genieacs_plan_test?authSource=admin
       GENIEACS_UI_JWT_SECRET: check-fixture-jwt-secret
+      LOG_URL: http://victorialogs:9428
     volumes:
       - .:/workspace
       - verify_modules:/workspace/node_modules
       - npm_cache:/root/.npm
+      - app_logs_test:/logs
     depends_on:
       mongo:
         condition: service_healthy
@@ -56,6 +58,31 @@ services:
   # with tmpfs for Next's cache/tmp dirs. No ports published —
   # browser-tests shares this service's network namespace and reaches it
   # on loopback (a valid secure context, no browser security disabled).
+  victorialogs:
+    image: victoriametrics/victoria-logs:v1.53.0@sha256:251121fa882af99b95ba0c230a4a2f412ea602d2698c64a96c58dc9842bb755d
+    # Test settings: short retention + tiny quota; still no published port.
+    command:
+      - -retentionPeriod=1d
+      - -retention.maxDiskSpaceUsageBytes=100000000
+      - -storage.minFreeDiskSpaceBytes=10000000
+      - -httpListenAddr=:9428
+    volumes:
+      - victoria_logs_test:/storage
+
+  vector:
+    image: timberio/vector:0.61.0-debian@sha256:f6c23b5a7e16fb2838d33619ef7acf4bad2289a7cf22bc90efc2371f520c4ea2
+    read_only: true
+    # Small test buffer so the buffering fault scenario needs no real
+    # disk fill.
+    volumes:
+      - app_logs_test:/logs:ro
+      - vector_buffer_test:/var/lib/vector
+    configs:
+      - source: vector_config
+        target: /etc/vector/vector.yaml
+    depends_on:
+      - victorialogs
+
   web:
     build:
       context: .
@@ -72,12 +99,15 @@ services:
       # backendReachable:false and still return 200 — that IS the
       # VPN-independent-dashboard acceptance.
       ENGINE_STATUS_URL: http://127.0.0.1:1/status
+      APP_LOG_FILE: /logs/web/app.ndjson
     ports:
       # Host-side loopback probe port for the M01-D acceptance.
       - "127.0.0.1:5300:3000"
     depends_on:
       mongo:
         condition: service_healthy
+    volumes:
+      - app_logs_test:/logs
     command: ["node", "server.js"]
 
   browser-tests:
@@ -96,8 +126,15 @@ services:
       - browser_test_modules:/workspace/apps/web/node_modules
     command: ["npx", "playwright", "test"]
 
+configs:
+  vector_config:
+    file: ./docker/vector/vector.yaml
+
 volumes:
   verify_mongo_data:
+  app_logs_test:
+  vector_buffer_test:
+  victoria_logs_test:
   verify_modules:
   browser_test_modules:
   npm_cache:
