@@ -1,3 +1,5 @@
+import { escapeRegExp } from "./util.ts";
+
 function isObject(obj: any): boolean {
   return Object.prototype.toString.call(obj) === "[object Object]";
 }
@@ -5,14 +7,25 @@ function isObject(obj: any): boolean {
 function stringToRegexp(input, flags?): RegExp | false {
   if (input.indexOf("*") === -1) return false;
 
-  let output = input.replace(/[[\]\\^$.|?+()]/, "\\$&");
-  if (output[0] === "*") output = output.replace(/^\*+/g, "");
-  else output = "^" + output;
+  // Escape EVERY regex metacharacter in the literal segments — the old
+  // single replace() without /g left all but the first one raw — then
+  // re-anchor around the wildcard runs. Consecutive wildcards collapse
+  // into one .* (the old code built an invalid "a.**b" for "a**b"), and
+  // leading/trailing wildcards stay unanchored, as before.
+  const segments = input.split("*").map((seg) => escapeRegExp(seg));
+  const leadingWildcard = input[0] === "*";
+  const trailingWildcard = input[input.length - 1] === "*";
 
-  if (output[output.length - 1] === "*") output = output.replace(/\*+$/g, "");
-  else output = output + "$";
+  const middle = segments.slice(
+    leadingWildcard ? 1 : 0,
+    trailingWildcard ? -1 : undefined,
+  );
 
-  output = output.replace(/[*]/, ".*");
+  let output =
+    (leadingWildcard ? "" : "^") +
+    middle.join(".*") +
+    (trailingWildcard ? "" : "$");
+  output = output.replace(/\.\*(?:\.\*)+/g, ".*");
   return new RegExp(output, flags);
 }
 
