@@ -52,7 +52,45 @@ services:
         condition: service_healthy
     command: ["node", "scripts/check.mjs", "all"]
 
+  # PWA under test: standalone Next runtime, unprivileged, read-only root
+  # with tmpfs for Next's cache/tmp dirs. No ports published —
+  # browser-tests shares this service's network namespace and reaches it
+  # on loopback (a valid secure context, no browser security disabled).
+  web:
+    build:
+      context: .
+      dockerfile: docker/web/Dockerfile
+    image: genieacs-pwa-web:local
+    read_only: true
+    tmpfs:
+      - /app/.next/cache:size=134217728
+      - /tmp:size=67108864
+    environment:
+      PUBLIC_ORIGIN: http://localhost:3000
+      NODE_ENV: production
+    depends_on:
+      mongo:
+        condition: service_healthy
+    command: ["node", "server.js"]
+
+  browser-tests:
+    build:
+      context: .
+      dockerfile: docker/testing/Dockerfile
+    image: genieacs-pwa-browser-tests:local
+    init: true
+    working_dir: /workspace/apps/web
+    network_mode: service:web
+    environment:
+      PW_BASE_URL: http://localhost:3000
+      CI: "1"
+    volumes:
+      - .:/workspace
+      - browser_test_modules:/workspace/apps/web/node_modules
+    command: ["npx", "playwright", "test"]
+
 volumes:
   verify_mongo_data:
   verify_modules:
+  browser_test_modules:
   npm_cache:
