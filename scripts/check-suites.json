@@ -227,5 +227,17 @@
       "command": "npm",
       "args": ["run", "test"]
     }
+  ],
+  "M03-B": [
+    {
+      "cwd": "apps/web",
+      "command": "npm",
+      "args": ["run", "typecheck"]
+    },
+    {
+      "cwd": "apps/web",
+      "command": "npm",
+      "args": ["run", "test"]
+    }
   ]
 }
