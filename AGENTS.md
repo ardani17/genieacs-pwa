@@ -18,6 +18,10 @@ Read `docs/DEVELOPMENT.md` when setting up a checkout, choosing a branch,
 running checks, updating upstream code, or preparing a release. Its fork
 workflow takes precedence over upstream contribution instructions.
 
+For planned UI/PWA, VPN, logging, dependency or release work, start at
+`docs/superpowers/plans/2026-11-01-genieacs-pwa.md` and take one package whose
+prerequisites are merged. Its contracts and write set govern that package.
+
 ## Scope and verification
 
 - Keep backend changes focused and preserve upstream service boundaries.

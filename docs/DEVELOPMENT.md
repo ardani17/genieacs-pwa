@@ -49,6 +49,11 @@ commit agar hubungan riwayat branch tetap terjaga. Buat tag versi setelah merge
 dan verifikasi release. Sesudahnya, sinkronkan `main` kembali ke `development`
 melalui pull request agar perbaikan dan merge commit release ikut tercatat.
 
+Nomor rilis fork berurutan `v1.2.16 → v1.2.17 → v1.2.18`, termasuk perombakan
+besar. Versi upstream dicatat terpisah. Baca
+[kebijakan release](design/release-policy.md) untuk gate next-version, tag
+immutable, publikasi ulang dan breaking changes.
+
 Branch `master` dan branch bawaan fork lainnya menyimpan riwayat upstream; alur
 kerja proyek ini memakai `main`, `development`, dan branch perubahan.
 
@@ -70,8 +75,17 @@ git config fetch.prune true
 git config core.autocrlf false
 ```
 
-Ambil pembaruan upstream dengan `git fetch upstream --tags`. Evaluasi pembaruan
-stable pada branch perubahan dan jalankan pemeriksaan sebelum menggabungkannya.
+Ambil pembaruan upstream ke namespace tag terpisah agar tag upstream berikutnya
+tidak bertabrakan dengan nomor release fork:
+
+```sh
+git config remote.upstream.tagOpt --no-tags
+git fetch --no-tags upstream '+refs/heads/*:refs/remotes/upstream/*' '+refs/tags/*:refs/tags/upstream/*'
+```
+
+Evaluasi pembaruan stable pada branch perubahan dan jalankan pemeriksaan sebelum
+menggabungkannya. Contohnya tag `upstream/v1.2.17` berbeda dari tag fork
+`v1.2.17`. Tag historis yang sudah diwarisi tetap dipertahankan.
 `upstream/master` adalah jalur pengembangan v1.3; pemindahan versi backend
 memerlukan perubahan dan pengujian tersendiri.
 
@@ -116,11 +130,17 @@ docker compose -f compose.dev.yaml run --rm tooling npx prettier --write --prose
 ## Arah pengembangan aplikasi
 
 Dashboard baru direncanakan memakai Next.js dengan API server untuk autentikasi,
-otorisasi, validasi operasi, dan mapping perangkat. API mengakses NBI GenieACS
-melalui jaringan internal. Dukungan awal mengikuti perangkat ZTE yang tersedia;
-profil vendor/model/firmware ditambahkan berdasarkan verifikasi perangkat.
+otorisasi, validasi operasi, dan mapping perangkat. API memakai UI API GenieACS
+yang mempertahankan Authorizer native melalui jaringan internal. NBI menjadi
+jalur integrasi internal terpisah, tanpa menjadi pintasan izin browser. Dukungan
+awal mengikuti perangkat ZTE yang tersedia; profil vendor/model/firmware
+ditambahkan berdasarkan verifikasi perangkat.
 
 Deployment aplikasi lengkap, seed konfigurasi, HTTPS, dan fitur PWA berada pada
 pekerjaan fitur berikutnya. Simpan konfigurasi umum sebagai source versioned;
 simpan secret dan data operasional di luar Git. Folder GenieACS lokal yang lama
 digunakan sebagai referensi parameter dan perilaku modem.
+
+[Indeks rencana M01–M09](superpowers/plans/2026-11-01-genieacs-pwa.md) memuat
+34paket rinci, kontrak, tes, logging, security gate, branch dan tiket Linear.
+Dokumen ini belum mengimplementasikan frontend, upgrade dependency atau deploy.
