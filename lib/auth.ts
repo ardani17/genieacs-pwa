@@ -71,6 +71,19 @@ export function basic(username: string, password: string): string {
   return "Basic " + Buffer.from(`${username}:${password}`).toString("base64");
 }
 
+export type DigestAlgorithm = "MD5" | "SHA-256" | "MD5-sess" | "SHA-256-sess";
+
+const DIGEST_HASHES: Record<string, string> = {
+  MD5: "md5",
+  "SHA-256": "sha256",
+  "MD5-sess": "md5",
+  "SHA-256-sess": "sha256",
+};
+
+export function isDigestAlgorithm(value: unknown): value is DigestAlgorithm {
+  return typeof value === "string" && Object.hasOwn(DIGEST_HASHES, value);
+}
+
 export function digest(
   username: string | Buffer,
   realm: string | Buffer,
@@ -82,17 +95,48 @@ export function digest(
   body?: string | Buffer,
   cnonce?: string | Buffer,
   nc?: string | Buffer,
+  algorithm?: DigestAlgorithm,
 ): string {
-  const ha1 = createHash("md5");
-  ha1.update(username).update(":").update(realm).update(":").update(password);
-  // TODO support "MD5-sess" algorithm directive
-  const ha1d = ha1.digest("hex");
+  // Absent algorithm defaults to MD5 for legacy protocol compatibility
+  // (see docs/operations/legacy-protocol-crypto.md); an explicit label is
+  // honored with the hash it names — never silently computed as MD5.
+  const label = algorithm ?? "MD5";
+  const hashName = DIGEST_HASHES[label];
+  if (!hashName)
+    throw new Error(`Unsupported digest algorithm: ${String(algorithm)}`);
 
-  const ha2 = createHash("md5");
+  let ha1d: string;
+  if (label.endsWith("-sess")) {
+    // RFC 7616 section 3.4.2 session variant.
+    const ha1 = createHash(hashName)
+      .update(username)
+      .update(":")
+      .update(realm)
+      .update(":")
+      .update(password)
+      .digest("hex");
+    ha1d = createHash(hashName)
+      .update(ha1)
+      .update(":")
+      .update(nonce)
+      .update(":")
+      .update(cnonce ?? "")
+      .digest("hex");
+  } else {
+    ha1d = createHash(hashName)
+      .update(username)
+      .update(":")
+      .update(realm)
+      .update(":")
+      .update(password)
+      .digest("hex");
+  }
+
+  const ha2 = createHash(hashName);
   ha2.update(httpMethod).update(":").update(uri);
 
   if (qop === "auth-int") {
-    const bodyHash = createHash("md5")
+    const bodyHash = createHash(hashName)
       .update(body || "")
       .digest("hex");
     ha2.update(":").update(bodyHash);
@@ -100,7 +144,7 @@ export function digest(
 
   const ha2d = ha2.digest("hex");
 
-  const hash = createHash("md5");
+  const hash = createHash(hashName);
   hash.update(ha1d).update(":").update(nonce);
   if (qop) {
     hash
@@ -134,6 +178,13 @@ export function solveDigest(
     else qop = authHeader.qop;
   }
 
+  // Absent algorithm keeps the MD5 legacy default; an advertised label is
+  // used with its own hash and unknown labels are rejected outright
+  // instead of being quietly computed as MD5.
+  const algorithm = (authHeader.algorithm as DigestAlgorithm) ?? "MD5";
+  if (!isDigestAlgorithm(algorithm))
+    throw new Error(`Unsupported digest algorithm: ${authHeader.algorithm}`);
+
   const hash = digest(
     username,
     authHeader.realm,
@@ -145,13 +196,14 @@ export function solveDigest(
     body,
     cnonce,
     nc,
+    algorithm,
   );
 
   let authString = `Digest username="${username}"`;
   authString += `,realm="${authHeader.realm}"`;
   authString += `,nonce="${authHeader.nonce}"`;
   authString += `,uri="${uri}"`;
-  if (authHeader.algorithm) authString += `,algorithm=${authHeader.algorithm}`;
+  authString += `,algorithm=${algorithm}`;
   if (qop) authString += `,qop=${qop},nc=${nc},cnonce="${cnonce}"`;
   authString += `,response="${hash}"`;
   if (authHeader.opaque) authString += `,opaque="${authHeader.opaque}"`;

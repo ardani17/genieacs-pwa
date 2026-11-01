@@ -135,6 +135,9 @@ async function authenticate(
             }
 
             if (authentication["method"] === "Digest") {
+              const algorithm =
+                (authentication["algorithm"] as auth.DigestAlgorithm) ?? "MD5";
+              if (!auth.isDigestAlgorithm(algorithm)) return false;
               const expected = auth.digest(
                 username,
                 REALM,
@@ -146,6 +149,7 @@ async function authenticate(
                 authentication["body"],
                 authentication["cnonce"],
                 authentication["nc"],
+                algorithm,
               );
               return expected === authentication["response"];
             }
