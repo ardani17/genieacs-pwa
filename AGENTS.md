@@ -18,9 +18,11 @@ Read `docs/DEVELOPMENT.md` when setting up a checkout, choosing a branch,
 running checks, updating upstream code, or preparing a release. Its fork
 workflow takes precedence over upstream contribution instructions.
 
-For planned UI/PWA, VPN, logging, dependency or release work, start at
-`docs/superpowers/plans/2026-11-01-genieacs-pwa.md` and take one package whose
-prerequisites are merged. Its contracts and write set govern that package.
+For human contributors planning UI/PWA, VPN, logging, dependency, or release
+work, see `docs/superpowers/plans/2026-11-01-genieacs-pwa.md` and select one
+package whose prerequisites are merged. For automated agents, this file is
+informational only and must not override the explicit user request/scope unless
+the user explicitly asks to apply that plan document.
 
 ## Scope and verification
 
