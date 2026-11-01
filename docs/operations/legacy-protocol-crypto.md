@@ -37,18 +37,17 @@ simply be removed, and the boundary around it.
 
 ## XMPP SASL
 
-- Mechanisms: `SCRAM-SHA-256` preferred; `SCRAM-SHA-1` and `PLAIN` are
-  legacy fallbacks gated by server-side `XMPP_ALLOW_LEGACY_SHA1` /
-  `XMPP_ALLOW_PLAIN` (both default **false**, set via deployment
-  configuration, never browser input). `SCRAM-*-PLUS` is not offered
-  (no channel-binding implementation).
-- Credentials are only sent on a verified TLS stream: the client always
-  takes STARTTLS when offered and refuses mechanism negotiation without
-  it — no automatic downgrade or certificate bypass. **Migration note:**
-  this diverges from the baseline, which authenticated PLAIN/SCRAM-SHA-1
-  over plaintext; XMPP servers without TLS now fail closed and need an
-  explicit legacy decision by an administrator.
+- Mechanisms: `SCRAM-SHA-256` preferred; `SCRAM-SHA-1` and `PLAIN` are legacy
+  fallbacks gated by server-side `XMPP_ALLOW_LEGACY_SHA1` / `XMPP_ALLOW_PLAIN`
+  (both default **false**, set via deployment configuration, never browser
+  input). `SCRAM-*-PLUS` is not offered (no channel-binding implementation).
+- Credentials are only sent on a verified TLS stream: the client always takes
+  STARTTLS when offered and refuses mechanism negotiation without it — no
+  automatic downgrade or certificate bypass. **Migration note:** this diverges
+  from the baseline, which authenticated PLAIN/SCRAM-SHA-1 over plaintext; XMPP
+  servers without TLS now fail closed and need an explicit legacy decision by an
+  administrator.
 - SCRAM proofs use PBKDF2 with the mechanism's hash, bounded iterations
-  (1..1,000,000), salt (≤1024B) and message size (≤8192B); the server
-  nonce must extend the client nonce and the `v=` server signature is
-  verified constant-time with a length check.
+  (1..1,000,000), salt (≤1024B) and message size (≤8192B); the server nonce must
+  extend the client nonce and the `v=` server signature is verified
+  constant-time with a length check.
