@@ -2,8 +2,8 @@
 
 > **Catatan metadata:** Dokumen ini mencantumkan referensi sub-skill
 > `superpowers:subagent-driven-development` (recommended) atau
-> `superpowers:executing-plans` untuk konteks implementasi task-by-task.
-> Langkah ditulis dengan sintaks checkbox (`- [ ]`) untuk pelacakan.
+> `superpowers:executing-plans` untuk konteks implementasi task-by-task. Langkah
+> ditulis dengan sintaks checkbox (`- [ ]`) untuk pelacakan.
 >
 > Sesi ini hanya dokumentasi. Paket berstatus Planned; eksekusi hanya ketika
 > prasyarat merged, desain ditinjau dan tiket pelaksanaan dipilih. Agen

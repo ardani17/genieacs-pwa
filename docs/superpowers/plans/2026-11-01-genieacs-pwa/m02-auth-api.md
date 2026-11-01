@@ -1,9 +1,10 @@
 # M02 — Identitas dan adapter API Implementation Plan
 
-> **Implementation note:** Dokumen ini adalah rencana kerja dan referensi proses.
-> Penyebutan superpower seperti `superpowers:subagent-driven-development` atau
-> `superpowers:executing-plans` bersifat dokumentatif (bukan instruksi runtime).
-> Langkah ditulis dengan checkbox (`- [ ]`) untuk pelacakan progres.
+> **Implementation note:** Dokumen ini adalah rencana kerja dan referensi
+> proses. Penyebutan superpower seperti
+> `superpowers:subagent-driven-development` atau `superpowers:executing-plans`
+> bersifat dokumentatif (bukan instruksi runtime). Langkah ditulis dengan
+> checkbox (`- [ ]`) untuk pelacakan progres.
 >
 > Sesi ini hanya dokumentasi. Paket berstatus Planned; eksekusi hanya ketika
 > prasyarat merged, desain ditinjau, dan tiket pelaksanaan dipilih. Cakupan

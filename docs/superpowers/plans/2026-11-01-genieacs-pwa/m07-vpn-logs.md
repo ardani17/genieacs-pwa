@@ -1,7 +1,7 @@
 # M07 — VPN, log dan alamat ACS Implementation Plan
 
 > **Catatan proses (informasional):** Dokumen ini mencatat alur kerja yang
-> *umumnya* memakai superpowers:subagent-driven-development (disarankan) atau
+> _umumnya_ memakai superpowers:subagent-driven-development (disarankan) atau
 > superpowers:executing-plans untuk implementasi bertahap. Checklist tetap
 > memakai sintaks checkbox (`- [ ]`) untuk pelacakan. Bukan instruksi eksekusi
 > otomatis untuk agent/tool tanpa kebijakan allowlist dan konfirmasi.
