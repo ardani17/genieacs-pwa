@@ -27,5 +27,20 @@
         "artifacts/tests/test/security-compat.test.cjs"
       ]
     }
+  ],
+  "M01-S1": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": [
+        "scripts/test-ts.mjs",
+        "test/security/script-validation.ts",
+        "test/security/script-permissions.ts"
+      ],
+      "artifacts": [
+        "artifacts/tests/test/security/script-validation.test.cjs",
+        "artifacts/tests/test/security/script-permissions.test.cjs"
+      ]
+    }
   ]
 }

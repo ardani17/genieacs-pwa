@@ -1,0 +1,51 @@
+# Hardened, network-less sandbox for security payload tests.
+#
+# Project genieacs-pwa-security-check. The container has no network (its
+# own loopback namespace only), a read-only source bind, dropped
+# capabilities, no-new-privileges, an unprivileged uid, tmpfs scratch and
+# tight memory/cpu/pid/fd/file-size limits. Tests never install packages,
+# never touch the host environment, and never reach a database — Mongo,
+# UDP or XMPP interactions are mocked with dummy state.
+
+name: genieacs-pwa-security-check
+
+services:
+  security-verify:
+    build:
+      context: .
+      dockerfile: docker/security-test/Dockerfile
+    image: genieacs-pwa-security-verify:local
+    user: "10001:10001"
+    network_mode: none
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /scratch:size=134217728,mode=1777
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 64
+    ulimits:
+      fsize:
+        soft: 33554432
+        hard: 33554432
+      nofile:
+        soft: 128
+        hard: 128
+    working_dir: /source
+    environment:
+      # Deliberately minimal allowlist: no inherited host env or secrets.
+      PATH: /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      NODE_ENV: test
+      CI: "1"
+      HOME: /scratch/home
+      TMPDIR: /scratch/tmp
+      # The read-only toolchain baked into the image at /tools provides
+      # every bare-specifier dependency the bundled tests resolve at run
+      # time (esbuild, acorn, ...). The source bind carries no node_modules.
+      NODE_PATH: /tools/node_modules
+    volumes:
+      - .:/source:ro
+    command: ["node", "/source/scripts/security/check-alerts.mjs", "M01-S1"]

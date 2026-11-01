@@ -446,7 +446,10 @@ for (const [resource, flags] of Object.entries(resources)) {
         log.message += " failed";
         logger.accessWarn(log);
         ctx.body = `${err.name}: ${err.message}`;
-        return void (ctx.status = 400);
+        // Parse-only script validation marks oversize payloads 413;
+        // everything else keeps the historical 400.
+        return void (ctx.status =
+          (err as { exposeStatus?: number }).exposeStatus ?? 400);
       }
 
       logger.accessInfo(log);
