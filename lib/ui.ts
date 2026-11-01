@@ -1,13 +1,14 @@
 import { constants } from "node:zlib";
 import Koa from "koa";
 import Router from "@koa/router";
-import * as jwt from "jsonwebtoken";
 import koaSend from "koa-send";
 import koaCompress from "koa-compress";
 import koaBodyParser from "@koa/bodyparser";
 import koaJwt from "koa-jwt";
 import * as config from "./config.ts";
 import api from "./ui/api.ts";
+import appApi from "./ui/app-api.ts";
+import { issueSession, SESSION_MAX_AGE_SECONDS } from "./ui/session.ts";
 import Authorizer from "./common/authorizer.ts";
 import * as logger from "./logger.ts";
 import * as localCache from "./ui/local-cache.ts";
@@ -118,8 +119,14 @@ router.post("/login", async (ctx) => {
 
   function success(authMethod): void {
     log.method = authMethod;
-    const token = jwt.sign({ username, authMethod }, JWT_SECRET);
-    ctx.cookies.set(JWT_COOKIE, token, { sameSite: "lax" });
+    const token = issueSession(username, authMethod, JWT_SECRET);
+    ctx.cookies.set(JWT_COOKIE, token, {
+      sameSite: "lax",
+      httpOnly: true,
+      maxAge: SESSION_MAX_AGE_SECONDS * 1000,
+      secure: ctx.request.origin.startsWith("https://"),
+      path: "/",
+    });
     ctx.body = JSON.stringify(token);
     logger.accessInfo(log);
   }
@@ -155,7 +162,13 @@ koa.use(async (ctx, next) => {
 });
 
 koa.use(koaBodyParser());
-router.use("/api", api.routes(), api.allowedMethods());
+router.use(
+  "/api",
+  appApi.routes(),
+  appApi.allowedMethods(),
+  api.routes(),
+  api.allowedMethods(),
+);
 
 router.get("/status", (ctx) => {
   ctx.body = "OK";
