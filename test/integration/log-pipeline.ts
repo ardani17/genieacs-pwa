@@ -134,12 +134,29 @@ void test(
   },
 );
 
-void test("retention flags and port surface are statically correct", () => {
+void test("retention flags and port surface are statically correct", async () => {
   // The runner executes from the repository root; import.meta.url is not
-  // available in the bundled CJS output.
+  // available in the bundled CJS output. Windows Docker bind mounts can
+  // transiently fail a read with ENODATA right after bundle writes on
+  // the same mount — retry briefly before failing.
   const repoRoot = process.cwd();
+  const file = path.join(repoRoot, "compose.yaml");
+  const readWithRetry = async (target: string): Promise<string> => {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 5; ++attempt) {
+      try {
+        return readFileSync(target, "utf8");
+      } catch (err) {
+        lastError = err;
+        if ((err as NodeJS.ErrnoException).code !== "ENODATA") throw err;
+        await new Promise((r) => setTimeout(r, 200));
+      }
+    }
+    throw lastError;
+  };
+  void file;
   const compose = YAML.parse(
-    readFileSync(path.join(repoRoot, "compose.yaml"), "utf8"),
+    await readWithRetry(path.join(repoRoot, "compose.yaml")),
     { merge: true },
   );
   const v = compose.services.victorialogs.command.map(String);
@@ -156,7 +173,7 @@ void test("retention flags and port surface are statically correct", () => {
       );
 
   const vector = YAML.parse(
-    readFileSync(path.join(repoRoot, "docker/vector/vector.yaml"), "utf8"),
+    await readWithRetry(path.join(repoRoot, "docker/vector/vector.yaml")),
   );
   assert.equal(vector.sinks.victorialogs.buffer.max_size, 1073741824);
   assert.equal(vector.sinks.victorialogs.buffer.when_full, "block");
