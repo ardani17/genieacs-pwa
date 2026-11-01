@@ -356,4 +356,7 @@ init()
   )
   .catch((err) => {
     process.stderr.write(err.stack + "\n");
+    // Build scripts are piped through node; without a nonzero exit code a
+    // failed build looks like success to CI.
+    process.exitCode = 1;
   });

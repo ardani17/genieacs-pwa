@@ -103,8 +103,11 @@ router.post("/login", async (ctx) => {
     return;
   }
 
-  const username = ctx.request.body.username;
-  const password = ctx.request.body.password;
+  // @koa/bodyparser 6 types the parsed body as unknown; the login payload
+  // is a plain JSON object.
+  const body = ctx.request.body as { username?: string; password?: string };
+  const username = body.username;
+  const password = body.password;
 
   const log = {
     message: "Log in",
@@ -180,7 +183,7 @@ router.get("/init", async (ctx) => {
 });
 
 router.post("/init", async (ctx) => {
-  const status = ctx.request.body;
+  const status = ctx.request.body as Record<string, boolean>;
   if (Object.keys(localCache.getUsers(ctx.state.configSnapshot)).length) {
     if (!ctx.state.authorizer.hasAccess("users", 3)) status["users"] = false;
     if (!ctx.state.authorizer.hasAccess("permissions", 3))

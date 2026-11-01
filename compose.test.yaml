@@ -37,7 +37,12 @@ services:
       GIT_CONFIG_COUNT: "1"
       GIT_CONFIG_KEY_0: safe.directory
       GIT_CONFIG_VALUE_0: /workspace
-      MONGO_URL: mongodb://check_fixture:check-fixture-only@mongo:27017/genieacs_plan_test
+      MONGO_URL: mongodb://check_fixture:check-fixture-only@mongo:27017/genieacs_plan_test?authSource=admin
+      # The engine reads GENIEACS_* at module load, so the harness pins the
+      # test database and a dummy JWT secret here (values are fixtures, not
+      # secrets).
+      GENIEACS_MONGODB_CONNECTION_URL: mongodb://check_fixture:check-fixture-only@mongo:27017/genieacs_plan_test?authSource=admin
+      GENIEACS_UI_JWT_SECRET: check-fixture-jwt-secret
     volumes:
       - .:/workspace
       - verify_modules:/workspace/node_modules
