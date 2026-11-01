@@ -271,5 +271,23 @@
       "command": "node",
       "args": ["--test", "scripts/fixtures/seed.test.mjs"]
     }
+  ],
+  "M04-B": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/test-ts.mjs", "test/integration/list-query.ts"],
+      "artifacts": ["artifacts/tests/test/integration/list-query.test.cjs"]
+    },
+    {
+      "cwd": "apps/web",
+      "command": "npm",
+      "args": ["run", "typecheck"]
+    },
+    {
+      "cwd": "apps/web",
+      "command": "npm",
+      "args": ["run", "test"]
+    }
   ]
 }

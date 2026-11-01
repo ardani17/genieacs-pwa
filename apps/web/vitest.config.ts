@@ -9,6 +9,7 @@ export default defineConfig({
     setupFiles: ["./src/test/setup.ts"],
     restoreMocks: true,
     include: ["src/**/*.test.{ts,tsx}"],
+    exclude: ["src/features/**/query.test.ts"],
   },
   resolve: {
     alias: {

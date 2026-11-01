@@ -14,7 +14,11 @@ import { randomUUID } from "node:crypto";
 
 export function quoteCsvCell(value: unknown): string {
   const raw = value == null ? "" : String(value);
-  return `"${raw.replace(/"/g, '""')}"`;
+  // Formula guard: cells starting with = + - @ (or tab/CR) would execute
+  // in spreadsheets — prefix with a single quote, as the web CSV layer
+  // does, so both engine and BFF exports are safe.
+  const guarded = /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw;
+  return `"${guarded.replace(/"/g, '""')}"`;
 }
 
 export function sendSafeLegacyError(

@@ -18,7 +18,7 @@ export function Dialog({ open, title, onClose, children }: DialogProps) {
 
   useEffect(() => {
     const dialog = ref.current;
-    if (!dialog) return;
+    if (!dialog) return undefined;
     if (open && !dialog.open) {
       restoreRef.current = document.activeElement as HTMLElement | null;
       dialog.showModal();
@@ -33,7 +33,7 @@ export function Dialog({ open, title, onClose, children }: DialogProps) {
 
   useEffect(() => {
     const dialog = ref.current;
-    if (!dialog) return;
+    if (!dialog) return undefined;
     const handleCancel = (e: Event) => {
       e.preventDefault();
       onClose();
@@ -46,7 +46,7 @@ export function Dialog({ open, title, onClose, children }: DialogProps) {
     };
     dialog.addEventListener("cancel", handleCancel);
     dialog.addEventListener("keydown", handleKeyDown);
-    return () => {
+    return (): void => {
       dialog.removeEventListener("cancel", handleCancel);
       dialog.removeEventListener("keydown", handleKeyDown);
     };
