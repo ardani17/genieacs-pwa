@@ -99,34 +99,44 @@ export async function POST(request: Request): Promise<NextResponse> {
         { status: 409, headers: { "Cache-Control": "no-store" } },
       );
 
-    // Native /init expects users as an array of {username, password,
-    // roles[]}; it hashes with native salt/pbkdf2 and seeds the admin
-    // permission set alongside.
-    const upstream = await engineFetch("/init", {
+    // Native /init treats `users` as a boolean flag: it ALWAYS creates
+    // admin/admin plus the default admin permission set (a users array is
+    // ignored). Two-step installer, both native endpoints:
+    //   1. POST /init            -> create admin with the default password
+    //   2. PUT /users/admin/password (authPassword: default) -> set the
+    //      operator's chosen password. No new account schema.
+    const initRes = await engineFetch("/init", {
       method: "POST",
-      body: JSON.stringify({
-        users: [{ username: "admin", password: body.password, roles: ["admin"] }],
-        permissions: [
-          { role: "admin", resource: "devices", access: 3, validate: "true" },
-          { role: "admin", resource: "faults", access: 3, validate: "true" },
-          { role: "admin", resource: "files", access: 3, validate: "true" },
-          { role: "admin", resource: "presets", access: 3, validate: "true" },
-          { role: "admin", resource: "provisions", access: 3, validate: "true" },
-          { role: "admin", resource: "config", access: 3, validate: "true" },
-          { role: "admin", resource: "permissions", access: 3, validate: "true" },
-          { role: "admin", resource: "users", access: 3, validate: "true" },
-          {
-            role: "admin",
-            resource: "virtualParameters",
-            access: 3,
-            validate: "true",
+      body: JSON.stringify({ users: true, provisions: true }),
+    });
+    if (!initRes.ok)
+      return NextResponse.json(
+        {
+          ok: false,
+          error: {
+            code: "BACKEND_UNAVAILABLE",
+            message: "Gagal membuat admin",
+            retryable: true,
           },
-          { role: "admin", resource: "vpn", access: 3, validate: "true" },
-          { role: "admin", resource: "logs", access: 3, validate: "true" },
-        ],
+          requestId: "setup",
+        },
+        { status: 502, headers: { "Cache-Control": "no-store" } },
+      );
+
+    // The seed invalidates the ui-local-cache hash; the password change
+    // authenticates the CURRENT (default) password via authLocal, which
+    // reads the users snapshot — give the revision window a moment.
+    await new Promise((r) => setTimeout(r, 5500));
+
+    const defaultPassword = "admin";
+    const pwRes = await engineFetch("/api/users/admin/password", {
+      method: "PUT",
+      body: JSON.stringify({
+        authPassword: defaultPassword,
+        newPassword: body.password,
       }),
     });
-    if (upstream.ok)
+    if (pwRes.status === 200 || pwRes.status === 204)
       return NextResponse.json(
         { ok: true, data: { created: true }, requestId: "setup" },
         { headers: { "Cache-Control": "no-store" } },
