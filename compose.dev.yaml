@@ -1,0 +1,23 @@
+name: genieacs-pwa-dev
+
+services:
+  tooling:
+    build:
+      context: .
+      dockerfile: docker/development/Dockerfile
+    image: genieacs-pwa-tooling:local
+    init: true
+    working_dir: /workspace
+    environment:
+      GIT_CONFIG_COUNT: "1"
+      GIT_CONFIG_KEY_0: safe.directory
+      GIT_CONFIG_VALUE_0: /workspace
+    volumes:
+      - .:/workspace
+      - node_modules:/workspace/node_modules
+      - npm_cache:/root/.npm
+    command: ["npm", "run", "build"]
+
+volumes:
+  node_modules:
+  npm_cache:

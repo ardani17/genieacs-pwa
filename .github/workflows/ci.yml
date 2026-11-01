@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: [main, development]
+  pull_request:
+    branches: [main, development]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  branch-policy:
+    runs-on: ubuntu-latest
+    env:
+      PR_BASE: ${{ github.base_ref }}
+      PR_HEAD: ${{ github.head_ref }}
+      PR_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+    steps:
+      - name: Check pull request direction
+        shell: bash
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" != "pull_request" ]]; then
+            exit 0
+          fi
+          if [[ "$PR_BASE" == "main" ]]; then
+            if [[ "$PR_HEAD" != "development" || "$PR_REPOSITORY" != "$GITHUB_REPOSITORY" ]]; then
+              echo "Release pull requests must come from this repository's development branch."
+              exit 1
+            fi
+          elif [[ "$PR_BASE" == "development" ]]; then
+            case "$PR_HEAD" in
+              feature/*|fix/*|chore/*|main) ;;
+              *)
+                echo "Use feature/*, fix/*, chore/*, or main for release synchronization."
+                exit 1
+                ;;
+            esac
+          fi
+
+  verify:
+    needs: branch-policy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: npm-shrinkwrap.json
+      - run: npm ci --no-audit --no-fund
+      - name: Check formatting
+        run: npx prettier --check --prose-wrap always .
+      - name: Lint TypeScript
+        run:
+          npx eslint 'bin/*.ts' 'lib/**/*.ts' 'ui/**/*.ts' 'test/**/*.ts'
+          'build/**/*.ts'
+      - name: Check types
+        run: npx tsc --noEmit
+      - run: npm test
+      - name: Build and verify service artifacts
+        run: |
+          npm run build
+          for service in cwmp nbi fs ui; do
+            test -s "dist/bin/genieacs-$service"
+          done
+          test -n "$(find dist/public -name '*.js' -print -quit)"
+          test -n "$(find dist/public -name '*.css' -print -quit)"
