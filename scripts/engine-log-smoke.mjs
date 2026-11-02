@@ -10,6 +10,9 @@ import { randomUUID } from "node:crypto";
 
 const engineUrl = process.env.ENGINE_URL ?? "http://ui:7583";
 const logUrl = process.env.LOG_URL ?? "http://victorialogs:9428";
+// VictoriaLogs makes ingested rows searchable on its flush cadence
+// (~4s once a stream is established); the budget covers transport and
+// flush jitter. Content validation happens per poll.
 const pollMs = Number(process.env.SMOKE_POLL_MS ?? 30_000);
 const fixturePassword = process.env.FIXTURE_PASSWORD ?? "Fixture-Only-2026!";
 
@@ -45,7 +48,11 @@ async function findInLogs(requestId, expectEvent) {
       });
       const text = await q.text();
       if (text.includes(requestId) && !text.includes("cannot parse")) {
-        const ok = text.includes(expectEvent) && text.includes('service="ui"');
+        // The service identity is asserted on the top-level JSON FIELD:
+        // the _stream preview escapes its quotes, so `"service":"ui"` is
+        // the stable byte pattern across response shapes.
+        const ok =
+          text.includes(expectEvent) && text.includes('"service":"ui"');
         return { ok, text };
       }
     } catch {
