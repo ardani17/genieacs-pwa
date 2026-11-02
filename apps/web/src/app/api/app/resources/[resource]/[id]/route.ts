@@ -1,8 +1,15 @@
 import { NextResponse } from "next/server";
-import { engineFetch, nativeCookieFrom } from "@/server/genieacs-client";
+import {
+  engineFetch,
+  nativeCookieFrom,
+  requireSameOrigin,
+} from "@/server/genieacs-client";
 import { isBffResource, verbAllowed } from "@contracts/resources.ts";
+import { maskDeviceForUi } from "@/server/mask-device";
 
 export const dynamic = "force-dynamic";
+
+const PUBLIC_ORIGIN = process.env.PUBLIC_ORIGIN ?? "http://localhost:3000";
 
 const STATUS_TO_CODE: Record<number, string> = {
   400: "VALIDATION",
@@ -46,6 +53,14 @@ async function proxy(
       },
     });
 
+  // Mutations run the SAME guard as every other state-changing app
+  // route: same-origin + X-App-Request, BEFORE the body is read or
+  // the upstream is contacted (contracts.md mutation rules).
+  if (verb !== "GET") {
+    const sameOrigin = requireSameOrigin(request, PUBLIC_ORIGIN);
+    if (!sameOrigin.ok) return errorEnvelope(403);
+  }
+
   const cookie = nativeCookieFrom(request.headers.get("cookie"));
   if (!cookie) return errorEnvelope(401);
 
@@ -71,8 +86,14 @@ async function proxy(
       );
     if (verb === "GET" && upstream.ok) {
       const item = await upstream.json();
+      // The generic detail path applies the SAME secret policy as the
+      // dedicated device detail: a raw device never crosses the BFF.
+      const data =
+        resource === "devices"
+          ? maskDeviceForUi(item as Record<string, unknown>)
+          : item;
       return NextResponse.json(
-        { ok: true, data: item, requestId: "resource-item" },
+        { ok: true, data, requestId: "resource-item" },
         { headers: { "Cache-Control": "no-store" } },
       );
     }

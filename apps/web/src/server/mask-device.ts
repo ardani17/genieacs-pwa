@@ -36,3 +36,49 @@ export function escapeCsvCell(value: unknown): string {
   const guarded = /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw;
   return `"${guarded.replace(/"/g, '""')}"`;
 }
+
+// Split one CSV line into cells, honouring double-quoted cells with
+// embedded commas/escaped quotes (the engine quotes every cell it
+// emits).
+function splitCsvLine(line: string): string[] {
+  const cells: string[] = [];
+  let current = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; ++i) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (line[i + 1] === '"') {
+          current += '""';
+          ++i;
+        } else inQuotes = false;
+      } else current += ch;
+    } else if (ch === '"') inQuotes = true;
+    else if (ch === ",") {
+      cells.push(current);
+      current = "";
+    } else current += ch;
+  }
+  cells.push(current);
+  return cells;
+}
+
+// Per-device parameter CSV masking: the engine emits one row per
+// parameter ("Parameter" first, "Value" sixth); rows whose parameter
+// path is a secret carry [REDACTED] as the value instead. Header rows
+// pass through untouched.
+export function maskDeviceCsv(csv: string): string {
+  const lines = csv.split(/\r?\n/);
+  const VALUE_COLUMN = 5;
+  return lines
+    .map((line, index) => {
+      if (index === 0 || !line) return line;
+      const cells = splitCsvLine(line);
+      if (cells.length <= VALUE_COLUMN) return line;
+      const path = cells[0].replace(/^"|"$/g, "");
+      if (!isSecretParamPath(path)) return line;
+      cells[VALUE_COLUMN] = '"[REDACTED]"';
+      return cells.join(",");
+    })
+    .join("\n");
+}

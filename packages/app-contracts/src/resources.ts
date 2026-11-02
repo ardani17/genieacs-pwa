@@ -35,3 +35,19 @@ export type PageSize = (typeof PAGE_SIZES)[number];
 export const CSV_ROW_CAP = 10000;
 export const FILE_UPLOAD_MAX_BYTES = 100 * 1024 * 1024;
 export const QUERY_STRING_MAX = 8192;
+
+// CSV export is DEVICES-ONLY with a FIXED column allowlist: clients
+// never choose expressions, so a custom column can never steer the
+// export onto a secret parameter path (contracts.md export rules).
+// Values are native expressions evaluated engine-side per row.
+export const DEVICES_CSV_COLUMNS: Record<string, string> = {
+  ID: "DeviceID.ID",
+  "Serial number": "DeviceID.SerialNumber",
+  "Product class": "DeviceID.ProductClass",
+  Manufacturer: "DeviceID.Manufacturer",
+  "Software version": "InternetGatewayDevice.DeviceInfo.SoftwareVersion",
+  "External IP":
+    "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.ExternalIPAddress",
+  "Last inform": "Events.Inform",
+  Tags: "Tags",
+};

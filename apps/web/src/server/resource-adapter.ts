@@ -10,6 +10,12 @@ import {
   type BffResource,
   type PageSize,
 } from "@contracts/resources.ts";
+import type { Expression } from "@contracts/api.ts";
+import {
+  parse as parseExpression,
+  stringify as stringifyExpression,
+} from "../../../../lib/common/expression/parser.ts";
+import { buildSearchExpression } from "@/features/devices/query";
 
 export interface ListQuery {
   page?: string;
@@ -103,4 +109,30 @@ export function toNativeParams(n: NormalizedList): URLSearchParams {
   if (n.filter) params.set("filter", n.filter);
   if (n.projection) params.set("projection", n.projection);
   return params;
+}
+
+// Device search: the SAME builder/AST the browser uses, applied
+// server-side so the list, the count and the CSV export all filter on
+// identical criteria. Free text becomes quoted LIKE clauses over the
+// identity fields; an explicit filter is validated through the NATIVE
+// parser (invalid expressions are 400s here, never upstream), and the
+// two are ANDed.
+export function deviceFilterWithSearch(
+  search: string | null,
+  filter: string | null,
+): string | null {
+  let expr: Expression | null = null;
+  if (filter) {
+    if (filter.length > QUERY_STRING_MAX)
+      throw new AdapterError("query string exceeds 8192 chars");
+    try {
+      expr = parseExpression(filter);
+    } catch {
+      throw new AdapterError("invalid filter expression");
+    }
+  }
+  const searchExpr = buildSearchExpression(search ?? "");
+  if (searchExpr)
+    expr = expr ? (["AND", expr, searchExpr] as Expression) : searchExpr;
+  return expr ? stringifyExpression(expr) : null;
 }

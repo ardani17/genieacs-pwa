@@ -4,10 +4,7 @@ import {
   type SessionState,
 } from "@/components/session-provider";
 import { Navigation } from "@/components/navigation";
-import {
-  APP_COOKIE_NAME,
-  GENIEACS_UI_URL,
-} from "@/server/genieacs-client";
+import { APP_COOKIE_NAME, GENIEACS_UI_URL } from "@/server/genieacs-client";
 import type { SessionDTO } from "@contracts/api.ts";
 
 // Server-side session fetch (no-store): anonymous requests land on

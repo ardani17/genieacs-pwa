@@ -10,7 +10,6 @@ export const dynamic = "force-dynamic";
 
 const PUBLIC_ORIGIN = process.env.PUBLIC_ORIGIN ?? "http://localhost:3000";
 
-
 export async function POST(request: Request): Promise<NextResponse> {
   const sameOrigin = requireSameOrigin(request, PUBLIC_ORIGIN);
   if (!sameOrigin.ok)

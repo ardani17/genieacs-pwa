@@ -1,11 +1,22 @@
 import { NextResponse } from "next/server";
 import { engineFetch, nativeCookieFrom } from "@/server/genieacs-client";
-import { isBffResource, CSV_ROW_CAP } from "@contracts/resources.ts";
+import {
+  isBffResource,
+  CSV_ROW_CAP,
+  DEVICES_CSV_COLUMNS,
+} from "@contracts/resources.ts";
+import {
+  deviceFilterWithSearch,
+  AdapterError,
+} from "@/server/resource-adapter";
 
 export const dynamic = "force-dynamic";
 
 // CSV export: a no-store STREAM (not a JSON envelope) mapped to the
-// native /api/:resource.csv endpoint with the same filter, capped rows.
+// native /api/devices.csv endpoint with the SAME filter/search criteria
+// as the list. Devices-only with the FIXED column allowlist from the
+// contracts package — clients never choose export expressions, so a
+// custom column can never steer the export onto a secret parameter.
 export async function GET(
   request: Request,
   ctx: { params: Promise<{ resource: string }> },
@@ -24,6 +35,19 @@ export async function GET(
       },
       { status: 404, headers: { "Cache-Control": "no-store" } },
     );
+  if (resource !== "devices")
+    return NextResponse.json(
+      {
+        ok: false,
+        error: {
+          code: "NOT_FOUND",
+          message: "CSV export is only available for devices",
+          retryable: false,
+        },
+        requestId: "csv",
+      },
+      { status: 405, headers: { Allow: "GET", "Cache-Control": "no-store" } },
+    );
 
   const cookie = nativeCookieFrom(request.headers.get("cookie"));
   if (!cookie)
@@ -41,14 +65,32 @@ export async function GET(
     );
 
   const url = new URL(request.url);
-  const params = new URLSearchParams();
-  const filter = url.searchParams.get("filter");
-  if (filter && filter.length <= 8192) params.set("filter", filter);
-  params.set("limit", String(CSV_ROW_CAP));
-  if (url.searchParams.get("columns")) {
-    const columns = url.searchParams.get("columns") ?? "";
-    if (columns.length <= 8192) params.set("columns", columns);
+  let filter: string | null = null;
+  try {
+    filter = deviceFilterWithSearch(
+      url.searchParams.get("search"),
+      url.searchParams.get("filter"),
+    );
+  } catch (err) {
+    if (!(err instanceof AdapterError)) throw err;
+    return NextResponse.json(
+      {
+        ok: false,
+        error: {
+          code: "VALIDATION",
+          message: "invalid filter or search expression",
+          retryable: false,
+        },
+        requestId: "csv",
+      },
+      { status: 400, headers: { "Cache-Control": "no-store" } },
+    );
   }
+
+  const params = new URLSearchParams();
+  if (filter) params.set("filter", filter);
+  params.set("limit", String(CSV_ROW_CAP));
+  params.set("columns", JSON.stringify(DEVICES_CSV_COLUMNS));
 
   try {
     const upstream = await engineFetch(

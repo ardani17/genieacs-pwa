@@ -40,8 +40,11 @@ export function SessionProvider({
         return;
       }
       if (!res.ok) return; // keep the last known state on transient errors
-      const body = await res.json();
-      if (body?.ok) setState({ phase: "authenticated", session: body.data });
+      // The BFF proxies the NATIVE SessionDTO directly (no ok/data
+      // envelope): a top-level username means authenticated.
+      const dto = (await res.json()) as SessionDTO | null;
+      if (dto && typeof dto.username === "string" && dto.username)
+        setState({ phase: "authenticated", session: dto });
     } catch {
       // network error: keep state; backend still guards every action
     }

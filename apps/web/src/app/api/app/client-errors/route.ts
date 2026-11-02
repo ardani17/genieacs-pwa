@@ -44,7 +44,12 @@ export async function POST(request: Request): Promise<NextResponse> {
   // never reach the quota or the sink.
   const sameOrigin = requireSameOrigin(request, PUBLIC_ORIGIN);
   if (!sameOrigin.ok)
-    return errorResponse(403, "FORBIDDEN", "Cross-origin request rejected", false);
+    return errorResponse(
+      403,
+      "FORBIDDEN",
+      "Cross-origin request rejected",
+      false,
+    );
 
   // A REAL session decides the actor: the native token is verified by
   // the engine, and the username comes from the session DTO — a cookie
@@ -66,7 +71,12 @@ export async function POST(request: Request): Promise<NextResponse> {
       return errorResponse(401, "UNAUTHENTICATED", "Not authenticated", false);
     username = session.username;
   } catch {
-    return errorResponse(502, "BACKEND_UNAVAILABLE", "Backend unavailable", true);
+    return errorResponse(
+      502,
+      "BACKEND_UNAVAILABLE",
+      "Backend unavailable",
+      true,
+    );
   }
 
   const raw = await request.text();
@@ -93,7 +103,10 @@ export async function POST(request: Request): Promise<NextResponse> {
   else if (entry.count >= RATE_MAX)
     return errorResponse(429, "RATE_LIMITED", "Too many reports", true, {
       "Retry-After": String(
-        Math.max(1, Math.ceil((RATE_WINDOW_MS - (now - entry.windowStart)) / 1000)),
+        Math.max(
+          1,
+          Math.ceil((RATE_WINDOW_MS - (now - entry.windowStart)) / 1000),
+        ),
       ),
     });
   else entry.count += 1;

@@ -1,73 +1,186 @@
 "use client";
 
-// Overview: native ui.overview expressions evaluated through the
-// permission-filtered BFF list endpoints (count + limited sample), never
-// a full collection download. Charts are labeled SVG with an accessible
-// table alternative; clicking a chart applies the same filter to the
-// device list URL.
-import { useEffect, useState } from "react";
+// Overview: native ui.overview configuration from the session DTO,
+// evaluated through the permission-filtered BFF count contract (HEAD
+// with the same filter), never a full collection download. Each slice
+// shows its count with a text alternative; clicking applies the same
+// filter to the device list URL.
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Status } from "@/components/ui/status";
+import { useSession } from "@/components/session-provider";
 
-interface OverviewTile {
+interface OverviewSlice {
+  key: string;
   label: string;
-  expression: string;
+  filter: string | null;
   count: number | null;
 }
 
-const DEFAULT_TILES: { label: string; expression: string }[] = [
-  { label: "Total perangkat", expression: "*" },
-];
+interface OverviewChart {
+  key: string;
+  label: string;
+  slices: OverviewSlice[];
+}
+
+function readOverviewConfig(
+  uiConfig: Record<string, unknown> | undefined,
+): OverviewChart[] {
+  const overview = uiConfig?.["overview"] as
+    | {
+        charts?: Record<
+          string,
+          { label?: string; slices?: Record<string, unknown>[] }
+        >;
+        groups?: Record<string, { label?: string; charts?: string[] }>;
+      }
+    | undefined;
+  if (!overview) return [];
+
+  const charts: Record<string, OverviewChart> = {};
+  for (const [chartId, chart] of Object.entries(overview.charts ?? {})) {
+    const slices: OverviewSlice[] = Object.entries(chart.slices ?? {}).map(
+      ([sliceId, slice]) => {
+        const s = slice as { label?: string; filter?: string };
+        return {
+          key: sliceId,
+          label: s.label ?? sliceId,
+          filter: typeof s.filter === "string" ? s.filter : null,
+          count: null,
+        };
+      },
+    );
+    charts[chartId] = { key: chartId, label: chart.label ?? chartId, slices };
+  }
+
+  // Groups order the charts; ungrouped charts follow after.
+  const ordered: OverviewChart[] = [];
+  const seen = new Set<string>();
+  for (const group of Object.values(overview.groups ?? {}))
+    for (const chartId of group.charts ?? []) {
+      if (charts[chartId] && !seen.has(chartId)) {
+        ordered.push(charts[chartId]);
+        seen.add(chartId);
+      }
+    }
+  for (const [chartId, chart] of Object.entries(charts))
+    if (!seen.has(chartId)) ordered.push(chart);
+  return ordered;
+}
 
 export function Overview() {
   const router = useRouter();
-  const [tiles, setTiles] = useState<OverviewTile[]>(
-    DEFAULT_TILES.map((t) => ({ ...t, count: null })),
-  );
+  const { state } = useSession();
   const [failed, setFailed] = useState(false);
+  const [total, setTotal] = useState<number | null>(null);
+  const [observedAt, setObservedAt] = useState<string | null>(null);
+  // Config comes straight from the session DTO (no state copy): the
+  // backend stays the authority and the charts re-derive on refresh.
+  const baseCharts = useMemo(
+    () =>
+      state.phase === "authenticated"
+        ? readOverviewConfig(
+            state.session.uiConfig as Record<string, unknown> | undefined,
+          )
+        : [],
+    [state],
+  );
+  const [counts, setCounts] = useState<Record<string, number | null>>({});
 
   useEffect(() => {
     const controller = new AbortController();
+    let cancelled = false;
     void (async () => {
       try {
-        // HEAD on the resource gives the permission-filtered count.
-        const res = await fetch("/api/app/resources/devices", {
+        // Count contract: HEAD /api/app/resources/devices[?filter=...]
+        // returns the permission-filtered X-Total-Count for the SAME
+        // criteria the list would use.
+        const results = await Promise.all(
+          baseCharts.flatMap((chart) =>
+            chart.slices.map(
+              async (slice): Promise<[string, number | null]> => {
+                if (!slice.filter) return [`${chart.key}/${slice.key}`, null];
+                const url = `/api/app/resources/devices?filter=${encodeURIComponent(slice.filter)}`;
+                const res = await fetch(url, {
+                  method: "HEAD",
+                  signal: controller.signal,
+                  cache: "no-store",
+                });
+                const header = res.headers.get("x-total-count");
+                return [
+                  `${chart.key}/${slice.key}`,
+                  res.ok && header !== null ? Number(header) : null,
+                ];
+              },
+            ),
+          ),
+        );
+
+        const totalRes = await fetch("/api/app/resources/devices", {
           method: "HEAD",
           signal: controller.signal,
           cache: "no-store",
         });
-        const total = res.headers.get("x-total-count");
-        setTiles((prev) =>
-          prev.map((t) =>
-            t.label === "Total perangkat"
-              ? { ...t, count: total ? Number(total) : null }
-              : t,
-          ),
-        );
+        const totalHeader = totalRes.headers.get("x-total-count");
+        if (!cancelled) {
+          setCounts(Object.fromEntries(results));
+          setTotal(
+            totalRes.ok && totalHeader !== null ? Number(totalHeader) : null,
+          );
+          setObservedAt(new Date().toISOString());
+        }
       } catch {
-        setFailed(true);
+        if (!cancelled) setFailed(true);
       }
     })();
-    return () => controller.abort();
-  }, []);
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [baseCharts]);
 
   if (failed)
     return <Status tone="warning">Ringkasan tidak dapat dimuat.</Status>;
 
+  const charts: OverviewChart[] = baseCharts.map((chart) => ({
+    ...chart,
+    slices: chart.slices.map((slice) => ({
+      ...slice,
+      count: counts[`${chart.key}/${slice.key}`] ?? null,
+    })),
+  }));
+
   return (
     <section aria-label="Ringkasan instalasi">
-      <ul
+      {observedAt && (
+        <p style={{ color: "var(--color-muted)" }}>
+          Sumber: live · diamati{" "}
+          {new Date(observedAt).toLocaleTimeString("id-ID")}
+        </p>
+      )}
+      <div
         style={{
-          listStyle: "none",
-          padding: 0,
           display: "grid",
           gap: "var(--space-12)",
           gridTemplateColumns: "repeat(auto-fit, minmax(10rem, 1fr))",
         }}
       >
-        {tiles.map((tile) => (
-          <li
-            key={tile.label}
+        <div
+          style={{
+            background: "var(--color-surface)",
+            border: "1px solid var(--color-border)",
+            borderRadius: "var(--radius)",
+            padding: "var(--space-16)",
+          }}
+        >
+          <span style={{ color: "var(--color-muted)" }}>Total perangkat</span>
+          <strong style={{ fontSize: "1.5rem", color: "var(--color-primary)" }}>
+            {total == null ? "…" : total}
+          </strong>
+        </div>
+        {charts.map((chart) => (
+          <div
+            key={chart.key}
             style={{
               background: "var(--color-surface)",
               border: "1px solid var(--color-border)",
@@ -75,42 +188,57 @@ export function Overview() {
               padding: "var(--space-16)",
             }}
           >
-            <button
-              type="button"
-              onClick={() =>
-                router.push(
-                  `/devices?filter=${encodeURIComponent(tile.expression === "*" ? "" : tile.expression)}`,
-                )
-              }
-              style={{
-                all: "unset",
-                cursor: "pointer",
-                display: "flex",
-                flexDirection: "column",
-                gap: "var(--space-4)",
-              }}
-            >
-              <span style={{ color: "var(--color-muted)" }}>{tile.label}</span>
-              <strong
-                style={{ fontSize: "1.5rem", color: "var(--color-primary)" }}
-              >
-                {tile.count == null ? "…" : tile.count}
-              </strong>
-            </button>
-            <table
-              aria-label={`${tile.label} — alternatif teks`}
-              style={{ position: "absolute", left: -9999 }}
-            >
+            <strong>{chart.label}</strong>
+            <table aria-label={`${chart.label} — ringkasan`}>
               <tbody>
-                <tr>
-                  <th scope="row">{tile.label}</th>
-                  <td>{tile.count == null ? "memuat" : tile.count}</td>
-                </tr>
+                {chart.slices.map((slice) => (
+                  <tr key={slice.key}>
+                    <th scope="row">{slice.label}</th>
+                    <td>
+                      {slice.filter ? (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            router.push(
+                              `/devices?filter=${encodeURIComponent(slice.filter ?? "")}`,
+                            )
+                          }
+                          style={{ all: "unset", cursor: "pointer" }}
+                        >
+                          {slice.count == null ? "…" : slice.count}
+                        </button>
+                      ) : slice.count == null ? (
+                        "—"
+                      ) : (
+                        String(slice.count)
+                      )}
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
-          </li>
+          </div>
         ))}
-      </ul>
+      </div>
+      <table
+        aria-label="Ringkasan instalasi — alternatif teks"
+        style={{ position: "absolute", left: -9999 }}
+      >
+        <tbody>
+          <tr>
+            <th scope="row">Total perangkat</th>
+            <td>{total == null ? "memuat" : total}</td>
+          </tr>
+          {charts.flatMap((chart) =>
+            chart.slices.map((slice) => (
+              <tr key={`${chart.key}-${slice.key}`}>
+                <th scope="row">{`${chart.label}: ${slice.label}`}</th>
+                <td>{slice.count == null ? "memuat" : slice.count}</td>
+              </tr>
+            )),
+          )}
+        </tbody>
+      </table>
     </section>
   );
 }
