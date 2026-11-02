@@ -45,6 +45,10 @@ services:
       GENIEACS_UI_JWT_SECRET: check-fixture-jwt-secret
       LOG_URL: http://victorialogs:9428
       SEED_HOST: mongo:27017
+      # Fixture-only credentials for the auth-enabled check Mongo (same
+      # values as MONGO_URL above; intentionally not secrets).
+      SEED_USER: check_fixture
+      SEED_PASSWORD: check-fixture-only
     volumes:
       - .:/workspace
       - verify_modules:/workspace/node_modules

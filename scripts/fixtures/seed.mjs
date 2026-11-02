@@ -8,12 +8,23 @@ import { MongoClient } from "mongodb";
 const ALLOWED_DB = "genieacs_plan_test";
 
 function parseArgs(argv) {
-  const args = { fixtureOnly: false, count: 100, host: "127.0.0.1:27017" };
+  const args = {
+    fixtureOnly: false,
+    count: 100,
+    host: "127.0.0.1:27017",
+    // Fixture Mongo runs WITH auth (compose/test): credentials come
+    // from the isolated test environment only, never the operational
+    // deployment.
+    user: process.env.SEED_USER ?? "",
+    password: process.env.SEED_PASSWORD ?? "",
+  };
   for (let i = 0; i < argv.length; ++i) {
     const a = argv[i];
     if (a === "--fixture-only") args.fixtureOnly = true;
     else if (a === "--count") args.count = Number(argv[++i]);
     else if (a === "--host") args.host = argv[++i];
+    else if (a === "--user") args.user = argv[++i] ?? "";
+    else if (a === "--password") args.password = argv[++i] ?? "";
     else {
       console.error(`unknown argument: ${a}`);
       process.exit(2);
@@ -92,9 +103,18 @@ async function main() {
   }
   void url;
 
-  const client = new MongoClient(`mongodb://${args.host}`, {
-    serverSelectionTimeoutMS: 5000,
-  });
+  // Auth (when configured) always targets the admin source the
+  // fixture container provisions; the database stays genieacs_plan_test.
+  const credentials = args.user
+    ? encodeURIComponent(args.user) +
+      ":" +
+      encodeURIComponent(args.password) +
+      "@"
+    : "";
+  const client = new MongoClient(
+    `mongodb://${credentials}${args.host}/?authSource=admin`,
+    { serverSelectionTimeoutMS: 5000 },
+  );
   await client.connect();
   const db = client.db(ALLOWED_DB);
   const devices = db.collection("devices");
