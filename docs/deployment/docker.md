@@ -65,10 +65,10 @@ read-only; automatic issuance is disabled and client forwarding headers are not
 trusted (Caddy is the edge; if you put another trusted proxy in front, adjust
 the boundary explicitly). The overlay sets `TRUSTED_PROXY_HOPS=1` on the web
 service so the login rate limiter keys on the client address Caddy appends to
-`X-Forwarded-For`; without a trusted proxy in front the default `0` discards
-the header entirely (rotating it cannot open new rate-limit buckets). The task
-proxy timeout is 310s to stay above the engine's 300s task horizon. This
-package never issues real domains/certificates.
+`X-Forwarded-For`; without a trusted proxy in front the default `0` discards the
+header entirely (rotating it cannot open new rate-limit buckets). The task proxy
+timeout is 310s to stay above the engine's 300s task horizon. This package never
+issues real domains/certificates.
 
 ## Image digest policy
 
