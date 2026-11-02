@@ -59,6 +59,14 @@ services:
   ui:
     <<: *engine
     command: ["node", "dist/bin/genieacs-ui"]
+    # Structured app logs (auth/permission events) flow on the shared
+    # volume Vector reads; per-service file so four engine processes
+    # never share one rotation (WORKER_PROCESSES=0 keeps each single).
+    environment:
+      <<: *engine-env
+      GENIEACS_UI_APP_LOG_FILE: /logs/ui/app.ndjson
+    volumes:
+      - app_logs:/logs
     healthcheck:
       test: ["CMD", "node", "docker/health.mjs", "7583"]
       interval: 15s
@@ -155,8 +163,15 @@ services:
     configs:
       - source: vector_config
         target: /etc/vector/vector.yaml
+    # Ordered AFTER the log writers: on a FRESH named volume Docker
+    # copies the mount point's content/permissions from the first
+    # container to mount it — the writers' images bake /logs/{web,ui}
+    # as uid 10001, and vector (image-default user) must not be that
+    # first mounter.
     depends_on:
       - victorialogs
+      - ui
+      - web
     networks:
       - app
 

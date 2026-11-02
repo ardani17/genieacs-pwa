@@ -90,7 +90,9 @@ services:
       # The web image bakes /logs/web (uid 10001) into the shared volume
       # on FIRST initialization; vector mounting the empty volume first
       # would skip that, leaving web unable to create its directory on a
-      # read-only root. Start after web.
+      # read-only root. Start after web. (The e2e overlay adds the ui
+      # writer the same way — this base stack is deliberately
+      # engine-free.)
       - web
 
   web:

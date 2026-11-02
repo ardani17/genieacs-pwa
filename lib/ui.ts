@@ -15,6 +15,7 @@ import {
 } from "./ui/session.ts";
 import Authorizer from "./common/authorizer.ts";
 import * as logger from "./logger.ts";
+import { emitLoginOutcome } from "./engine-app-logger.ts";
 import * as localCache from "./ui/local-cache.ts";
 import { PermissionSet } from "./types.ts";
 import type { SessionClaims } from "./ui/session.ts";
@@ -141,6 +142,9 @@ router.post("/login", async (ctx) => {
     });
     ctx.body = JSON.stringify(token);
     logger.accessInfo(log);
+    // Structured pipeline event IN PARALLEL (no-op unless
+    // UI_APP_LOG_FILE is configured); legacy stdout above is untouched.
+    emitLoginOutcome(ctx, true, username);
   }
 
   function failure(): void {
@@ -148,6 +152,7 @@ router.post("/login", async (ctx) => {
     ctx.body = "Incorrect username or password";
     log.message += " failed";
     logger.accessWarn(log);
+    emitLoginOutcome(ctx, false, username);
   }
 
   if (await authLocal(ctx.state.configSnapshot, username, password))

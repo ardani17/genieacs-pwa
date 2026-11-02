@@ -64,6 +64,20 @@
       "command": "node",
       "args": ["scripts/test-ts.mjs", "test/app-logger.ts"],
       "artifacts": ["artifacts/tests/test/app-logger.test.cjs"]
+    },
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/test-ts.mjs", "test/engine-app-logger.ts"],
+      "artifacts": ["artifacts/tests/test/engine-app-logger.test.cjs"]
+    },
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/test-ts.mjs", "test/engine-app-logger-broken-dir.ts"],
+      "artifacts": [
+        "artifacts/tests/test/engine-app-logger-broken-dir.test.cjs"
+      ]
     }
   ],
   "M01-F": [
@@ -323,6 +337,12 @@
       "cwd": ".",
       "command": "node",
       "args": ["scripts/test-ts.mjs", "test/integration/init-install.ts"]
+    },
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/test-ts.mjs", "test/integration/auth-log-events.ts"],
+      "artifacts": ["artifacts/tests/test/integration/auth-log-events.test.cjs"]
     }
   ]
 }

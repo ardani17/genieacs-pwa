@@ -22,6 +22,11 @@ services:
       # Same port convention as the production engine services.
       GENIEACS_UI_PORT: "7583"
       GENIEACS_UI_WORKER_PROCESSES: "0"
+      # Structured engine events on the shared test volume, exercising
+      # the same wiring as the production stack.
+      GENIEACS_UI_APP_LOG_FILE: /logs/ui/app.ndjson
+    volumes:
+      - app_logs_test:/logs
     healthcheck:
       test: ["CMD", "node", "docker/health.mjs", "7583"]
       interval: 5s
@@ -63,6 +68,37 @@ services:
         condition: service_healthy
       seed:
         condition: service_completed_successfully
+
+  # The engine writer joins the shared log volume; vector must mount
+  # AFTER it for the same fresh-volume initialization reason as web.
+  vector:
+    depends_on:
+      - victorialogs
+      - web
+      - ui
+
+  # Engine structured-log acceptance (RE-STD-09B): drives the REAL ui
+  # service (login success/fail + permission denial) and validates the
+  # events in VictoriaLogs with service="ui" + requestId correlation.
+  engine-log-smoke:
+    image: genieacs-pwa-verify:local
+    working_dir: /workspace
+    environment:
+      ENGINE_URL: http://ui:7583
+      LOG_URL: http://victorialogs:9428
+    volumes:
+      - .:/workspace
+      - verify_modules:/workspace/node_modules
+    command: ["node", "scripts/engine-log-smoke.mjs"]
+    depends_on:
+      ui:
+        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
+      victorialogs:
+        condition: service_started
+      vector:
+        condition: service_started
 
   browser-tests:
     depends_on:

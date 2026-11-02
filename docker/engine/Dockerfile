@@ -29,7 +29,12 @@ COPY --from=build /repo/public ./public
 COPY docker/health.mjs docker/health.mjs
 RUN groupadd -g 10001 genieacs \
     && useradd -u 10001 -g 10001 -d /opt/genieacs genieacs \
-    && chown -R 10001:10001 /opt/genieacs
+    && chown -R 10001:10001 /opt/genieacs \
+    # Structured app-log sink on the shared volume: prepared in the image
+    # (BEFORE the USER switch — chown needs root) so a FRESH named volume
+    # inherits writable ownership for uid 10001, mirroring docker/web.
+    && mkdir -p /logs/ui \
+    && chown -R 10001:10001 /logs
 USER 10001:10001
 # Labels are filled by build args in compose (app/upstream/commit).
 ARG APP_VERSION=dev
