@@ -37,48 +37,94 @@ export function escapeCsvCell(value: unknown): string {
   return `"${guarded.replace(/"/g, '""')}"`;
 }
 
-// Split one CSV line into cells, honouring double-quoted cells with
-// embedded commas/escaped quotes (the engine quotes every cell it
-// emits).
-function splitCsvLine(line: string): string[] {
-  const cells: string[] = [];
-  let current = "";
+// Split CSV text into complete RECORDS. Newlines (LF/CRLF) separate
+// records only OUTSIDE double quotes: the engine preserves raw
+// newlines inside quoted values, so one logical record can span
+// physical lines (RFC 4180). Each record is the exact substring
+// between separators, trailing empty record included (a closing
+// newline survives the round trip).
+function splitCsvRecords(csv: string): string[] {
+  const records: string[] = [];
+  let start = 0;
   let inQuotes = false;
-  for (let i = 0; i < line.length; ++i) {
-    const ch = line[i];
+  for (let i = 0; i < csv.length; ++i) {
+    const ch = csv[i];
     if (inQuotes) {
       if (ch === '"') {
-        if (line[i + 1] === '"') {
-          current += '""';
-          ++i;
-        } else inQuotes = false;
-      } else current += ch;
+        if (csv[i + 1] === '"')
+          ++i; // escaped quote stays data
+        else inQuotes = false;
+      }
     } else if (ch === '"') inQuotes = true;
-    else if (ch === ",") {
-      cells.push(current);
-      current = "";
-    } else current += ch;
+    else if (ch === "\n" || ch === "\r") {
+      // Consume CRLF as ONE separator; the record ends BEFORE the \r.
+      const sepStart = i;
+      if (ch === "\r" && csv[i + 1] === "\n") ++i;
+      records.push(csv.slice(start, sepStart));
+      start = i + 1;
+    }
   }
-  cells.push(current);
-  return cells;
+  records.push(csv.slice(start));
+  return records;
 }
 
-// Per-device parameter CSV masking: the engine emits one row per
-// parameter ("Parameter" first, "Value" sixth); rows whose parameter
-// path is a secret carry [REDACTED] as the value instead. Header rows
-// pass through untouched.
+interface CellSpan {
+  start: number;
+  end: number; // half-open, includes the cell's original quoting
+}
+
+// Cell boundaries inside ONE record (no newlines): commas split only
+// outside quotes, `""` inside a quoted cell is a literal quote.
+function cellSpans(record: string): CellSpan[] {
+  const spans: CellSpan[] = [];
+  let start = 0;
+  let inQuotes = false;
+  for (let i = 0; i < record.length; ++i) {
+    const ch = record[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (record[i + 1] === '"') ++i;
+        else inQuotes = false;
+      }
+    } else if (ch === '"') inQuotes = true;
+    else if (ch === ",") {
+      spans.push({ start, end: i });
+      start = i + 1;
+    }
+  }
+  spans.push({ start, end: record.length });
+  return spans;
+}
+
+// The cell's VALUE: surrounding quotes dropped and `""` unescaped when
+// the cell is quoted; unquoted cells (the engine emits the Parameter
+// path and most columns unquoted) pass through as-is.
+function cellValue(record: string, span: CellSpan): string {
+  const raw = record.slice(span.start, span.end);
+  if (raw.length >= 2 && raw.startsWith('"') && raw.endsWith('"'))
+    return raw.slice(1, -1).replace(/""/g, '"');
+  return raw;
+}
+
+// Per-device parameter CSV masking: the engine emits one record per
+// parameter ("Parameter" first, "Value" sixth); records whose parameter
+// path is a secret carry [REDACTED] as the value instead. Masking works
+// on COMPLETE records (a quoted value may span physical lines) and
+// replaces only the value cell's bytes — every other byte of the
+// export, including quoting and CRLF-continuations of non-secret rows,
+// is preserved. The header passes through because its first cell
+// ("Parameter") is not a secret path — no positional special-casing, so
+// a headerless input still masks its first data record.
 export function maskDeviceCsv(csv: string): string {
-  const lines = csv.split(/\r?\n/);
   const VALUE_COLUMN = 5;
-  return lines
-    .map((line, index) => {
-      if (index === 0 || !line) return line;
-      const cells = splitCsvLine(line);
-      if (cells.length <= VALUE_COLUMN) return line;
-      const path = cells[0].replace(/^"|"$/g, "");
-      if (!isSecretParamPath(path)) return line;
-      cells[VALUE_COLUMN] = '"[REDACTED]"';
-      return cells.join(",");
+  return splitCsvRecords(csv)
+    .map((record) => {
+      if (!record) return record;
+      const spans = cellSpans(record);
+      if (spans.length <= VALUE_COLUMN) return record;
+      if (!isSecretParamPath(cellValue(record, spans[0]))) return record;
+      const value = spans[VALUE_COLUMN];
+      return `${record.slice(0, value.start)}"[REDACTED]"${record.slice(value.end)}`;
     })
     .join("\n");
 }

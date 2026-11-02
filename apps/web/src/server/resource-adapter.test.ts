@@ -121,3 +121,79 @@ test("maskDeviceCsv redacts secret parameter values row by row", () => {
   // Quoted commas survive intact on non-secret rows.
   expect(masked).toContain('"10.0.0.1, backup"');
 });
+
+test("maskDeviceCsv masks MULTILINE quoted secret values (RE-STD-04)", () => {
+  // Reviewer repro: 6-column CSV whose secret Value spans two physical
+  // lines — the continuation line used to escape masking entirely.
+  const csv = [
+    "Parameter,Object,Object timestamp,Writable,Writable timestamp,Value",
+    '"Device.WiFi.KeyPassphrase",0,1,1,1,"line1\nSYNTHETIC_MULTILINE_SECRET"',
+  ].join("\n");
+  expect(maskDeviceCsv(csv)).toBe(
+    "Parameter,Object,Object timestamp,Writable,Writable timestamp,Value\n" +
+      '"Device.WiFi.KeyPassphrase",0,1,1,1,"[REDACTED]"',
+  );
+});
+
+test("maskDeviceCsv treats CRLF separators and CRLF inside quoted values", () => {
+  // Engine dialect: unquoted Parameter path; the quoted value itself
+  // contains a CRLF. Record separators are CRLF too.
+  const csv = [
+    "Parameter,Object,Object timestamp,Writable,Writable timestamp,Value",
+    'Device.WiFi.KeyPassphrase,0,1,1,1,"p1\r\nSECRET_CRLF"',
+  ].join("\r\n");
+  expect(maskDeviceCsv(csv)).toBe(
+    "Parameter,Object,Object timestamp,Writable,Writable timestamp,Value\n" +
+      'Device.WiFi.KeyPassphrase,0,1,1,1,"[REDACTED]"',
+  );
+});
+
+test("maskDeviceCsv handles the engine dialect: only Value quoted, commas in Access list", () => {
+  const csv = [
+    "Parameter,Object,Object timestamp,Writable,Writable timestamp,Value,Value type,Value timestamp,Notification,Notification timestamp,Access list,Access list timestamp",
+    'Device.WiFi.KeyPassphrase,0,1,1,1,"super-secret-key","xsd:string",1,0,0,"Obj, Sub",1',
+    'Device.Wan.IP,0,1,1,1,"10.0.0.1, backup","xsd:string",1,0,0,"Obj, Sub",1',
+  ].join("\n");
+  const masked = maskDeviceCsv(csv);
+  expect(masked).not.toContain("super-secret-key");
+  const lines = masked.split("\n");
+  // Only the Value cell is rewritten; every other byte is preserved.
+  expect(lines[1]).toBe(
+    'Device.WiFi.KeyPassphrase,0,1,1,1,"[REDACTED]","xsd:string",1,0,0,"Obj, Sub",1',
+  );
+  // Non-secret rows are byte-identical (comma-in-quotes in Value and
+  // the unquoted Access list join survive).
+  expect(lines[2]).toBe(csv.split("\n")[2]);
+});
+
+test("maskDeviceCsv keeps escaped quotes on non-secret rows, redacts them on secret rows", () => {
+  const csv = [
+    "Parameter,Object,Object timestamp,Writable,Writable timestamp,Value,Value type,Value timestamp,Notification,Notification timestamp,Access list,Access list timestamp",
+    '"Device.Wan.IP",0,1,1,1,"a""b","xsd:string",1,0,0,0,1',
+    '"Device.WiFi.KeyPassphrase",0,1,1,1,"pw""d","xsd:string",1,0,0,0,1',
+  ].join("\n");
+  const masked = maskDeviceCsv(csv);
+  const lines = masked.split("\n");
+  expect(lines[1]).toBe(csv.split("\n")[1]);
+  expect(lines[2]).toBe(
+    '"Device.WiFi.KeyPassphrase",0,1,1,1,"[REDACTED]","xsd:string",1,0,0,0,1',
+  );
+  expect(masked).not.toContain('pw""d');
+});
+
+test("maskDeviceCsv preserves the trailing newline and leaves short records alone", () => {
+  expect(
+    maskDeviceCsv(
+      "Parameter,Object,Object timestamp,Writable,Writable timestamp,Value\n",
+    ),
+  ).toBe(
+    "Parameter,Object,Object timestamp,Writable,Writable timestamp,Value\n",
+  );
+  expect(maskDeviceCsv('Short,record\n"still here",1\n')).toBe(
+    'Short,record\n"still here",1\n',
+  );
+  // Multiline secret at end-of-input (no closing record after it).
+  expect(
+    maskDeviceCsv('Device.WiFi.PreSharedKey,0,1,1,1,"x\nSECRET_TAIL"\n'),
+  ).toBe('Device.WiFi.PreSharedKey,0,1,1,1,"[REDACTED]"\n');
+});
