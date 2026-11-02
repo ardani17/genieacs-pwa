@@ -43,6 +43,17 @@ const SENSITIVE_KEYS = new Set(
 
 const REDACTED = "[REDACTED]";
 
+// Session-bearing query parameters are credentials too: tokens and
+// session ids in URLs are stripped alongside passwords.
+function isSensitiveUrlKey(key: string): boolean {
+  const lowered = key.toLowerCase();
+  return (
+    isSensitiveKey(lowered) ||
+    /token|session/.test(lowered) ||
+    lowered === "sid"
+  );
+}
+
 function isSensitiveKey(key: string): boolean {
   const lowered = key.toLowerCase();
   if (SENSITIVE_KEYS.has(lowered)) return true;
@@ -69,17 +80,39 @@ function redactUrl(value: string): string {
     if (url.username) url.username = REDACTED;
     if (url.password) url.password = REDACTED;
     for (const key of new Set(url.searchParams.keys()))
-      if (isSensitiveKey(key) || key.toLowerCase().includes("token"))
-        url.searchParams.set(key, REDACTED);
+      if (isSensitiveUrlKey(key)) url.searchParams.set(key, REDACTED);
     return url.toString();
   } catch {
     return value;
   }
 }
 
+// Free text (log messages, Error.message, stack lines) is sanitized as
+// a WHOLE: embedded URLs lose userinfo/credential query values, and
+// explicit `key=value` / `key: value` pairs under sensitive names drop
+// their value. Length stays bounded.
+const SENSITIVE_KV =
+  /\b(password|passwd|secret|token|api[_-]?key|apikey|authorization|authpassword|presharedkey|keypassphrase|credentials?|privatekey|jwt|session(?:id)?)\b(\s*"[^"]*"\s*|\s*'[^']*'\s*|\s*)([=:])[ \t]*("[^"]*"|'[^']*'|[^\s,;)}\]]+)/gi;
+
+export function sanitizeText(text: string): string {
+  let out = text.slice(0, REDACT_MAX_STRING);
+  out = out.replace(/https?:\/\/\S+/g, (m) => redactUrl(m));
+  out = out.replace(SENSITIVE_KV, "$1$2$3 [REDACTED]");
+  if (out.length > REDACT_MAX_STRING)
+    out = out.slice(0, REDACT_MAX_STRING) + "…";
+  return out;
+}
+
 function sanitizeStack(stack: string | undefined): string | undefined {
   if (!stack) return undefined;
-  return stack.split("\n").slice(0, 20).join("\n").slice(0, REDACT_MAX_STRING);
+  // Stack lines carry the error message (and sometimes request URLs);
+  // every line is sanitized, then line/size capped.
+  return stack
+    .split("\n")
+    .slice(0, 20)
+    .map(sanitizeText)
+    .join("\n")
+    .slice(0, REDACT_MAX_STRING);
 }
 
 // Recursive redaction with cycle guard and depth/size bounds. Values
@@ -99,10 +132,10 @@ export function redact(
   const type = typeof value;
   if (type === "string") {
     const str = value as string;
-    if (str.length > REDACT_MAX_STRING)
-      return str.slice(0, REDACT_MAX_STRING) + "…";
     if (/^https?:\/\//.test(str)) return redactUrl(str);
-    return str;
+    // Embedded URLs and explicit secret key=value pairs inside longer
+    // strings are scrubbed too; length stays bounded.
+    return sanitizeText(str);
   }
   if (type === "number" || type === "boolean") return value;
   if (type === "bigint" || type === "symbol" || type === "function")
@@ -111,7 +144,9 @@ export function redact(
   if (value instanceof Error) {
     return {
       name: value.name,
-      message: String(value.message).slice(0, REDACT_MAX_STRING),
+      // Error messages are free text: sanitize as a whole (URL
+      // credentials, explicit secret key=value pairs).
+      message: sanitizeText(String(value.message)),
       stack: sanitizeStack(value.stack),
       ...(value.cause !== undefined
         ? { cause: redact(value.cause, depth + 1, seen) }
@@ -248,7 +283,9 @@ export function createAppLogger(options: AppLoggerOptions): AppLogger {
         installationId: options.installationId,
         environment: options.environment,
         event: partial.event,
-        message: partial.message ?? partial.event,
+        // Free-text messages pass through the same whole-text
+        // sanitization as error messages.
+        message: sanitizeText(partial.message ?? partial.event),
         ...(partial.requestId ? { requestId: partial.requestId } : {}),
         ...(partial.operationId ? { operationId: partial.operationId } : {}),
         ...(partial.actorId ? { actorId: partial.actorId } : {}),

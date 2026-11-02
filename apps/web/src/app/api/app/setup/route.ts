@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { engineFetch, requireSameOrigin } from "@/server/genieacs-client";
+import { requestContextFrom, observeRequest } from "@/server/request-context";
 
 export const dynamic = "force-dynamic";
 
@@ -8,9 +9,13 @@ const PUBLIC_ORIGIN = process.env.PUBLIC_ORIGIN ?? "http://localhost:3000";
 // Setup status/installer: maps the NATIVE /init flow. GET reports
 // whether the installer path is available (no users yet) via the native
 // /init status; POST creates the initial admin only in that state.
-export async function GET(): Promise<NextResponse> {
+export async function GET(request: Request): Promise<NextResponse> {
+  const ctx = requestContextFrom(request);
   try {
-    const upstream = await engineFetch("/init", { timeoutMs: 5000 });
+    const upstream = await engineFetch("/init", {
+      requestId: ctx.requestId,
+      timeoutMs: 5000,
+    });
     if (!upstream.ok)
       return NextResponse.json(
         {
@@ -26,9 +31,15 @@ export async function GET(): Promise<NextResponse> {
       );
     const status = (await upstream.json()) as Record<string, unknown>;
     const available = status["users"] !== false;
+    observeRequest(ctx, "success", "setup status");
     return NextResponse.json(
-      { ok: true, data: { available }, requestId: "setup" },
-      { headers: { "Cache-Control": "no-store" } },
+      { ok: true, data: { available }, requestId: ctx.requestId },
+      {
+        headers: {
+          "Cache-Control": "no-store",
+          "X-Request-Id": ctx.requestId,
+        },
+      },
     );
   } catch {
     return NextResponse.json(
@@ -47,6 +58,7 @@ export async function GET(): Promise<NextResponse> {
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
+  const ctx = requestContextFrom(request);
   const sameOrigin = requireSameOrigin(request, PUBLIC_ORIGIN);
   if (!sameOrigin.ok)
     return NextResponse.json(
@@ -106,17 +118,25 @@ export async function POST(request: Request): Promise<NextResponse> {
     // created, so there is no default-credential window.
     const upstream = await engineFetch("/init", {
       method: "POST",
+      requestId: ctx.requestId,
       body: JSON.stringify({
         users: [
           { username: "admin", password: body.password, roles: ["admin"] },
         ],
       }),
     });
-    if (upstream.ok)
+    if (upstream.ok) {
+      observeRequest(ctx, "success", "setup installed");
       return NextResponse.json(
-        { ok: true, data: { created: true }, requestId: "setup" },
-        { headers: { "Cache-Control": "no-store" } },
+        { ok: true, data: { created: true }, requestId: ctx.requestId },
+        {
+          headers: {
+            "Cache-Control": "no-store",
+            "X-Request-Id": ctx.requestId,
+          },
+        },
       );
+    }
     if (upstream.status === 400)
       return NextResponse.json(
         {

@@ -17,15 +17,33 @@ export function requestIdFrom(header?: string | null): string {
   return crypto.randomUUID();
 }
 
+// Route handlers receive the id from middleware (which already mints or
+// inherits a UUID); this re-derives safely when called without one.
+export function requestContextFrom(request: Request): RequestContext {
+  return {
+    requestId: requestIdFrom(request.headers.get("x-request-id")),
+    startedAt: Date.now(),
+  };
+}
+
+// Standard response headers carrying the correlation id.
+export function correlationHeaders(
+  ctx: RequestContext,
+): Record<string, string> {
+  return { "Cache-Control": "no-store", "X-Request-Id": ctx.requestId };
+}
+
 export function observeRequest(
   ctx: RequestContext,
   outcome: "success" | "failure" | "partial" | "unknown",
   message: string,
+  actorId?: string,
 ): void {
   getAppLogger().emit({
     event: "http.request.completed",
     level: outcome === "failure" ? "warn" : "info",
     requestId: ctx.requestId,
+    ...(actorId ? { actorId } : {}),
     durationMs: Date.now() - ctx.startedAt,
     outcome,
     message,

@@ -46,12 +46,19 @@ void test("error objects keep name and sanitized stack, cause chains redacted", 
   const out = redact(outer) as {
     name: string;
     message: string;
+    stack?: string;
     cause: { message: string };
   };
   assert.equal(out.name, "Error");
-  assert.ok(!out.cause.message.includes("dummy-inner") || true);
-  // message content of the inner error still passes the string path —
-  // the contract requires key-based redaction; assert shape only.
+  // The whole-text sanitizer scrubs explicit secret pairs from the
+  // nested cause message — no bypass: if redaction were disabled this
+  // assertion FAILS.
+  assert.equal(
+    out.cause.message.includes("dummy-inner"),
+    false,
+    "cause message must be sanitized",
+  );
+  assert.match(out.cause.message, /Password= ?\[REDACTED\]/i);
   assert.ok(out.cause !== undefined);
 });
 
@@ -179,6 +186,46 @@ void test("events carry the full envelope and sanitized details", async () => {
   assert.equal(event.durationMs, 12);
   assert.equal(event.details.filter.password, "[REDACTED]");
   assert.ok(!seen[0].includes("nope"));
+});
+
+// Sink-level sentinel check: the BYTES persisted by the sink (not just
+// helper output) must be free of message, URL and stack secrets. If the
+// redaction implementation were disabled, this test FAILS.
+void test("persisted sink bytes never contain message, URL or stack secrets", async () => {
+  const seen: string[] = [];
+  const logger = createAppLogger({
+    service: "web",
+    appVersion: "1.2.17-dev",
+    installationId: "22222222-2222-2222-2222-222222222222",
+    environment: "test",
+    filePath: "/tmp/unused.log",
+    sink: async (line) => {
+      seen.push(line);
+    },
+  });
+
+  const err = new Error('login failed Password="dummy-msg-secret"');
+  (err as Error & { cause?: unknown }).cause = new Error(
+    "inner token=dummy-inner-token",
+  );
+  logger.emit({
+    event: "auth.login.failed",
+    level: "warn",
+    message: 'auth rejected session="dummy-session-id" for https://user:dummy-urlpw@example.invalid/login?token=dummy-q',
+    details: { error: err, note: "see https://x.example/?session=dummy-s2" },
+  });
+  await logger.flush(500);
+
+  const bytes = seen.join("\n");
+  for (const sentinel of [
+    "dummy-msg-secret",
+    "dummy-inner-token",
+    "dummy-session-id",
+    "dummy-urlpw",
+    "dummy-q",
+    "dummy-s2",
+  ])
+    assert.equal(bytes.includes(sentinel), false, `${sentinel} leaked to sink`);
 });
 
 void test("request ids accept valid UUIDs and regenerate otherwise", () => {
