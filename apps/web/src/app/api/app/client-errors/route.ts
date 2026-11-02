@@ -5,6 +5,12 @@ import {
   requireSameOrigin,
 } from "@/server/genieacs-client";
 import { getAppLogger } from "@/server/logger";
+import {
+  requestContextFrom,
+  observeRequest,
+  correlationHeaders,
+  type RequestContext,
+} from "@/server/request-context";
 
 export const dynamic = "force-dynamic";
 
@@ -20,31 +26,39 @@ const RATE_WINDOW_MS = 60_000;
 const rate = new Map<string, { count: number; windowStart: number }>();
 
 function errorResponse(
+  ctx: RequestContext,
   status: number,
   code: string,
   message: string,
   retryable: boolean,
   extraHeaders?: Record<string, string>,
 ): NextResponse {
+  observeRequest(
+    ctx,
+    status < 400 ? "success" : status < 500 ? "failure" : "partial",
+    `client-errors ${status}`,
+  );
   return NextResponse.json(
     {
       ok: false,
       error: { code, message, retryable },
-      requestId: "client-errors",
+      requestId: ctx.requestId,
     },
     {
       status,
-      headers: { "Cache-Control": "no-store", ...extraHeaders },
+      headers: { ...correlationHeaders(ctx), ...extraHeaders },
     },
   );
 }
 
 export async function POST(request: Request): Promise<NextResponse> {
+  const ctx = requestContextFrom(request);
   // Same-origin mutation guard first: anonymous and forged requests
   // never reach the quota or the sink.
   const sameOrigin = requireSameOrigin(request, PUBLIC_ORIGIN);
   if (!sameOrigin.ok)
     return errorResponse(
+      ctx,
       403,
       "FORBIDDEN",
       "Cross-origin request rejected",
@@ -56,22 +70,42 @@ export async function POST(request: Request): Promise<NextResponse> {
   // that merely looks like a session is still anonymous here.
   const token = nativeCookieFrom(request.headers.get("cookie"));
   if (!token)
-    return errorResponse(401, "UNAUTHENTICATED", "Not authenticated", false);
+    return errorResponse(
+      ctx,
+      401,
+      "UNAUTHENTICATED",
+      "Not authenticated",
+      false,
+    );
 
   let username: string;
   try {
     const upstream = await engineFetch("/api/session", {
       cookie: token,
+      requestId: ctx.requestId,
       timeoutMs: 5000,
     });
     if (!upstream.ok)
-      return errorResponse(401, "UNAUTHENTICATED", "Not authenticated", false);
+      return errorResponse(
+        ctx,
+        401,
+        "UNAUTHENTICATED",
+        "Not authenticated",
+        false,
+      );
     const session = (await upstream.json()) as { username?: unknown };
     if (typeof session.username !== "string" || !session.username)
-      return errorResponse(401, "UNAUTHENTICATED", "Not authenticated", false);
+      return errorResponse(
+        ctx,
+        401,
+        "UNAUTHENTICATED",
+        "Not authenticated",
+        false,
+      );
     username = session.username;
   } catch {
     return errorResponse(
+      ctx,
       502,
       "BACKEND_UNAVAILABLE",
       "Backend unavailable",
@@ -81,19 +115,25 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   const raw = await request.text();
   if (raw.length > BODY_MAX)
-    return errorResponse(413, "VALIDATION", "Body too large", false);
+    return errorResponse(ctx, 413, "VALIDATION", "Body too large", false);
 
   let parsed: Record<string, unknown>;
   try {
     parsed = JSON.parse(raw);
   } catch {
-    return errorResponse(400, "VALIDATION", "Malformed body", false);
+    return errorResponse(ctx, 400, "VALIDATION", "Malformed body", false);
   }
 
   const allowed = new Set(["event", "message", "stack", "location"]);
   for (const key of Object.keys(parsed))
     if (!allowed.has(key))
-      return errorResponse(400, "VALIDATION", `Unknown field ${key}`, false);
+      return errorResponse(
+        ctx,
+        400,
+        "VALIDATION",
+        `Unknown field ${key}`,
+        false,
+      );
 
   // Per-USER quota keyed by the verified actor.
   const now = Date.now();
@@ -101,7 +141,7 @@ export async function POST(request: Request): Promise<NextResponse> {
   if (!entry || now - entry.windowStart > RATE_WINDOW_MS)
     rate.set(username, { count: 1, windowStart: now });
   else if (entry.count >= RATE_MAX)
-    return errorResponse(429, "RATE_LIMITED", "Too many reports", true, {
+    return errorResponse(ctx, 429, "RATE_LIMITED", "Too many reports", true, {
       "Retry-After": String(
         Math.max(
           1,
@@ -115,6 +155,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     event: "web.client.error",
     level: "warn",
     actorId: username,
+    requestId: ctx.requestId,
     message: String(parsed.message ?? parsed.event ?? "client error").slice(
       0,
       500,
@@ -126,8 +167,9 @@ export async function POST(request: Request): Promise<NextResponse> {
     },
   });
 
+  observeRequest(ctx, "success", "client-error reported", username);
   return NextResponse.json(
-    { ok: true, data: { accepted: true }, requestId: "client-errors" },
-    { headers: { "Cache-Control": "no-store" } },
+    { ok: true, data: { accepted: true }, requestId: ctx.requestId },
+    { headers: correlationHeaders(ctx) },
   );
 }

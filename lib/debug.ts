@@ -32,7 +32,9 @@ export function incomingHttpRequest(
   deviceId: string,
   body: string,
 ): void {
-  if (!DEBUG_FILE) return;
+  // Raw protocol payloads (bodies/headers) persist ONLY behind the
+  // explicit GENIEACS_DEBUG_RAW=1 operator opt-in.
+  if (!DEBUG_RAW_ENABLED) return;
   const now = new Date();
   const con = httpRequest.socket;
   const socketEndpoints = getSocketEndpoints(con);
@@ -49,7 +51,6 @@ export function incomingHttpRequest(
     body: body,
   };
 
-  if (!DEBUG_RAW_ENABLED) return;
   if (DEBUG_FORMAT === "yaml")
     appendFileSync(DEBUG_FILE, "---\n" + stringify(msg));
   else if (DEBUG_FORMAT === "json")
@@ -62,7 +63,9 @@ export function outgoingHttpResponse(
   deviceId: string,
   body: string,
 ): void {
-  if (!DEBUG_FILE) return;
+  // Raw protocol payloads (bodies/headers) persist ONLY behind the
+  // explicit GENIEACS_DEBUG_RAW=1 operator opt-in.
+  if (!DEBUG_RAW_ENABLED) return;
   const now = new Date();
   const con = httpResponse.socket;
   const socketEndpoints = getSocketEndpoints(con);
@@ -91,7 +94,9 @@ export function outgoingHttpRequest(
   url: URL,
   body: string,
 ): void {
-  if (!DEBUG_FILE) return;
+  // Raw protocol payloads (bodies/headers) persist ONLY behind the
+  // explicit GENIEACS_DEBUG_RAW=1 operator opt-in.
+  if (!DEBUG_RAW_ENABLED) return;
   const now = new Date();
   const con = httpRequest.socket;
   const msg = {
@@ -121,7 +126,9 @@ export function outgoingHttpRequestError(
   url: URL,
   err: Error,
 ): void {
-  if (!DEBUG_FILE) return;
+  // Raw protocol payloads (bodies/headers) persist ONLY behind the
+  // explicit GENIEACS_DEBUG_RAW=1 operator opt-in.
+  if (!DEBUG_RAW_ENABLED) return;
   const now = new Date();
   const msg = {
     event: "outgoing HTTP request",
@@ -148,7 +155,9 @@ export function incomingHttpResponse(
   deviceId: string,
   body: string,
 ): void {
-  if (!DEBUG_FILE) return;
+  // Raw protocol payloads (bodies/headers) persist ONLY behind the
+  // explicit GENIEACS_DEBUG_RAW=1 operator opt-in.
+  if (!DEBUG_RAW_ENABLED) return;
   const now = new Date();
   const con = httpResponse.socket;
   const msg = {
@@ -175,7 +184,9 @@ export function outgoingUdpMessage(
   remotePort: number,
   body: string,
 ): void {
-  if (!DEBUG_FILE) return;
+  // Raw protocol payloads (bodies/headers) persist ONLY behind the
+  // explicit GENIEACS_DEBUG_RAW=1 operator opt-in.
+  if (!DEBUG_RAW_ENABLED) return;
   const now = new Date();
   const msg = {
     event: "outgoing UDP message",
@@ -194,7 +205,9 @@ export function outgoingUdpMessage(
 }
 
 export function clientError(remoteAddress: string, err: Error): void {
-  if (!DEBUG_FILE) return;
+  // Raw protocol payloads (bodies/headers) persist ONLY behind the
+  // explicit GENIEACS_DEBUG_RAW=1 operator opt-in.
+  if (!DEBUG_RAW_ENABLED) return;
   const now = new Date();
   const msg = {
     event: "client error",
@@ -211,7 +224,9 @@ export function clientError(remoteAddress: string, err: Error): void {
 }
 
 export function outgoingXmppStanza(deviceId: string, body: string): void {
-  if (!DEBUG_FILE) return;
+  // Raw protocol payloads (bodies/headers) persist ONLY behind the
+  // explicit GENIEACS_DEBUG_RAW=1 operator opt-in.
+  if (!DEBUG_RAW_ENABLED) return;
   const now = new Date();
   const msg = {
     event: "outgoing XMPP stanza",
@@ -228,7 +243,9 @@ export function outgoingXmppStanza(deviceId: string, body: string): void {
 }
 
 export function incomingXmppStanza(deviceId: string, body: string): void {
-  if (!DEBUG_FILE) return;
+  // Raw protocol payloads (bodies/headers) persist ONLY behind the
+  // explicit GENIEACS_DEBUG_RAW=1 operator opt-in.
+  if (!DEBUG_RAW_ENABLED) return;
   const now = new Date();
   const msg = {
     event: "incoming XMPP stanza",

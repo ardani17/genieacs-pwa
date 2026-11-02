@@ -22,7 +22,10 @@ report_state() {
   return 1
 }
 
-if [ "$1" = "--health" ]; then
+# Docker invokes the entrypoint without arguments by default: `$1`
+# must be safe under `set -u` (an unbound $1 used to abort startup
+# before the not-configured state could even be reported).
+if [ "${1:-}" = "--health" ]; then
   report_state
   exit $?
 fi

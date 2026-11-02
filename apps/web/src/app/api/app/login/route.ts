@@ -5,6 +5,12 @@ import {
   clientIpForRateLimit,
   APP_COOKIE_NAME,
 } from "../../../../server/genieacs-client";
+import {
+  requestContextFrom,
+  observeRequest,
+  correlationHeaders,
+  type RequestContext,
+} from "../../../../server/request-context";
 
 export const dynamic = "force-dynamic";
 
@@ -44,10 +50,35 @@ function recordFailure(key: string): void {
   else entry.count += 1;
 }
 
+// Every exit observes the request (correlated event in the app log
+// volume) and echoes the request id; status text only — never
+// credentials.
+function respond(
+  ctx: RequestContext,
+  payload: Record<string, unknown>,
+  status: number,
+  extraHeaders: Record<string, string> = {},
+  actor?: string,
+): NextResponse {
+  observeRequest(
+    ctx,
+    status < 400 ? "success" : status < 500 ? "failure" : "partial",
+    `login ${status}`,
+    actor,
+  );
+  return NextResponse.json(
+    { ...payload, requestId: ctx.requestId },
+    { status, headers: { ...correlationHeaders(ctx), ...extraHeaders } },
+  );
+}
+
 export async function POST(request: Request): Promise<NextResponse> {
+  const ctx = requestContextFrom(request);
+
   const sameOrigin = requireSameOrigin(request, PUBLIC_ORIGIN);
   if (!sameOrigin.ok)
-    return NextResponse.json(
+    return respond(
+      ctx,
       {
         ok: false,
         error: {
@@ -55,16 +86,16 @@ export async function POST(request: Request): Promise<NextResponse> {
           message: "Cross-origin request rejected",
           retryable: false,
         },
-        requestId: "login",
       },
-      { status: 403, headers: { "Cache-Control": "no-store" } },
+      403,
     );
 
   let body: { username?: string; password?: string };
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json(
+    return respond(
+      ctx,
       {
         ok: false,
         error: {
@@ -72,9 +103,8 @@ export async function POST(request: Request): Promise<NextResponse> {
           message: "Malformed body",
           retryable: false,
         },
-        requestId: "login",
       },
-      { status: 400, headers: { "Cache-Control": "no-store" } },
+      400,
     );
   }
 
@@ -82,7 +112,8 @@ export async function POST(request: Request): Promise<NextResponse> {
   const limitKey = `${ip}|${body.username ?? ""}`;
   const limit = limitStatus(limitKey);
   if (limit.limited)
-    return NextResponse.json(
+    return respond(
+      ctx,
       {
         ok: false,
         error: {
@@ -90,28 +121,24 @@ export async function POST(request: Request): Promise<NextResponse> {
           message: "Too many failed attempts; try again later",
           retryable: true,
         },
-        requestId: "login",
       },
-      {
-        status: 429,
-        headers: {
-          "Cache-Control": "no-store",
-          "Retry-After": String(limit.retryAfterSeconds),
-        },
-      },
+      429,
+      { "Retry-After": String(limit.retryAfterSeconds) },
     );
 
   let upstream: Response;
   try {
     upstream = await engineFetch("/login", {
       method: "POST",
+      requestId: ctx.requestId,
       body: JSON.stringify({
         username: body.username ?? "",
         password: body.password ?? "",
       }),
     });
   } catch {
-    return NextResponse.json(
+    return respond(
+      ctx,
       {
         ok: false,
         error: {
@@ -119,15 +146,15 @@ export async function POST(request: Request): Promise<NextResponse> {
           message: "Backend unavailable",
           retryable: true,
         },
-        requestId: "login",
       },
-      { status: 502, headers: { "Cache-Control": "no-store" } },
+      502,
     );
   }
 
   if (!upstream.ok) {
     recordFailure(limitKey);
-    return NextResponse.json(
+    return respond(
+      ctx,
       {
         ok: false,
         error: {
@@ -135,9 +162,8 @@ export async function POST(request: Request): Promise<NextResponse> {
           message: "Incorrect username or password",
           retryable: false,
         },
-        requestId: "login",
       },
-      { status: 401, headers: { "Cache-Control": "no-store" } },
+      401,
     );
   }
 
@@ -146,7 +172,8 @@ export async function POST(request: Request): Promise<NextResponse> {
   const setCookie = upstream.headers.get("set-cookie") ?? "";
   const token = /genieacs-ui-jwt=([^;]+)/.exec(setCookie)?.[1];
   if (!token)
-    return NextResponse.json(
+    return respond(
+      ctx,
       {
         ok: false,
         error: {
@@ -154,21 +181,18 @@ export async function POST(request: Request): Promise<NextResponse> {
           message: "Backend unavailable",
           retryable: true,
         },
-        requestId: "login",
       },
-      { status: 502, headers: { "Cache-Control": "no-store" } },
+      502,
     );
 
   const secure = PUBLIC_ORIGIN.startsWith("https://");
-  const response = NextResponse.json(
-    { ok: true, data: { authenticated: true }, requestId: "login" },
+  return respond(
+    ctx,
+    { ok: true, data: { authenticated: true } },
+    200,
     {
-      status: 200,
-      headers: {
-        "Cache-Control": "no-store",
-        "Set-Cookie": `${APP_COOKIE_NAME}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=28800${secure ? "; Secure" : ""}`,
-      },
+      "Set-Cookie": `${APP_COOKIE_NAME}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=28800${secure ? "; Secure" : ""}`,
     },
+    body.username,
   );
-  return response;
 }

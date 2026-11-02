@@ -8,6 +8,12 @@ import {
   AdapterError,
 } from "@/server/resource-adapter";
 import { maskDeviceForUi } from "@/server/mask-device";
+import {
+  requestContextFrom,
+  observeRequest,
+  correlationHeaders,
+  type RequestContext,
+} from "@/server/request-context";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +27,7 @@ const STATUS_TO_CODE: Record<number, string> = {
   503: "BACKEND_UNAVAILABLE",
 };
 
-function errorEnvelope(status: number, requestId: string): NextResponse {
+function errorEnvelope(status: number, ctx: RequestContext): NextResponse {
   const code = STATUS_TO_CODE[status] ?? "INTERNAL";
   return NextResponse.json(
     {
@@ -31,9 +37,9 @@ function errorEnvelope(status: number, requestId: string): NextResponse {
         message: status >= 500 ? "Upstream unavailable" : "Request rejected",
         retryable: status >= 500 || status === 429,
       },
-      requestId,
+      requestId: ctx.requestId,
     },
-    { status, headers: { "Cache-Control": "no-store" } },
+    { status, headers: correlationHeaders(ctx) },
   );
 }
 
@@ -72,7 +78,8 @@ async function handle(
   resource: string,
   verb: "GET",
 ): Promise<NextResponse> {
-  if (!isBffResource(resource)) return errorEnvelope(404, "resources");
+  const ctx = requestContextFrom(request);
+  if (!isBffResource(resource)) return errorEnvelope(404, ctx);
   if (!verbAllowed(resource, verb))
     return NextResponse.json(
       {
@@ -120,16 +127,16 @@ async function handle(
   }
 
   const cookie = nativeCookieFrom(request.headers.get("cookie"));
-  if (!cookie) return errorEnvelope(401, "resources");
+  if (!cookie) return errorEnvelope(401, ctx);
 
   const params = toNativeParams(normalized);
 
   try {
     const upstream = await engineFetch(
       `/api/${encodeURIComponent(resource)}?${params}`,
-      { cookie },
+      { cookie, requestId: ctx.requestId },
     );
-    if (!upstream.ok) return errorEnvelope(upstream.status, "resources");
+    if (!upstream.ok) return errorEnvelope(upstream.status, ctx);
 
     // Total from a same-filter HEAD (native exposes X-Total-Count); a
     // 403 on count means "no count permission" => total stays null.
@@ -139,7 +146,7 @@ async function handle(
       if (normalized.filter) countParams.set("filter", normalized.filter);
       const head = await engineFetch(
         `/api/${encodeURIComponent(resource)}?${countParams}`,
-        { method: "HEAD", cookie },
+        { method: "HEAD", cookie, requestId: ctx.requestId },
       );
       const countHeader = head.headers.get("x-total-count");
       if (head.ok && countHeader !== null) total = Number(countHeader);
@@ -153,6 +160,7 @@ async function handle(
         ? items.map((d) => maskDeviceForUi(d as never))
         : items;
 
+    observeRequest(ctx, "success", `list ${resource} 200`);
     return NextResponse.json(
       {
         ok: true,
@@ -168,12 +176,12 @@ async function handle(
           observedAt: new Date().toISOString(),
           source: "live",
         },
-        requestId: "resources",
+        requestId: ctx.requestId,
       },
-      { headers: { "Cache-Control": "no-store" } },
+      { headers: correlationHeaders(ctx) },
     );
   } catch {
-    return errorEnvelope(502, "resources");
+    return errorEnvelope(502, ctx);
   }
 }
 
@@ -186,10 +194,11 @@ export async function HEAD(
   ctx: { params: Promise<{ resource: string }> },
 ): Promise<NextResponse> {
   const { resource } = await ctx.params;
+  const reqCtx = requestContextFrom(request);
   if (!isBffResource(resource))
     return new NextResponse(null, {
       status: 404,
-      headers: { "Cache-Control": "no-store" },
+      headers: correlationHeaders(reqCtx),
     });
   if (!verbAllowed(resource, "GET"))
     return new NextResponse(null, {
@@ -202,14 +211,14 @@ export async function HEAD(
   if (filter === null && url.searchParams.get("filter"))
     return new NextResponse(null, {
       status: 400,
-      headers: { "Cache-Control": "no-store" },
+      headers: correlationHeaders(reqCtx),
     });
 
   const cookie = nativeCookieFrom(request.headers.get("cookie"));
   if (!cookie)
     return new NextResponse(null, {
       status: 401,
-      headers: { "Cache-Control": "no-store" },
+      headers: correlationHeaders(reqCtx),
     });
 
   const params = new URLSearchParams();
@@ -217,13 +226,18 @@ export async function HEAD(
   try {
     const head = await engineFetch(
       `/api/${encodeURIComponent(resource)}?${params}`,
-      { method: "HEAD", cookie },
+      { method: "HEAD", cookie, requestId: reqCtx.requestId },
     );
     const countHeader = head.headers.get("x-total-count");
+    observeRequest(
+      reqCtx,
+      head.ok ? "success" : head.status < 500 ? "failure" : "partial",
+      `count ${resource} ${head.status}`,
+    );
     return new NextResponse(null, {
       status: head.status,
       headers: {
-        "Cache-Control": "no-store",
+        ...correlationHeaders(reqCtx),
         ...(head.ok && countHeader !== null
           ? { "X-Total-Count": countHeader }
           : {}),
@@ -232,7 +246,7 @@ export async function HEAD(
   } catch {
     return new NextResponse(null, {
       status: 502,
-      headers: { "Cache-Control": "no-store" },
+      headers: correlationHeaders(reqCtx),
     });
   }
 }
