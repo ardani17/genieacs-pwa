@@ -92,11 +92,23 @@ function redactUrl(value: string): string {
 // explicit `key=value` / `key: value` pairs under sensitive names drop
 // their value. Length stays bounded.
 const SENSITIVE_KV =
-  /\b(password|passwd|secret|token|api[_-]?key|apikey|authorization|authpassword|presharedkey|keypassphrase|credentials?|privatekey|jwt|session(?:id)?)\b(\s*"[^"]*"\s*|\s*'[^']*'\s*|\s*)([=:])[ \t]*("[^"]*"|'[^']*'|[^\s,;)}\]]+)/gi;
+  /\b(password|passwd|secret|token|api[_-]?key|apikey|authpassword|presharedkey|keypassphrase|credentials?|privatekey|jwt|session(?:id)?)\b(\s*"[^"]*"\s*|\s*'[^']*'\s*|\s*)([=:])[ \t]*("[^"]*"|'[^']*'|[^\s,;)}\]]+)/gi;
+
+// Authorization values are scheme + credentials ("Bearer <token>",
+// "Basic <b64>"): the WHOLE value must go, not just the first word the
+// generic KV rule above would eat. Runs BEFORE SENSITIVE_KV (so
+// `authorization` is absent from its alternation) and consumes the
+// scheme plus every following word up to a delimiter or end of line —
+// trailing prose words are deliberately over-redacted; a credential
+// surviving beats a readable log line. The word boundary also catches
+// Proxy-Authorization.
+const AUTH_HEADER =
+  /\b(authorization)\b(\s*"[^"]*"\s*|\s*'[^']*'\s*|\s*)([=:])[ \t]*("[^"]*"|'[^']*'|[^\s,;)}\]]+(?:[ \t]+[^\s,;)}\]]+)*)/gi;
 
 export function sanitizeText(text: string): string {
   let out = text.slice(0, REDACT_MAX_STRING);
   out = out.replace(/https?:\/\/\S+/g, (m) => redactUrl(m));
+  out = out.replace(AUTH_HEADER, "$1$2$3 [REDACTED]");
   out = out.replace(SENSITIVE_KV, "$1$2$3 [REDACTED]");
   if (out.length > REDACT_MAX_STRING)
     out = out.slice(0, REDACT_MAX_STRING) + "…";

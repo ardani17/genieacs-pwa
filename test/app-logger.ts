@@ -205,15 +205,38 @@ void test("persisted sink bytes never contain message, URL or stack secrets", as
   });
 
   const err = new Error('login failed Password="dummy-msg-secret"');
-  (err as Error & { cause?: unknown }).cause = new Error(
+  // RE-STD-06: Authorization scheme+credentials must vanish from the
+  // cause chain, not just the scheme word.
+  const causeErr = new Error(
+    "upstream rejected Authorization: Bearer dummy-cause-auth",
+  );
+  (causeErr as Error & { cause?: unknown }).cause = new Error(
     "inner token=dummy-inner-token",
   );
+  (err as Error & { cause?: unknown }).cause = causeErr;
+  const stackErr = new Error("fetch failed");
+  stackErr.stack =
+    "Error: fetch failed\n" +
+    "    at f (/x.ts:1:1) Authorization: Basic dummy-stack-token\n" +
+    "    at g (/x.ts:2:2)";
   logger.emit({
     event: "auth.login.failed",
     level: "warn",
     message:
-      'auth rejected session="dummy-session-id" for https://user:dummy-urlpw@example.invalid/login?token=dummy-q',
-    details: { error: err, note: "see https://x.example/?session=dummy-s2" },
+      'auth rejected session="dummy-session-id" for https://user:dummy-urlpw@example.invalid/login?token=dummy-urltoken',
+    details: {
+      error: err,
+      note: "see https://x.example/?session=dummy-s2",
+      authVariants: [
+        "Authorization: Bearer dummy-bearer-token",
+        "authorization: basic dummy-basic-creds",
+        "AUTHORIZATION:  Bearer   dummy-caps-ws",
+        "Authorization:Bearer dummy-no-space",
+        "authorization = Bearer dummy-eq-form",
+        'Authorization: "Bearer dummy-quoted"',
+      ],
+      stackError: stackErr,
+    },
   });
   await logger.flush(500);
 
@@ -223,8 +246,16 @@ void test("persisted sink bytes never contain message, URL or stack secrets", as
     "dummy-inner-token",
     "dummy-session-id",
     "dummy-urlpw",
-    "dummy-q",
+    "dummy-urltoken",
     "dummy-s2",
+    "dummy-bearer-token",
+    "dummy-basic-creds",
+    "dummy-caps-ws",
+    "dummy-no-space",
+    "dummy-eq-form",
+    "dummy-quoted",
+    "dummy-cause-auth",
+    "dummy-stack-token",
   ])
     assert.equal(bytes.includes(sentinel), false, `${sentinel} leaked to sink`);
 });
