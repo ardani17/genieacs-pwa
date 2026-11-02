@@ -9,6 +9,7 @@ import {
   parse,
   stringify,
 } from "../../../../../lib/common/expression/parser.ts";
+import { evaluate } from "../../../../../lib/common/expression/util.ts";
 
 void test("search text becomes a quoted LIKE expression over identity fields", () => {
   const exp = buildSearchExpression('abc"def\\ghi/ü');
@@ -21,6 +22,49 @@ void test("search text becomes a quoted LIKE expression over identity fields", (
   // two surrounding % WE add — nothing extra from the raw text.
   const pct = text.split("%").length - 1;
   assert.equal(pct, 6);
+});
+
+void test("search BEHAVIOR: quotes, backslashes and wildcards match literally (RE-SPEC-07)", () => {
+  const devices = {
+    // exact-literal needles and the decoys they must NOT match
+    quote: { "DeviceID.ID": 'a"b' },
+    quoteDecoy: { "DeviceID.ID": "ab" },
+    backslash: { "DeviceID.ID": "a\\b" },
+    backslashDecoy: { "DeviceID.ID": "ab" },
+    percent: { "DeviceID.ID": "50%" },
+    // The reviewer's proof case: a bare "%" search used to match this.
+    unrelated: { "DeviceID.ID": "UNRELATED" },
+    underscore: { "DeviceID.ID": "a_b" },
+    underscoreDecoy: { "DeviceID.ID": "axb" },
+    unicode: { "DeviceID.ID": "ZüTE" },
+  };
+  const matches = (needle: string, dev: Record<string, unknown>): boolean =>
+    evaluate(buildSearchExpression(needle), dev, Date.now()) === true;
+
+  assert.equal(matches('a"b', devices.quote), true);
+  assert.equal(matches('a"b', devices.quoteDecoy), false);
+  assert.equal(matches("a\\b", devices.backslash), true);
+  assert.equal(matches("a\\b", devices.backslashDecoy), false);
+  // A bare % searches for a LITERAL percent sign, not everything.
+  assert.equal(matches("%", devices.percent), true);
+  assert.equal(matches("%", devices.unrelated), false);
+  assert.equal(matches("50%", devices.percent), true);
+  assert.equal(matches("_", devices.underscore), true);
+  assert.equal(matches("_", devices.underscoreDecoy), false);
+  assert.equal(matches("ü", devices.unicode), true);
+  // Current contract: LIKE without UPPER/LOWER is case-sensitive —
+  // pinned here so a semantic change is a deliberate decision.
+  assert.equal(matches("züte", devices.unicode), false);
+  // The serialized form stays parseable and equivalent end to end.
+  // (LIKE over a missing param yields SQL-null, not false — the helper
+  // normalizes to a plain boolean.)
+  const serialized = stringify(buildSearchExpression('a"b'));
+  assert.equal(matches('a"b', devices.quote), true);
+  assert.equal(evaluate(parse(serialized), devices.quote, Date.now()), true);
+  assert.notEqual(
+    evaluate(parse(serialized), devices.quoteDecoy, Date.now()),
+    true,
+  );
 });
 
 void test("createListQuery validates and resets page when the filter changes", () => {

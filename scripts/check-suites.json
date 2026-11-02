@@ -302,6 +302,12 @@
       "cwd": "apps/web",
       "command": "npm",
       "args": ["run", "test"]
+    },
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/test-ts.mjs", "test/integration/overview-config.ts"],
+      "artifacts": ["artifacts/tests/test/integration/overview-config.test.cjs"]
     }
   ],
   "M04-C": [

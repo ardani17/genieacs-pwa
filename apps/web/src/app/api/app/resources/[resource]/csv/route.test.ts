@@ -75,7 +75,11 @@ describe("resource CSV export", () => {
     const sent = new URLSearchParams(path.split("?")[1]);
     const filter = sent.get("filter") ?? "";
     expect(filter).toContain('_tags = "online"');
-    expect(filter).toContain("NO_MATCH");
+    // The needle's underscore is ESCAPED as a literal (RE-SPEC-07): the
+    // LIKE clauses carry NO\\_MATCH (one backslash in the pattern, two
+    // in the serialized text) with an explicit ESCAPE character.
+    expect(filter).toContain("NO\\\\_MATCH");
+    expect(filter).toContain('ESCAPE "\\\\"');
     expect(filter).toContain("AND");
   });
 });

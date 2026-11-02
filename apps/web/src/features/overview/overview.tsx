@@ -9,64 +9,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Status } from "@/components/ui/status";
 import { useSession } from "@/components/session-provider";
-
-interface OverviewSlice {
-  key: string;
-  label: string;
-  filter: string | null;
-  count: number | null;
-}
-
-interface OverviewChart {
-  key: string;
-  label: string;
-  slices: OverviewSlice[];
-}
-
-function readOverviewConfig(
-  uiConfig: Record<string, unknown> | undefined,
-): OverviewChart[] {
-  const overview = uiConfig?.["overview"] as
-    | {
-        charts?: Record<
-          string,
-          { label?: string; slices?: Record<string, unknown>[] }
-        >;
-        groups?: Record<string, { label?: string; charts?: string[] }>;
-      }
-    | undefined;
-  if (!overview) return [];
-
-  const charts: Record<string, OverviewChart> = {};
-  for (const [chartId, chart] of Object.entries(overview.charts ?? {})) {
-    const slices: OverviewSlice[] = Object.entries(chart.slices ?? {}).map(
-      ([sliceId, slice]) => {
-        const s = slice as { label?: string; filter?: string };
-        return {
-          key: sliceId,
-          label: s.label ?? sliceId,
-          filter: typeof s.filter === "string" ? s.filter : null,
-          count: null,
-        };
-      },
-    );
-    charts[chartId] = { key: chartId, label: chart.label ?? chartId, slices };
-  }
-
-  // Groups order the charts; ungrouped charts follow after.
-  const ordered: OverviewChart[] = [];
-  const seen = new Set<string>();
-  for (const group of Object.values(overview.groups ?? {}))
-    for (const chartId of group.charts ?? []) {
-      if (charts[chartId] && !seen.has(chartId)) {
-        ordered.push(charts[chartId]);
-        seen.add(chartId);
-      }
-    }
-  for (const [chartId, chart] of Object.entries(charts))
-    if (!seen.has(chartId)) ordered.push(chart);
-  return ordered;
-}
+import { readOverviewConfig, type OverviewChart } from "./overview-config";
 
 export function Overview() {
   const router = useRouter();

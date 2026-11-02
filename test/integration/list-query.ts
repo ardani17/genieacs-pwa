@@ -3,6 +3,17 @@ import assert from "node:assert/strict";
 import { startApp } from "../helpers/app.ts";
 import { collections } from "../../lib/db/db.ts";
 import { PROFILE_MATRIX } from "../fixtures/devices.ts";
+import { buildSearchExpression } from "../../apps/web/src/features/devices/query.ts";
+import { stringify as stringifyExpression } from "../../lib/common/expression/parser.ts";
+
+// The same shared search builder the BFF runtime uses (imported from
+// the features module the resource adapter itself calls), serialized
+// with the native stringify exactly like the adapter does.
+function buildDeviceFilter(needle: string): string {
+  const filter = buildSearchExpression(needle);
+  assert.ok(filter, "search expression must produce a filter");
+  return stringifyExpression(filter);
+}
 
 void test("server pagination: page1/page2/end with no missing or duplicated rows", async () => {
   const app = await startApp();
@@ -123,6 +134,63 @@ void test("CSV export masks secrets and escapes formulas, capped rows", async ()
     // The formula-looking parameter VALUE must not appear unescaped.
     assert.ok(!text.includes(',"=SUM(A1)"'));
     assert.ok(!text.includes("wpa-secret"));
+  } finally {
+    await app.stop();
+  }
+});
+
+// RE-SPEC-07: the BFF's search criteria must match literal
+// quotes/backslashes/wildcards against the REAL engine query path —
+// the same needle set the unit tests evaluate in memory.
+void test("search needles with quotes, backslashes and wildcards match literally", async () => {
+  const app = await startApp();
+  try {
+    await collections.devices.deleteMany({});
+    const ids = ['a"b', "a\b", "50%", "a_b", "UNRELATED"];
+    for (const id of ids) {
+      await collections.devices.insertOne({
+        _id: id,
+        _lastInform: new Date(),
+        _registered: new Date(),
+        DeviceID: {
+          ID: {
+            _value: id,
+            _type: "xsd:string",
+            _object: false,
+            _timestamp: 1,
+          },
+        },
+      } as never);
+    }
+
+    const searchFor = async (needle: string): Promise<string[]> => {
+      const res = await app.appRequest(
+        `/api/devices?filter=${encodeURIComponent(
+          // Build through the SAME shared builder the BFF runtime uses.
+          buildDeviceFilter(needle),
+        )}`,
+        {},
+        "operator",
+      );
+      assert.equal(
+        res.status,
+        200,
+        `query rejected for ${JSON.stringify(needle)}`,
+      );
+      const items = (await res.json()) as Record<string, unknown>[];
+      return items.map(
+        (item) => (item["DeviceID.ID"] as { value: [string] }).value[0],
+      );
+    };
+
+    assert.deepEqual(await searchFor('a"b'), ['a"b']);
+    assert.deepEqual(await searchFor("a\b"), ["a\b"]);
+    assert.deepEqual(await searchFor("%"), ["50%"]);
+    assert.deepEqual(await searchFor("_"), ["a_b"]);
+    assert.deepEqual(await searchFor("50%"), ["50%"]);
+    // The reviewer's proof case: a bare % used to match everything.
+    const pct = await searchFor("%");
+    assert.equal(pct.includes("UNRELATED"), false);
   } finally {
     await app.stop();
   }
