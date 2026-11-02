@@ -87,12 +87,24 @@ function redactUrl(value: string): string {
   }
 }
 
+// Separator between a sensitive key and its value, tolerating the
+// QUOTED KEY/VALUE forms free text actually carries: JSON-ish
+// `{"password":"x"}`, `'Authorization': 'Basic x'`, and the plain
+// `password: x` / `token = y`. A closing quote directly after the key
+// name must not shield the value from redaction. (Capturing: the
+// replacement re-emits key + separator and drops only the value.)
+const KV_SEPARATOR = /("\s*[:=]\s*"|'\s*[:=]\s*'|\s*[:=][ \t]*)/;
+
 // Free text (log messages, Error.message, stack lines) is sanitized as
 // a WHOLE: embedded URLs lose userinfo/credential query values, and
-// explicit `key=value` / `key: value` pairs under sensitive names drop
-// their value. Length stays bounded.
-const SENSITIVE_KV =
-  /\b(password|passwd|secret|token|api[_-]?key|apikey|authpassword|presharedkey|keypassphrase|credentials?|privatekey|jwt|session(?:id)?)\b(\s*"[^"]*"\s*|\s*'[^']*'\s*|\s*)([=:])[ \t]*("[^"]*"|'[^']*'|[^\s,;)}\]]+)/gi;
+// explicit key/value pairs under sensitive names — plain, JSON-quoted
+// or single-quoted — drop their value. Length stays bounded.
+const SENSITIVE_KV = new RegExp(
+  "\\b(password|passwd|secret|token|api[_-]?key|apikey|authpassword|presharedkey|keypassphrase|credentials?|privatekey|jwt|session(?:id)?)\\b" +
+    KV_SEPARATOR.source +
+    "(\"[^\"]*\"|'[^']*'|[^\\s,;)}\\]]+)",
+  "gi",
+);
 
 // Authorization values are scheme + credentials ("Bearer <token>",
 // "Basic <b64>"): the WHOLE value must go, not just the first word the
@@ -101,15 +113,19 @@ const SENSITIVE_KV =
 // scheme plus every following word up to a delimiter or end of line —
 // trailing prose words are deliberately over-redacted; a credential
 // surviving beats a readable log line. The word boundary also catches
-// Proxy-Authorization.
-const AUTH_HEADER =
-  /\b(authorization)\b(\s*"[^"]*"\s*|\s*'[^']*'\s*|\s*)([=:])[ \t]*("[^"]*"|'[^']*'|[^\s,;)}\]]+(?:[ \t]+[^\s,;)}\]]+)*)/gi;
+// Proxy-Authorization, and the separator form accepts quoted JSON keys.
+const AUTH_HEADER = new RegExp(
+  "\\b(authorization)\\b" +
+    KV_SEPARATOR.source +
+    "(\"[^\"]*\"|'[^']*'|[^\\s,;)}\\]]+(?:[ \\t]+[^\\s,;)}\\]]+)*)",
+  "gi",
+);
 
 export function sanitizeText(text: string): string {
   let out = text.slice(0, REDACT_MAX_STRING);
   out = out.replace(/https?:\/\/\S+/g, (m) => redactUrl(m));
-  out = out.replace(AUTH_HEADER, "$1$2$3 [REDACTED]");
-  out = out.replace(SENSITIVE_KV, "$1$2$3 [REDACTED]");
+  out = out.replace(AUTH_HEADER, "$1$2 [REDACTED]");
+  out = out.replace(SENSITIVE_KV, "$1$2 [REDACTED]");
   if (out.length > REDACT_MAX_STRING)
     out = out.slice(0, REDACT_MAX_STRING) + "…";
   return out;
@@ -299,6 +315,12 @@ export function createAppLogger(options: AppLoggerOptions): AppLogger {
         // sanitization as error messages.
         message: sanitizeText(partial.message ?? partial.event),
         ...(partial.requestId ? { requestId: partial.requestId } : {}),
+        // The inbound (trusted parent) correlation id travels WITH the
+        // minted id — dropping it here severed the parent/audit link the
+        // proxy records (contracts.md "inbound parent").
+        ...(partial.parentRequestId
+          ? { parentRequestId: partial.parentRequestId }
+          : {}),
         ...(partial.operationId ? { operationId: partial.operationId } : {}),
         ...(partial.actorId ? { actorId: partial.actorId } : {}),
         ...(partial.deviceId ? { deviceId: partial.deviceId } : {}),

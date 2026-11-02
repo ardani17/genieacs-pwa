@@ -21,6 +21,10 @@ export interface LogEvent {
   event: string;
   message: string;
   requestId?: string;
+  // Server-minted audit identity correlation: the inbound (trusted
+  // parent) id that preceded this request's requestId, when one was
+  // presented (contracts.md "identitas audit server, inbound parent").
+  parentRequestId?: string;
   operationId?: string;
   actorId?: string;
   deviceId?: string;

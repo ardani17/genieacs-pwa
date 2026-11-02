@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import { engineFetch, nativeCookieFrom } from "@/server/genieacs-client";
+import {
+  correlationHeaders,
+  requestContextFrom,
+} from "@/server/request-context";
 
 export const dynamic = "force-dynamic";
 
@@ -7,9 +11,10 @@ export const dynamic = "force-dynamic";
 // there; the browser supplies ONLY the device id (no host/port args).
 export async function POST(
   request: Request,
-  ctx: { params: Promise<{ id: string }> },
+  paramsCtx: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
-  const { id } = await ctx.params;
+  const ctx = requestContextFrom(request);
+  const { id } = await paramsCtx.params;
   const cookie = nativeCookieFrom(request.headers.get("cookie"));
   if (!cookie)
     return NextResponse.json(
@@ -20,15 +25,15 @@ export async function POST(
           message: "Not authenticated",
           retryable: false,
         },
-        requestId: "device-diagnostics",
+        requestId: ctx.requestId,
       },
-      { status: 401, headers: { "Cache-Control": "no-store" } },
+      { status: 401, headers: correlationHeaders(ctx) },
     );
 
   try {
     const upstream = await engineFetch(
       `/api/app/devices/${encodeURIComponent(id)}/diagnostics`,
-      { method: "POST", cookie, timeoutMs: 8000 },
+      { method: "POST", cookie, requestId: ctx.requestId, timeoutMs: 8000 },
     );
     if (upstream.status === 404)
       return NextResponse.json(
@@ -39,9 +44,9 @@ export async function POST(
             message: "Perangkat tidak ditemukan",
             retryable: false,
           },
-          requestId: "device-diagnostics",
+          requestId: ctx.requestId,
         },
-        { status: 404, headers: { "Cache-Control": "no-store" } },
+        { status: 404, headers: correlationHeaders(ctx) },
       );
     if (upstream.status === 403)
       return NextResponse.json(
@@ -52,9 +57,9 @@ export async function POST(
             message: "Tidak ada izin diagnostik",
             retryable: false,
           },
-          requestId: "device-diagnostics",
+          requestId: ctx.requestId,
         },
-        { status: 403, headers: { "Cache-Control": "no-store" } },
+        { status: 403, headers: correlationHeaders(ctx) },
       );
     if (!upstream.ok)
       return NextResponse.json(
@@ -65,14 +70,14 @@ export async function POST(
             message: "Diagnostik tidak tersedia",
             retryable: true,
           },
-          requestId: "device-diagnostics",
+          requestId: ctx.requestId,
         },
-        { status: 503, headers: { "Cache-Control": "no-store" } },
+        { status: 503, headers: correlationHeaders(ctx) },
       );
     const data = await upstream.json();
     return NextResponse.json(
-      { ok: true, data, requestId: "device-diagnostics" },
-      { headers: { "Cache-Control": "no-store" } },
+      { ok: true, data, requestId: ctx.requestId },
+      { headers: correlationHeaders(ctx) },
     );
   } catch {
     return NextResponse.json(
@@ -83,9 +88,9 @@ export async function POST(
           message: "Diagnostik kehabisan waktu",
           retryable: true,
         },
-        requestId: "device-diagnostics",
+        requestId: ctx.requestId,
       },
-      { status: 503, headers: { "Cache-Control": "no-store" } },
+      { status: 503, headers: correlationHeaders(ctx) },
     );
   }
 }

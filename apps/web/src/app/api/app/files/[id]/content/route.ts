@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import { engineFetch, nativeCookieFrom } from "@/server/genieacs-client";
+import {
+  correlationHeaders,
+  requestContextFrom,
+  type RequestContext,
+} from "@/server/request-context";
 import { FILE_UPLOAD_MAX_BYTES } from "@contracts/resources.ts";
 
 export const dynamic = "force-dynamic";
@@ -10,16 +15,17 @@ export const dynamic = "force-dynamic";
 // allowlist. The browser cancelling aborts the upstream request.
 export async function GET(
   request: Request,
-  ctx: { params: Promise<{ id: string }> },
+  paramsCtx: { params: Promise<{ id: string }> },
 ): Promise<Response> {
-  const { id } = await ctx.params;
+  const ctx = requestContextFrom(request);
+  const { id } = await paramsCtx.params;
   const cookie = nativeCookieFrom(request.headers.get("cookie"));
-  if (!cookie) return unauthenticated();
+  if (!cookie) return unauthenticated(ctx);
 
   try {
     const upstream = await engineFetch(
       `/api/blob/files/${encodeURIComponent(id)}`,
-      { cookie, timeoutMs: 30_000 },
+      { cookie, requestId: ctx.requestId, timeoutMs: 30_000 },
     );
     if (!upstream.ok)
       return NextResponse.json(
@@ -37,9 +43,9 @@ export async function GET(
             message: "Request rejected",
             retryable: upstream.status >= 500,
           },
-          requestId: "file-content",
+          requestId: ctx.requestId,
         },
-        { status: upstream.status, headers: { "Cache-Control": "no-store" } },
+        { status: upstream.status, headers: correlationHeaders(ctx) },
       );
 
     const disposition = upstream.headers.get("content-disposition") ?? "";
@@ -52,7 +58,7 @@ export async function GET(
         "Content-Type":
           upstream.headers.get("content-type") ?? "application/octet-stream",
         "Content-Disposition": `attachment; filename="${safeName}"`,
-        "Cache-Control": "no-store",
+        ...correlationHeaders(ctx),
       },
     });
   } catch {
@@ -64,9 +70,9 @@ export async function GET(
           message: "Upstream unavailable",
           retryable: true,
         },
-        requestId: "file-content",
+        requestId: ctx.requestId,
       },
-      { status: 502, headers: { "Cache-Control": "no-store" } },
+      { status: 502, headers: correlationHeaders(ctx) },
     );
   }
 }
@@ -80,11 +86,12 @@ const METADATA_ALLOWLIST = [
 
 export async function PUT(
   request: Request,
-  ctx: { params: Promise<{ id: string }> },
+  paramsCtx: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
-  const { id } = await ctx.params;
+  const ctx = requestContextFrom(request);
+  const { id } = await paramsCtx.params;
   const cookie = nativeCookieFrom(request.headers.get("cookie"));
-  if (!cookie) return unauthenticated() as NextResponse;
+  if (!cookie) return unauthenticated(ctx) as NextResponse;
 
   const declared = Number(request.headers.get("content-length") ?? "0");
   if (declared > FILE_UPLOAD_MAX_BYTES)
@@ -96,9 +103,9 @@ export async function PUT(
           message: "File exceeds 100MiB limit",
           retryable: false,
         },
-        requestId: "file-upload",
+        requestId: ctx.requestId,
       },
-      { status: 413, headers: { "Cache-Control": "no-store" } },
+      { status: 413, headers: correlationHeaders(ctx) },
     );
 
   const headers: Record<string, string> = {
@@ -117,6 +124,9 @@ export async function PUT(
         headers: {
           ...headers,
           Cookie: `genieacs-ui-jwt=${cookie}`,
+          // Correlation on the raw streaming fetch (engineFetch cannot
+          // carry a duplex body): the id joins engine access logs.
+          "X-Request-Id": ctx.requestId,
         },
         body: request.body,
         // @ts-expect-error Node undici duplex streaming
@@ -126,8 +136,8 @@ export async function PUT(
     );
     if (upstream.ok)
       return NextResponse.json(
-        { ok: true, data: { uploaded: true }, requestId: "file-upload" },
-        { headers: { "Cache-Control": "no-store" } },
+        { ok: true, data: { uploaded: true }, requestId: ctx.requestId },
+        { headers: correlationHeaders(ctx) },
       );
     return NextResponse.json(
       {
@@ -137,11 +147,11 @@ export async function PUT(
           message: "Upload rejected",
           retryable: upstream.status >= 500,
         },
-        requestId: "file-upload",
+        requestId: ctx.requestId,
       },
       {
         status: upstream.status === 403 ? 403 : 502,
-        headers: { "Cache-Control": "no-store" },
+        headers: correlationHeaders(ctx),
       },
     );
   } catch {
@@ -153,14 +163,14 @@ export async function PUT(
           message: "Upstream unavailable",
           retryable: true,
         },
-        requestId: "file-upload",
+        requestId: ctx.requestId,
       },
-      { status: 502, headers: { "Cache-Control": "no-store" } },
+      { status: 502, headers: correlationHeaders(ctx) },
     );
   }
 }
 
-function unauthenticated(): Response {
+function unauthenticated(ctx: RequestContext): Response {
   return NextResponse.json(
     {
       ok: false,
@@ -169,8 +179,8 @@ function unauthenticated(): Response {
         message: "Not authenticated",
         retryable: false,
       },
-      requestId: "file-content",
+      requestId: ctx.requestId,
     },
-    { status: 401, headers: { "Cache-Control": "no-store" } },
+    { status: 401, headers: correlationHeaders(ctx) },
   );
 }

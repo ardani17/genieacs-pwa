@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import { engineFetch, nativeCookieFrom } from "@/server/genieacs-client";
+import {
+  correlationHeaders,
+  requestContextFrom,
+} from "@/server/request-context";
 import { maskDeviceCsv } from "@/server/mask-device";
 
 export const dynamic = "force-dynamic";
@@ -9,9 +13,10 @@ export const dynamic = "force-dynamic";
 // disposition. No JSON envelope.
 export async function GET(
   request: Request,
-  ctx: { params: Promise<{ id: string }> },
+  paramsCtx: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
-  const { id } = await ctx.params;
+  const ctx = requestContextFrom(request);
+  const { id } = await paramsCtx.params;
   const cookie = nativeCookieFrom(request.headers.get("cookie"));
   if (!cookie)
     return NextResponse.json(
@@ -22,15 +27,15 @@ export async function GET(
           message: "Not authenticated",
           retryable: false,
         },
-        requestId: "device-csv",
+        requestId: ctx.requestId,
       },
-      { status: 401, headers: { "Cache-Control": "no-store" } },
+      { status: 401, headers: correlationHeaders(ctx) },
     );
 
   try {
     const upstream = await engineFetch(
       `/api/devices/${encodeURIComponent(id)}.csv`,
-      { cookie, timeoutMs: 15_000 },
+      { cookie, requestId: ctx.requestId, timeoutMs: 15_000 },
     );
     if (upstream.status === 404)
       return NextResponse.json(
@@ -41,9 +46,9 @@ export async function GET(
             message: "Perangkat tidak ditemukan",
             retryable: false,
           },
-          requestId: "device-csv",
+          requestId: ctx.requestId,
         },
-        { status: 404, headers: { "Cache-Control": "no-store" } },
+        { status: 404, headers: correlationHeaders(ctx) },
       );
     if (upstream.status === 403)
       return NextResponse.json(
@@ -54,9 +59,9 @@ export async function GET(
             message: "Tidak ada izin",
             retryable: false,
           },
-          requestId: "device-csv",
+          requestId: ctx.requestId,
         },
-        { status: 403, headers: { "Cache-Control": "no-store" } },
+        { status: 403, headers: correlationHeaders(ctx) },
       );
     if (!upstream.ok)
       return NextResponse.json(
@@ -67,9 +72,9 @@ export async function GET(
             message: "Gagal membuat CSV",
             retryable: true,
           },
-          requestId: "device-csv",
+          requestId: ctx.requestId,
         },
-        { status: 503, headers: { "Cache-Control": "no-store" } },
+        { status: 503, headers: correlationHeaders(ctx) },
       );
 
     // Secret parameter values are masked BEFORE the bytes cross the
@@ -81,7 +86,7 @@ export async function GET(
       headers: {
         "Content-Type": "text/csv; charset=utf-8",
         "Content-Disposition": `attachment; filename="${safeName}"`,
-        "Cache-Control": "no-store",
+        ...correlationHeaders(ctx),
       },
     });
   } catch {
@@ -93,9 +98,9 @@ export async function GET(
           message: "Gagal membuat CSV",
           retryable: true,
         },
-        requestId: "device-csv",
+        requestId: ctx.requestId,
       },
-      { status: 503, headers: { "Cache-Control": "no-store" } },
+      { status: 503, headers: correlationHeaders(ctx) },
     );
   }
 }

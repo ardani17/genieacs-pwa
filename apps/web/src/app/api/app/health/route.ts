@@ -1,4 +1,8 @@
 import { NextResponse } from "next/server";
+import {
+  correlationHeaders,
+  requestContextFrom,
+} from "@/server/request-context";
 
 // Web health: stays 200 while the VPN is down or the backend is
 // unreachable — it reports backend reachability as data, never as an
@@ -9,7 +13,8 @@ export const dynamic = "force-dynamic";
 const ENGINE_STATUS_URL =
   process.env.ENGINE_STATUS_URL ?? "http://ui:7583/status";
 
-export async function GET() {
+export async function GET(request: Request) {
+  const ctx = requestContextFrom(request);
   let backendReachable = false;
   try {
     const response = await fetch(ENGINE_STATUS_URL, {
@@ -29,8 +34,8 @@ export async function GET() {
         backendReachable,
         observedAt: new Date().toISOString(),
       },
-      requestId: "health",
+      requestId: ctx.requestId,
     },
-    { headers: { "Cache-Control": "no-store" } },
+    { headers: correlationHeaders(ctx) },
   );
 }

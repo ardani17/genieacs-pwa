@@ -53,6 +53,71 @@ describe("clientIpForRateLimit", () => {
       delete process.env.TRUSTED_PROXY_HOPS;
     }
   });
+
+  it("keys on the server-injected peer ONLY with the proxy marker (RE-STD-08)", () => {
+    delete process.env.TRUSTED_PROXY_HOPS;
+    try {
+      // Marker + server-derived XFF (the proxy stripped the client chain
+      // and Next injected the socket peer): separate buckets per peer.
+      expect(
+        clientIpForRateLimit(
+          requestWith({
+            "x-app-client-addr": "1",
+            "X-Forwarded-For": "203.0.113.7",
+          }),
+        ),
+      ).toBe("203.0.113.7");
+      // ::ffff: IPv6-mapped normalization keys consistently.
+      expect(
+        clientIpForRateLimit(
+          requestWith({
+            "x-app-client-addr": "1",
+            "X-Forwarded-For": "::ffff:203.0.113.7",
+          }),
+        ),
+      ).toBe("203.0.113.7");
+      // Marker without an XFF value falls back to "direct".
+      expect(
+        clientIpForRateLimit(requestWith({ "x-app-client-addr": "1" })),
+      ).toBe("direct");
+      // Spoofed XFF WITHOUT the marker is still discarded: one shared
+      // bucket, rotating the header cannot open a new one.
+      expect(
+        clientIpForRateLimit(requestWith({ "X-Forwarded-For": "203.0.113.7" })),
+      ).toBe("direct");
+      // A forged marker value other than "1" is not the proxy's.
+      expect(
+        clientIpForRateLimit(
+          requestWith({
+            "x-app-client-addr": "yes",
+            "X-Forwarded-For": "203.0.113.7",
+          }),
+        ),
+      ).toBe("direct");
+    } finally {
+      delete process.env.TRUSTED_PROXY_HOPS;
+    }
+  });
+
+  it("ignores the marker entirely behind trusted proxies (hops>0)", () => {
+    process.env.TRUSTED_PROXY_HOPS = "1";
+    try {
+      // The edge chain is authoritative; a stray marker changes nothing.
+      expect(
+        clientIpForRateLimit(
+          requestWith({
+            "x-app-client-addr": "1",
+            "X-Forwarded-For": "spoofed, 10.0.0.9",
+          }),
+        ),
+      ).toBe("10.0.0.9");
+      expect(
+        clientIpForRateLimit(requestWith({ "x-app-client-addr": "1" })),
+      ).toBe("direct");
+    } finally {
+      delete process.env.TRUSTED_PROXY_HOPS;
+    }
+  });
 });
 
 describe("cookie contract", () => {

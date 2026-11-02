@@ -70,6 +70,23 @@ header entirely (rotating it cannot open new rate-limit buckets). The task proxy
 timeout is 310s to stay above the engine's 300s task horizon. This package never
 issues real domains/certificates.
 
+## Direct access and the login rate limiter
+
+Without the HTTPS overlay (`TRUSTED_PROXY_HOPS=0`, the default) the rate limiter
+still keys per client address: the app's edge proxy strips the client-supplied
+`X-Forwarded-For` and marks the request, and Next's own HTTP server re-injects
+the header with the TCP peer address it accepted (`base-server` fills the absent
+header from `req.socket.remoteAddress`). Only that server-derived value — proven
+by the proxy marker — is trusted, so a spoofed `X-Forwarded-For` or a forged
+marker never opens a fresh bucket.
+
+Topology caveat: with the default `WEB_BIND=127.0.0.1:3000`, Docker Desktop's
+userland proxy usually makes every connection appear to come from the bridge
+gateway, so direct deployments see one shared bucket per username. Multi-client
+direct access needs source-address-preserving publishing (`WEB_BIND=0.0.0.0`
+with DNAT on a Linux host) or, robustly, the HTTPS overlay above with
+`TRUSTED_PROXY_HOPS=1` — that is the supported multi-client shape.
+
 ## Image digest policy
 
 Every image is referenced `tag@digest` (see `docker/runtime-images.json` for

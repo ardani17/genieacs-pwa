@@ -11,7 +11,12 @@ import { randomUUID } from "node:crypto";
 
 const logUrl = process.env.LOG_URL ?? "http://127.0.0.1:9428";
 const appLogFile = process.env.APP_LOG_FILE ?? "/logs/smoke/smoke.ndjson";
-const pollMs = 10_000;
+// VictoriaLogs makes ingested rows searchable on its internal flush
+// cadence: measured end-to-end latency for a single row varies (~6s
+// warm, 13s+ after a cold restart), so the poll budget must accommodate
+// the flush, not just the transport. The VALIDATION below (exact
+// requestId + event + message on the query result) is unchanged.
+const pollMs = 30_000;
 
 const requestId = randomUUID();
 const event = {
