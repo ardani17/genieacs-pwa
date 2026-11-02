@@ -1,0 +1,74 @@
+# E2E overlay for the check project: adds the ENGINE UI service and the
+# fixture seeder so browser tests exercise the REAL authenticated stack
+# (BFF login -> engine session -> device data). The base compose.test.yaml
+# deliberately ships WITHOUT the engine for the backend-down acceptance;
+# this overlay is the with-engine scenario, kept as a separate file so
+# both stay honest.
+#
+# Usage:
+#   docker compose -f compose.test.yaml -f compose.e2e.yaml up \
+#     --abort-on-container-exit --exit-code-from browser-tests
+
+services:
+  ui:
+    build:
+      context: .
+      dockerfile: docker/engine/Dockerfile
+    image: genieacs-pwa-engine:local
+    command: ["node", "dist/bin/genieacs-ui"]
+    environment:
+      GENIEACS_MONGODB_CONNECTION_URL: mongodb://check_fixture:check-fixture-only@mongo:27017/genieacs_plan_test?authSource=admin
+      GENIEACS_UI_JWT_SECRET: check-fixture-jwt-secret
+      # Same port convention as the production engine services.
+      GENIEACS_UI_PORT: "7583"
+      GENIEACS_UI_WORKER_PROCESSES: "0"
+    healthcheck:
+      test: ["CMD", "node", "docker/health.mjs", "7583"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 10s
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - default
+
+  seed:
+    build:
+      context: .
+      dockerfile: docker/development/Dockerfile
+    image: genieacs-pwa-verify:local
+    working_dir: /workspace
+    environment:
+      SEED_HOST: mongo:27017
+      SEED_USER: check_fixture
+      SEED_PASSWORD: check-fixture-only
+    volumes:
+      - .:/workspace
+      - verify_modules:/workspace/node_modules
+    command: ["node", "scripts/fixtures/e2e-seed.mjs"]
+    depends_on:
+      ui:
+        condition: service_healthy
+
+  web:
+    environment:
+      # The real engine UI (overriding the base stack's no-engine
+      # acceptance setup): sessions, device data and health all resolve.
+      GENIEACS_UI_URL: http://ui:7583
+      ENGINE_STATUS_URL: http://ui:7583/status
+    depends_on:
+      ui:
+        condition: service_healthy
+      seed:
+        condition: service_completed_successfully
+
+  browser-tests:
+    depends_on:
+      web:
+        condition: service_started
+      ui:
+        condition: service_healthy
+      seed:
+        condition: service_completed_successfully

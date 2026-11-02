@@ -4,8 +4,8 @@
 // installer after users exist changes nothing.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { startApp } from "./helpers/app.ts";
-import { collections } from "../lib/db/db.ts";
+import { startApp } from "../helpers/app.ts";
+import { collections } from "../../lib/db/db.ts";
 
 const CHOSEN_PASSWORD = "Chosen-Installer-2026!";
 

@@ -13,7 +13,8 @@ test("operator mobile navigation omits global log and keeps status", async ({
   await page.setViewportSize({ width: 360, height: 800 });
   await page.goto("/login");
   await page.getByLabel("Nama pengguna").fill("operator");
-  await page.getByLabel("Password", { exact: true }).fill("Fixture-Only-2026!");
+  // The Field component marks required labels with " *".
+  await page.getByLabel(/^Password/).fill("Fixture-Only-2026!");
   await page.getByRole("button", { name: "Masuk", exact: true }).click();
   await expect(
     page.getByRole("navigation", { name: "Navigasi utama" }),
@@ -29,7 +30,7 @@ test("login rejects wrong credentials with a generic error", async ({
   await page.setViewportSize({ width: 768, height: 1024 });
   await page.goto("/login");
   await page.getByLabel("Nama pengguna").fill("operator");
-  await page.getByLabel("Password", { exact: true }).fill("wrong-password");
+  await page.getByLabel(/^Password/).fill("wrong-password");
   await page.getByRole("button", { name: "Masuk", exact: true }).click();
   await expect(page.getByRole("status")).toContainText(/salah|percobaan/);
   await expect(page).toHaveURL(/\/login/);
