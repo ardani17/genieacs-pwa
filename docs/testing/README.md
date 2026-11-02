@@ -14,6 +14,19 @@ volumes, or production databases.
   - `verify` — the pinned Node 24.22.2 tooling image with the repository bound
     at `/workspace`, project-scoped `node_modules` and npm cache volumes, and
     `MONGO_URL` pointing at database `genieacs_plan_test`.
+- `compose.e2e.yaml` — overlay adding the ENGINE `ui` service plus the
+  fixture seeder (`scripts/fixtures/e2e-seed.mjs`: identities with native
+  pbkdf2 hashes, permission docs, TEST- devices with a secret parameter)
+  and pointing `web` at the engine. The base stack ships WITHOUT the
+  engine on purpose (backend-down acceptance); browser tests require this
+  overlay:
+
+  ```sh
+  docker compose -p genieacs-pwa-check -f compose.test.yaml -f compose.e2e.yaml up \
+    --build --abort-on-container-exit --exit-code-from browser-tests \
+    mongo victorialogs vector ui seed web browser-tests
+  ```
+
 - `scripts/check.mjs` — suite runner (`node scripts/check.mjs <id>|all`). Spawns
   each registered command as argv (no shell), refuses cwds outside the
   repository, fails fast on the first nonzero child, and validates that required
@@ -36,10 +49,14 @@ volumes, or production databases.
 
 ```sh
 docker compose -p genieacs-pwa-check -f compose.test.yaml build verify
-docker compose -p genieacs-pwa-check -f compose.test.yaml up -d mongo
+docker compose -p genieacs-pwa-check -f compose.test.yaml up -d mongo victorialogs vector web
 docker compose -p genieacs-pwa-check -f compose.test.yaml run --rm verify node scripts/check.mjs all
 docker compose -p genieacs-pwa-check -f compose.test.yaml down
 ```
+
+CI runs the same registry as the required `packages` job (plus an `e2e`
+job with the overlay above), so an unregistered or failing suite blocks
+the pull request — there is no missing-evidence exit 0.
 
 Before `compose.test.yaml` provides a service (early packages), the same
 commands run through the dev tooling container:

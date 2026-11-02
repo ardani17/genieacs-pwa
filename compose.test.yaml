@@ -87,6 +87,11 @@ services:
         target: /etc/vector/vector.yaml
     depends_on:
       - victorialogs
+      # The web image bakes /logs/web (uid 10001) into the shared volume
+      # on FIRST initialization; vector mounting the empty volume first
+      # would skip that, leaving web unable to create its directory on a
+      # read-only root. Start after web.
+      - web
 
   web:
     build:
@@ -129,6 +134,11 @@ services:
     volumes:
       - .:/workspace
       - browser_test_modules:/workspace/apps/web/node_modules
+    # The Playwright global setup logs the fixture identities in through
+    # the REAL BFF, which needs the engine UI: run this service with the
+    # compose.e2e.yaml overlay (engine + fixture seed), e.g.
+    #   docker compose -f compose.test.yaml -f compose.e2e.yaml up \
+    #     --abort-on-container-exit --exit-code-from browser-tests
     command: ["npx", "playwright", "test"]
 
 configs:

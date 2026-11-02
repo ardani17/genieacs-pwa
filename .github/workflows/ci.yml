@@ -56,8 +56,7 @@ jobs:
       - name: Check formatting
         run: npx prettier --check --prose-wrap always .
       - name: Lint TypeScript
-        run:
-          npx eslint 'bin/*.ts' 'lib/**/*.ts' 'ui/**/*.ts' 'test/**/*.ts'
+        run: npx eslint 'bin/*.ts' 'lib/**/*.ts' 'ui/**/*.ts' 'test/**/*.ts'
           'build/**/*.ts'
       - name: Check types
         run: npx tsc --noEmit
@@ -82,3 +81,49 @@ jobs:
         run: |
           npm run build --prefix apps/web
           test -f apps/web/.next/standalone/apps/web/server.js
+
+  # REQUIRED package gate: every suite registered in
+  # scripts/check-suites.json runs against the isolated fixture stack
+  # (auth-enabled throwaway Mongo, Vector, VictoriaLogs) via the
+  # registry runner. check.mjs fails fast on the first nonzero child,
+  # so one failing nested test fails this job — no missing-evidence
+  # exit 0.
+  packages:
+    needs: branch-policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Build verification images
+        run: docker compose -f compose.test.yaml build verify victorialogs vector web
+      - name: Start the isolated fixture stack
+        run: docker compose -f compose.test.yaml up -d mongo victorialogs vector web
+      - name: Prime the web workspace dependencies
+        run: >
+          docker compose -f compose.test.yaml run --rm verify npm ci
+          --prefix apps/web --no-audit --no-fund
+      - name: Run every registered package suite
+        run: docker compose -f compose.test.yaml run --rm verify node scripts/check.mjs all
+      - name: Tear down the fixture stack
+        if: always()
+        run: docker compose -f compose.test.yaml down -v --remove-orphans
+
+  # REQUIRED browser gate: Playwright against the REAL stack — engine
+  # UI, fixture identities/devices, BFF login — through the e2e overlay
+  # (compose.test.yaml alone is the no-engine acceptance scenario).
+  e2e:
+    needs: branch-policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Browser tests against the engine-backed stack
+        run: >
+          docker compose -f compose.test.yaml -f compose.e2e.yaml up
+          --build -d mongo victorialogs vector ui seed web
+          && docker compose -f compose.test.yaml -f compose.e2e.yaml up
+          --abort-on-container-exit --exit-code-from browser-tests
+          browser-tests
+      - name: Tear down the e2e stack
+        if: always()
+        run: docker compose -f compose.test.yaml -f compose.e2e.yaml down -v --remove-orphans

@@ -28,6 +28,57 @@
       ]
     }
   ],
+  "M01-C": [
+    {
+      "cwd": ".",
+      "command": "npm",
+      "args": ["--prefix", "apps/web", "run", "typecheck"]
+    },
+    {
+      "cwd": ".",
+      "command": "npm",
+      "args": ["--prefix", "apps/web", "run", "test"],
+      "artifacts": []
+    },
+    {
+      "cwd": ".",
+      "command": "npm",
+      "args": ["--prefix", "apps/web", "run", "build"],
+      "artifacts": ["apps/web/.next/BUILD_ID"]
+    }
+  ],
+  "M01-D": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": [
+        "--test",
+        "scripts/preflight.test.mjs",
+        "scripts/compose-static.test.mjs"
+      ]
+    }
+  ],
+  "M01-E": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/test-ts.mjs", "test/app-logger.ts"],
+      "artifacts": ["artifacts/tests/test/app-logger.test.cjs"]
+    }
+  ],
+  "M01-F": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/test-ts.mjs", "test/integration/log-pipeline.ts"],
+      "artifacts": ["artifacts/tests/test/integration/log-pipeline.test.cjs"]
+    },
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/log-smoke.mjs"]
+    }
+  ],
   "M01-S1": [
     {
       "cwd": ".",
@@ -132,57 +183,6 @@
       "cwd": ".",
       "command": "node",
       "args": ["--test", "scripts/security/github-alert-gate.test.mjs"]
-    }
-  ],
-  "M01-C": [
-    {
-      "cwd": ".",
-      "command": "npm",
-      "args": ["--prefix", "apps/web", "run", "typecheck"]
-    },
-    {
-      "cwd": ".",
-      "command": "npm",
-      "args": ["--prefix", "apps/web", "run", "test"],
-      "artifacts": []
-    },
-    {
-      "cwd": ".",
-      "command": "npm",
-      "args": ["--prefix", "apps/web", "run", "build"],
-      "artifacts": ["apps/web/.next/BUILD_ID"]
-    }
-  ],
-  "M01-D": [
-    {
-      "cwd": ".",
-      "command": "node",
-      "args": [
-        "--test",
-        "scripts/preflight.test.mjs",
-        "scripts/compose-static.test.mjs"
-      ]
-    }
-  ],
-  "M01-E": [
-    {
-      "cwd": ".",
-      "command": "node",
-      "args": ["scripts/test-ts.mjs", "test/app-logger.ts"],
-      "artifacts": ["artifacts/tests/test/app-logger.test.cjs"]
-    }
-  ],
-  "M01-F": [
-    {
-      "cwd": ".",
-      "command": "node",
-      "args": ["scripts/test-ts.mjs", "test/integration/log-pipeline.ts"],
-      "artifacts": ["artifacts/tests/test/integration/log-pipeline.test.cjs"]
-    },
-    {
-      "cwd": ".",
-      "command": "node",
-      "args": ["scripts/log-smoke.mjs"]
     }
   ],
   "M02-A": [
@@ -306,6 +306,23 @@
       "cwd": "apps/web",
       "command": "npm",
       "args": ["run", "test"]
+    }
+  ],
+  "REV-AUTH": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/test-ts.mjs", "test/session.ts"]
+    },
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/test-ts.mjs", "test/app-permissions.ts"]
+    },
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/test-ts.mjs", "test/integration/init-install.ts"]
     }
   ]
 }
