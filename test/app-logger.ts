@@ -211,7 +211,8 @@ void test("persisted sink bytes never contain message, URL or stack secrets", as
   logger.emit({
     event: "auth.login.failed",
     level: "warn",
-    message: 'auth rejected session="dummy-session-id" for https://user:dummy-urlpw@example.invalid/login?token=dummy-q',
+    message:
+      'auth rejected session="dummy-session-id" for https://user:dummy-urlpw@example.invalid/login?token=dummy-q',
     details: { error: err, note: "see https://x.example/?session=dummy-s2" },
   });
   await logger.flush(500);
