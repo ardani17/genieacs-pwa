@@ -140,13 +140,17 @@ before(async () => {
   // refresh boundary; wait one window out so seeded users are visible.
   await delay(5200);
 
+  // Tokens follow the session contract: finite iat/exp within the 8h
+  // absolute cap (the middleware rejects expiry-less tokens).
   adminToken = jwt.sign(
     { username: "compat-admin", authMethod: "local" },
     JWT_SECRET,
+    { expiresIn: 8 * 3600 },
   );
   restrictedToken = jwt.sign(
     { username: "compat-restricted", authMethod: "local" },
     JWT_SECRET,
+    { expiresIn: 8 * 3600 },
   );
 
   // Boot through lib/server.ts exactly like bin/genieacs-ui: its connection
