@@ -87,6 +87,21 @@ direct access needs source-address-preserving publishing (`WEB_BIND=0.0.0.0`
 with DNAT on a Linux host) or, robustly, the HTTPS overlay above with
 `TRUSTED_PROXY_HOPS=1` — that is the supported multi-client shape.
 
+## Engine structured logs
+
+The `ui` service also writes to the shared log volume
+(`GENIEACS_UI_APP_LOG_FILE=/logs/ui/app.ndjson`): sanitized auth/permission
+events (login success/failure, permission denials) flow through the same
+Vector→VictoriaLogs pipeline as the web service's, with `service: "ui"` and the
+`x-request-Id` the BFF forwards, so engine events join the BFF's per request id.
+The events are emitted IN PARALLEL to the legacy stdout logger — CLI/journald
+output is unchanged, and with the variable unset (bare `genieacs-ui` CLI)
+nothing is written at all. Each engine service writes its own subdirectory
+(`/logs/ui`; nbi/cwmp/fs can adopt the same pattern later) — one file per
+process keeps the app logger's rename-rotation safe, and
+`GENIEACS_UI_WORKER_PROCESSES=0` (pinned in compose) keeps each service
+single-process.
+
 ## Image digest policy
 
 Every image is referenced `tag@digest` (see `docker/runtime-images.json` for

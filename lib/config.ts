@@ -54,6 +54,10 @@ const options = {
   UI_SSL_KEY: { type: "string", default: "" },
   UI_LOG_FILE: { type: "path", default: "" },
   UI_ACCESS_LOG_FILE: { type: "path", default: "" },
+  // Structured app-log sink (NDJSON -> shared volume -> Vector ->
+  // VictoriaLogs). Empty = DISABLED: the engine stays on the legacy
+  // logger only, byte-identical to upstream CLI behavior.
+  UI_APP_LOG_FILE: { type: "path", default: "" },
   UI_JWT_SECRET: { type: "string", default: "" },
 
   UDP_CONNECTION_REQUEST_PORT: { type: "int", default: 0 },

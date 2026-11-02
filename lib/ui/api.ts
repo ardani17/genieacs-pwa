@@ -6,6 +6,7 @@ import * as apiFunctions from "../api-functions.ts";
 import { evaluate, and, extractParams } from "../common/expression/util.ts";
 import { parse } from "../common/expression/parser.ts";
 import * as logger from "../logger.ts";
+import { emitPermissionDenied } from "../engine-app-logger.ts";
 import { getConfig } from "../ui/local-cache.ts";
 import { Expression, Task } from "../types.ts";
 import { generateSalt, hashPassword } from "../auth.ts";
@@ -23,8 +24,15 @@ const router = new Router();
 export default router;
 
 function logUnauthorizedWarning(log): void {
+  const action = log.message;
+  // Captured BEFORE the legacy call: lib/logger.ts's flatten MUTATES
+  // the log object (and deletes .context) while building its record.
+  const ctx = log.context;
   log.message += " not authorized";
   logger.accessWarn(log);
+  // Structured pipeline event IN PARALLEL (no-op unless
+  // UI_APP_LOG_FILE is configured); the legacy warn above is untouched.
+  emitPermissionDenied(ctx, action);
 }
 
 const RESOURCE_DELETE = 1 << 0;

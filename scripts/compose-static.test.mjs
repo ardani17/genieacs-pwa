@@ -109,3 +109,43 @@ test("https overlay is read-only with mounted certs and no auto issuance", () =>
   );
   assert.ok(caddyfile.includes("auto_https off"));
 });
+
+// RE-STD-09B wiring: the engine ui service is a structured-log writer on
+// the shared volume, ordered before vector; the e2e overlay exercises
+// the same wiring on the test volume.
+test("engine ui writes structured logs on the shared volume (RE-STD-09B)", () => {
+  const ui = compose.services.ui;
+  assert.equal(ui.environment.GENIEACS_UI_APP_LOG_FILE, "/logs/ui/app.ndjson");
+  assert.ok(
+    (ui.volumes ?? []).some((v) => String(v).startsWith("app_logs:/logs")),
+    "ui must mount the shared app_logs volume",
+  );
+  const vectorDeps = (compose.services.vector.depends_on ?? []).map(String);
+  for (const writer of ["ui", "web"])
+    assert.ok(
+      vectorDeps.includes(writer),
+      `vector must start after the ${writer} log writer`,
+    );
+  assert.ok(vectorDeps.includes("victorialogs"));
+});
+
+test("e2e overlay wires the engine writer and its acceptance smoke", () => {
+  const e2e = YAML.parse(
+    readFileSync(path.join(repoRoot, "compose.e2e.yaml"), "utf8"),
+  );
+  assert.equal(
+    e2e.services.ui.environment.GENIEACS_UI_APP_LOG_FILE,
+    "/logs/ui/app.ndjson",
+  );
+  assert.ok(
+    (e2e.services.ui.volumes ?? []).some((v) =>
+      String(v).startsWith("app_logs_test:/logs"),
+    ),
+  );
+  const vectorDeps = (e2e.services.vector.depends_on ?? []).map(String);
+  for (const writer of ["ui", "web"]) assert.ok(vectorDeps.includes(writer));
+  assert.deepEqual(e2e.services["engine-log-smoke"].command, [
+    "node",
+    "scripts/engine-log-smoke.mjs",
+  ]);
+});

@@ -130,6 +130,10 @@ jobs:
           mongo victorialogs vector ui seed web && docker compose -f
           compose.test.yaml -f compose.e2e.yaml up --abort-on-container-exit
           --exit-code-from browser-tests browser-tests
+      - name: Engine structured-log acceptance on the same stack
+        run: >
+          docker compose -f compose.test.yaml -f compose.e2e.yaml run --rm
+          engine-log-smoke
       - name: Tear down the e2e stack
         if: always()
         run:
