@@ -6,7 +6,10 @@ import {
   parse,
   stringify,
 } from "../../../../../lib/common/expression/parser.ts";
-import type { Expression } from "@contracts/api.ts";
+// Relative (not the @contracts alias): root-level integration tests
+// import this module too, and the alias only resolves under apps/web's
+// tsconfig.
+import type { Expression } from "../../../../../packages/app-contracts/src/api.ts";
 
 export const SEARCH_MAX_LENGTH = 256;
 export const FILTER_MAX_LENGTH = 8192;
@@ -18,17 +21,30 @@ export interface ListQuery {
   sort: Record<string, 1 | -1>;
 }
 
-// Free text -> OR over identity fields, quoted so punctuation, slashes
-// and Unicode stay literal.
+// Native LIKE escape convention (M01-S4 parser): the 4-element node
+// `["LIKE", lhs, pattern, esc]` marks % and _ prefixed with `esc` as
+// LITERAL characters. The needle keeps its RAW text — the native
+// stringify/parse pair performs the single (lossless) string escaping
+// at the serialization boundary; pre-escaping here would double it and
+// break exact matching for quotes and backslashes (RE-SPEC-07).
+export const LIKE_ESCAPE = "\\";
+
+function likeLiteral(text: string): string {
+  return text.replace(/[%_\\]/g, (c) => LIKE_ESCAPE + c);
+}
+
+// Free text -> OR over identity fields: the wrapping % wildcards give
+// contains-semantics while everything IN the needle — quotes,
+// backslashes, %, _, Unicode — matches literally.
 export function buildSearchExpression(text: string): Expression {
   const trimmed = text.trim().slice(0, SEARCH_MAX_LENGTH);
   if (!trimmed) return null;
-  const needle = JSON.stringify(trimmed).slice(1, -1); // escape quotes/backslashes
+  const needle = `%${likeLiteral(trimmed)}%`;
   return [
     "OR",
-    ["LIKE", ["PARAM", "DeviceID.ID"], `%${needle}%`],
-    ["LIKE", ["PARAM", "DeviceID.SerialNumber"], `%${needle}%`],
-    ["LIKE", ["PARAM", "_tags"], `%${needle}%`],
+    ["LIKE", ["PARAM", "DeviceID.ID"], needle, LIKE_ESCAPE],
+    ["LIKE", ["PARAM", "DeviceID.SerialNumber"], needle, LIKE_ESCAPE],
+    ["LIKE", ["PARAM", "_tags"], needle, LIKE_ESCAPE],
   ];
 }
 
