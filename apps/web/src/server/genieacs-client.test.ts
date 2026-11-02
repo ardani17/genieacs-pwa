@@ -47,9 +47,7 @@ describe("clientIpForRateLimit", () => {
     process.env.TRUSTED_PROXY_HOPS = "many";
     try {
       expect(
-        clientIpForRateLimit(
-          requestWith({ "X-Forwarded-For": "1.2.3.4" }),
-        ),
+        clientIpForRateLimit(requestWith({ "X-Forwarded-For": "1.2.3.4" })),
       ).toBe("direct");
     } finally {
       delete process.env.TRUSTED_PROXY_HOPS;

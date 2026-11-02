@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { engineFetch, nativeCookieFrom } from "@/server/genieacs-client";
+import { maskDeviceCsv } from "@/server/mask-device";
 
 export const dynamic = "force-dynamic";
 
@@ -71,7 +72,9 @@ export async function GET(
         { status: 503, headers: { "Cache-Control": "no-store" } },
       );
 
-    const data = await upstream.arrayBuffer();
+    // Secret parameter values are masked BEFORE the bytes cross the
+    // BFF (same policy as every other device path).
+    const data = maskDeviceCsv(await upstream.text());
     const safeName = `device-${id.replace(/[^A-Za-z0-9._-]/g, "_")}.csv`;
     return new NextResponse(data, {
       status: 200,

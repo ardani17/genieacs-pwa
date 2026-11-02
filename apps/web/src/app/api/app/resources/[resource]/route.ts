@@ -1,13 +1,10 @@
 import { NextResponse } from "next/server";
-import {
-  engineFetch,
-  nativeCookieFrom,
-  passJson,
-} from "@/server/genieacs-client";
+import { engineFetch, nativeCookieFrom } from "@/server/genieacs-client";
 import { isBffResource, verbAllowed } from "@contracts/resources.ts";
 import {
   normalizeListQuery,
   toNativeParams,
+  deviceFilterWithSearch,
   AdapterError,
 } from "@/server/resource-adapter";
 import { maskDeviceForUi } from "@/server/mask-device";
@@ -40,6 +37,36 @@ function errorEnvelope(status: number, requestId: string): NextResponse {
   );
 }
 
+function validationError(message: string): NextResponse {
+  return NextResponse.json(
+    {
+      ok: false,
+      error: { code: "VALIDATION", message, retryable: false },
+      requestId: "resources",
+    },
+    { status: 400, headers: { "Cache-Control": "no-store" } },
+  );
+}
+
+// The SAME filter string for the page, the count and the CSV export:
+// explicit filter (validated by the native parser) ANDed with the
+// search AST when one is present.
+function combinedFilter(resource: string, url: URL): string | null {
+  if (resource !== "devices") {
+    const raw = url.searchParams.get("filter");
+    return raw && raw.length <= 8192 ? raw : null;
+  }
+  try {
+    return deviceFilterWithSearch(
+      url.searchParams.get("search"),
+      url.searchParams.get("filter"),
+    );
+  } catch (err) {
+    if (err instanceof AdapterError) return null;
+    throw err;
+  }
+}
+
 async function handle(
   request: Request,
   resource: string,
@@ -64,6 +91,14 @@ async function handle(
     );
 
   const url = new URL(request.url);
+  const filter = combinedFilter(resource, url);
+  if (filter === null && url.searchParams.get("filter"))
+    return validationError(
+      resource === "devices" && url.searchParams.get("search")
+        ? "invalid filter or search expression"
+        : "invalid filter expression",
+    );
+
   let normalized;
   try {
     normalized = normalizeListQuery(
@@ -71,7 +106,7 @@ async function handle(
         page: url.searchParams.get("page") ?? undefined,
         pageSize: url.searchParams.get("pageSize") ?? undefined,
         sort: url.searchParams.get("sort") ?? undefined,
-        filter: url.searchParams.get("filter") ?? undefined,
+        filter: filter ?? undefined,
         projection: url.searchParams.get("projection") ?? undefined,
       },
       resource,
@@ -81,18 +116,7 @@ async function handle(
       err instanceof AdapterError || err instanceof Error
         ? err.message
         : "invalid query";
-    return NextResponse.json(
-      {
-        ok: false,
-        error: {
-          code: "VALIDATION",
-          message,
-          retryable: false,
-        },
-        requestId: "resources",
-      },
-      { status: 400, headers: { "Cache-Control": "no-store" } },
-    );
+    return validationError(message);
   }
 
   const cookie = nativeCookieFrom(request.headers.get("cookie"));
@@ -111,10 +135,12 @@ async function handle(
     // 403 on count means "no count permission" => total stays null.
     let total: number | null = null;
     try {
-      const head = await engineFetch(`/api/${encodeURIComponent(resource)}`, {
-        method: "HEAD",
-        cookie,
-      });
+      const countParams = new URLSearchParams();
+      if (normalized.filter) countParams.set("filter", normalized.filter);
+      const head = await engineFetch(
+        `/api/${encodeURIComponent(resource)}?${countParams}`,
+        { method: "HEAD", cookie },
+      );
       const countHeader = head.headers.get("x-total-count");
       if (head.ok && countHeader !== null) total = Number(countHeader);
     } catch {
@@ -151,6 +177,66 @@ async function handle(
   }
 }
 
+// Count contract: an explicit HEAD returns the permission-filtered
+// X-Total-Count for the SAME filter/search criteria as the list —
+// without materializing a page. Denied counts surface as 403 so the
+// caller can render total=null rather than a wrong number.
+export async function HEAD(
+  request: Request,
+  ctx: { params: Promise<{ resource: string }> },
+): Promise<NextResponse> {
+  const { resource } = await ctx.params;
+  if (!isBffResource(resource))
+    return new NextResponse(null, {
+      status: 404,
+      headers: { "Cache-Control": "no-store" },
+    });
+  if (!verbAllowed(resource, "GET"))
+    return new NextResponse(null, {
+      status: 405,
+      headers: { Allow: "GET", "Cache-Control": "no-store" },
+    });
+
+  const url = new URL(request.url);
+  const filter = combinedFilter(resource, url);
+  if (filter === null && url.searchParams.get("filter"))
+    return new NextResponse(null, {
+      status: 400,
+      headers: { "Cache-Control": "no-store" },
+    });
+
+  const cookie = nativeCookieFrom(request.headers.get("cookie"));
+  if (!cookie)
+    return new NextResponse(null, {
+      status: 401,
+      headers: { "Cache-Control": "no-store" },
+    });
+
+  const params = new URLSearchParams();
+  if (filter) params.set("filter", filter);
+  try {
+    const head = await engineFetch(
+      `/api/${encodeURIComponent(resource)}?${params}`,
+      { method: "HEAD", cookie },
+    );
+    const countHeader = head.headers.get("x-total-count");
+    return new NextResponse(null, {
+      status: head.status,
+      headers: {
+        "Cache-Control": "no-store",
+        ...(head.ok && countHeader !== null
+          ? { "X-Total-Count": countHeader }
+          : {}),
+      },
+    });
+  } catch {
+    return new NextResponse(null, {
+      status: 502,
+      headers: { "Cache-Control": "no-store" },
+    });
+  }
+}
+
 export async function GET(
   request: Request,
   ctx: { params: Promise<{ resource: string }> },
@@ -158,5 +244,3 @@ export async function GET(
   const { resource } = await ctx.params;
   return handle(request, resource, "GET");
 }
-
-void passJson;

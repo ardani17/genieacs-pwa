@@ -19,9 +19,10 @@ const WINDOW_MS = 15 * 60 * 1000;
 const MAX_FAILURES = 10;
 const failures = new Map<string, { count: number; windowStart: number }>();
 
-function limitStatus(
-  key: string,
-): { limited: boolean; retryAfterSeconds: number } {
+function limitStatus(key: string): {
+  limited: boolean;
+  retryAfterSeconds: number;
+} {
   const entry = failures.get(key);
   if (!entry) return { limited: false, retryAfterSeconds: 0 };
   const elapsed = Date.now() - entry.windowStart;
