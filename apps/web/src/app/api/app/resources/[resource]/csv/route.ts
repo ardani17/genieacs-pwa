@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { engineFetch, nativeCookieFrom } from "@/server/genieacs-client";
 import {
+  correlationHeaders,
+  requestContextFrom,
+} from "@/server/request-context";
+import {
   isBffResource,
   CSV_ROW_CAP,
   DEVICES_CSV_COLUMNS,
@@ -19,9 +23,10 @@ export const dynamic = "force-dynamic";
 // custom column can never steer the export onto a secret parameter.
 export async function GET(
   request: Request,
-  ctx: { params: Promise<{ resource: string }> },
+  paramsCtx: { params: Promise<{ resource: string }> },
 ): Promise<NextResponse> {
-  const { resource } = await ctx.params;
+  const ctx = requestContextFrom(request);
+  const { resource } = await paramsCtx.params;
   if (!isBffResource(resource))
     return NextResponse.json(
       {
@@ -31,9 +36,9 @@ export async function GET(
           message: "Unknown resource",
           retryable: false,
         },
-        requestId: "csv",
+        requestId: ctx.requestId,
       },
-      { status: 404, headers: { "Cache-Control": "no-store" } },
+      { status: 404, headers: correlationHeaders(ctx) },
     );
   if (resource !== "devices")
     return NextResponse.json(
@@ -44,9 +49,12 @@ export async function GET(
           message: "CSV export is only available for devices",
           retryable: false,
         },
-        requestId: "csv",
+        requestId: ctx.requestId,
       },
-      { status: 405, headers: { Allow: "GET", "Cache-Control": "no-store" } },
+      {
+        status: 405,
+        headers: { Allow: "GET", ...correlationHeaders(ctx) },
+      },
     );
 
   const cookie = nativeCookieFrom(request.headers.get("cookie"));
@@ -59,9 +67,9 @@ export async function GET(
           message: "Not authenticated",
           retryable: false,
         },
-        requestId: "csv",
+        requestId: ctx.requestId,
       },
-      { status: 401, headers: { "Cache-Control": "no-store" } },
+      { status: 401, headers: correlationHeaders(ctx) },
     );
 
   const url = new URL(request.url);
@@ -81,9 +89,9 @@ export async function GET(
           message: "invalid filter or search expression",
           retryable: false,
         },
-        requestId: "csv",
+        requestId: ctx.requestId,
       },
-      { status: 400, headers: { "Cache-Control": "no-store" } },
+      { status: 400, headers: correlationHeaders(ctx) },
     );
   }
 
@@ -95,7 +103,7 @@ export async function GET(
   try {
     const upstream = await engineFetch(
       `/api/${encodeURIComponent(resource)}.csv?${params}`,
-      { cookie },
+      { cookie, requestId: ctx.requestId },
     );
     if (!upstream.ok)
       return NextResponse.json(
@@ -111,9 +119,9 @@ export async function GET(
             message: "Request rejected",
             retryable: upstream.status >= 500,
           },
-          requestId: "csv",
+          requestId: ctx.requestId,
         },
-        { status: upstream.status, headers: { "Cache-Control": "no-store" } },
+        { status: upstream.status, headers: correlationHeaders(ctx) },
       );
 
     // Stream through with native content-type/disposition preserved;
@@ -131,7 +139,7 @@ export async function GET(
               ),
             }
           : {}),
-        "Cache-Control": "no-store",
+        ...correlationHeaders(ctx),
       },
     });
   } catch {
@@ -143,9 +151,9 @@ export async function GET(
           message: "Upstream unavailable",
           retryable: true,
         },
-        requestId: "csv",
+        requestId: ctx.requestId,
       },
-      { status: 502, headers: { "Cache-Control": "no-store" } },
+      { status: 502, headers: correlationHeaders(ctx) },
     );
   }
 }

@@ -4,6 +4,11 @@ import {
   nativeCookieFrom,
   requireSameOrigin,
 } from "@/server/genieacs-client";
+import {
+  correlationHeaders,
+  requestContextFrom,
+  type RequestContext,
+} from "@/server/request-context";
 import { isBffResource, verbAllowed } from "@contracts/resources.ts";
 import { maskDeviceForUi } from "@/server/mask-device";
 
@@ -21,7 +26,7 @@ const STATUS_TO_CODE: Record<number, string> = {
   503: "BACKEND_UNAVAILABLE",
 };
 
-function errorEnvelope(status: number): NextResponse {
+function errorEnvelope(status: number, reqCtx: RequestContext): NextResponse {
   const code = STATUS_TO_CODE[status] ?? "INTERNAL";
   return NextResponse.json(
     {
@@ -31,9 +36,9 @@ function errorEnvelope(status: number): NextResponse {
         message: status >= 500 ? "Upstream unavailable" : "Request rejected",
         retryable: status >= 500 || status === 429,
       },
-      requestId: "resource-item",
+      requestId: reqCtx.requestId,
     },
-    { status, headers: { "Cache-Control": "no-store" } },
+    { status, headers: correlationHeaders(reqCtx) },
   );
 }
 
@@ -43,13 +48,14 @@ async function proxy(
   id: string,
   verb: "GET" | "PUT" | "DELETE",
 ): Promise<NextResponse> {
-  if (!isBffResource(resource)) return errorEnvelope(404);
+  const reqCtx = requestContextFrom(request);
+  if (!isBffResource(resource)) return errorEnvelope(404, reqCtx);
   if (!verbAllowed(resource, verb))
     return new NextResponse(null, {
       status: 405,
       headers: {
         Allow: BFF_ALLOW[resource].join(", "),
-        "Cache-Control": "no-store",
+        ...correlationHeaders(reqCtx),
       },
     });
 
@@ -58,11 +64,11 @@ async function proxy(
   // the upstream is contacted (contracts.md mutation rules).
   if (verb !== "GET") {
     const sameOrigin = requireSameOrigin(request, PUBLIC_ORIGIN);
-    if (!sameOrigin.ok) return errorEnvelope(403);
+    if (!sameOrigin.ok) return errorEnvelope(403, reqCtx);
   }
 
   const cookie = nativeCookieFrom(request.headers.get("cookie"));
-  if (!cookie) return errorEnvelope(401);
+  if (!cookie) return errorEnvelope(401, reqCtx);
 
   // IDs are encodeURIComponent'd exactly once — never concatenated into
   // the path or query raw.
@@ -72,17 +78,18 @@ async function proxy(
     const upstream = await engineFetch(path, {
       method: verb,
       cookie,
+      requestId: reqCtx.requestId,
       body: verb === "PUT" ? await request.text() : undefined,
     });
     if (verb === "DELETE" && upstream.status === 200)
       return NextResponse.json(
-        { ok: true, data: { deleted: true }, requestId: "resource-item" },
-        { headers: { "Cache-Control": "no-store" } },
+        { ok: true, data: { deleted: true }, requestId: reqCtx.requestId },
+        { headers: correlationHeaders(reqCtx) },
       );
     if (verb === "PUT" && (upstream.status === 200 || upstream.status === 204))
       return NextResponse.json(
-        { ok: true, data: { saved: true }, requestId: "resource-item" },
-        { headers: { "Cache-Control": "no-store" } },
+        { ok: true, data: { saved: true }, requestId: reqCtx.requestId },
+        { headers: correlationHeaders(reqCtx) },
       );
     if (verb === "GET" && upstream.ok) {
       const item = await upstream.json();
@@ -93,13 +100,13 @@ async function proxy(
           ? maskDeviceForUi(item as Record<string, unknown>)
           : item;
       return NextResponse.json(
-        { ok: true, data, requestId: "resource-item" },
-        { headers: { "Cache-Control": "no-store" } },
+        { ok: true, data, requestId: reqCtx.requestId },
+        { headers: correlationHeaders(reqCtx) },
       );
     }
-    return errorEnvelope(upstream.status);
+    return errorEnvelope(upstream.status, reqCtx);
   } catch {
-    return errorEnvelope(502);
+    return errorEnvelope(502, reqCtx);
   }
 }
 

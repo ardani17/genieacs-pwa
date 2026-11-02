@@ -4,6 +4,7 @@
 // and strips Set-Cookie from generic responses (login/logout handle
 // cookies explicitly).
 import { NextResponse } from "next/server";
+import { TRUSTED_DIRECT_MARKER } from "./correlation";
 
 export const GENIEACS_UI_URL = process.env.GENIEACS_UI_URL ?? "http://ui:7583";
 const NATIVE_COOKIE = "genieacs-ui-jwt";
@@ -46,9 +47,12 @@ export async function engineFetch(
 // Client address for rate limiting. X-Forwarded-For is client-settable:
 // it is honored ONLY when the deployment sits behind
 // TRUSTED_PROXY_HOPS trusted proxies (each appending the peer it saw),
-// taking the entry that many hops from the right. With the default 0
-// the header is discarded entirely — rotating it cannot open new
-// buckets.
+// taking the entry that many hops from the right. With the default 0 the
+// proxy strips the header and Next's HTTP server re-injects the TCP
+// socket address; that server-derived value is trusted ONLY when the
+// proxy marker is present (a forged marker is deleted by the proxy, and
+// without the proxy the header stays client-supplied → "direct"). Either
+// way, rotating a client-sent header can never open new buckets.
 export function clientIpForRateLimit(request: Request): string {
   const hops = Number(process.env.TRUSTED_PROXY_HOPS ?? "0");
   if (Number.isInteger(hops) && hops > 0) {
@@ -61,6 +65,14 @@ export function clientIpForRateLimit(request: Request): string {
       const index = parts.length - hops;
       if (index >= 0) return parts[index];
     }
+    return "direct";
+  }
+  if (request.headers.get(TRUSTED_DIRECT_MARKER) === "1") {
+    // Hops=0: the proxy deleted the inbound chain, so this single entry
+    // is the socket peer Next injected. ::ffff: IPv6-mapped prefixes are
+    // normalized so v4 peers key consistently.
+    const peer = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+    if (peer) return peer.replace(/^::ffff:/i, "");
   }
   return "direct";
 }

@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import { nativeCookieFrom, engineFetch } from "@/server/genieacs-client";
+import {
+  correlationHeaders,
+  requestContextFrom,
+} from "@/server/request-context";
 import { buildLogQuery, LogQueryError } from "@contracts/log-query";
 
 export const dynamic = "force-dynamic";
@@ -7,6 +11,7 @@ export const dynamic = "force-dynamic";
 // Log export: permission logs:3 enforced by the engine; capped at
 // 10000 records / 50MiB / 30s upstream. NDJSON stream, not an envelope.
 export async function POST(request: Request): Promise<NextResponse> {
+  const ctx = requestContextFrom(request);
   const cookie = nativeCookieFrom(request.headers.get("cookie"));
   if (!cookie)
     return NextResponse.json(
@@ -17,9 +22,9 @@ export async function POST(request: Request): Promise<NextResponse> {
           message: "Not authenticated",
           retryable: false,
         },
-        requestId: "logs-export",
+        requestId: ctx.requestId,
       },
-      { status: 401, headers: { "Cache-Control": "no-store" } },
+      { status: 401, headers: correlationHeaders(ctx) },
     );
 
   let body: Record<string, unknown>;
@@ -34,6 +39,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     const upstream = await engineFetch("/api/app/logs/export", {
       method: "POST",
       cookie,
+      requestId: ctx.requestId,
       body: JSON.stringify(q),
       timeoutMs: 32_000,
     });
@@ -46,9 +52,9 @@ export async function POST(request: Request): Promise<NextResponse> {
             message: "No log access",
             retryable: false,
           },
-          requestId: "logs-export",
+          requestId: ctx.requestId,
         },
-        { status: 403, headers: { "Cache-Control": "no-store" } },
+        { status: 403, headers: correlationHeaders(ctx) },
       );
     if (!upstream.ok)
       return NextResponse.json(
@@ -59,9 +65,9 @@ export async function POST(request: Request): Promise<NextResponse> {
             message: "Log store unavailable",
             retryable: true,
           },
-          requestId: "logs-export",
+          requestId: ctx.requestId,
         },
-        { status: 503, headers: { "Cache-Control": "no-store" } },
+        { status: 503, headers: correlationHeaders(ctx) },
       );
     const data = await upstream.arrayBuffer();
     return new NextResponse(data, {
@@ -69,7 +75,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       headers: {
         "Content-Type": "application/x-ndjson",
         "Content-Disposition": 'attachment; filename="logs-export.ndjson"',
-        "Cache-Control": "no-store",
+        ...correlationHeaders(ctx),
       },
     });
   } catch (err) {
@@ -82,9 +88,9 @@ export async function POST(request: Request): Promise<NextResponse> {
             message: (err as Error).message,
             retryable: false,
           },
-          requestId: "logs-export",
+          requestId: ctx.requestId,
         },
-        { status: 400, headers: { "Cache-Control": "no-store" } },
+        { status: 400, headers: correlationHeaders(ctx) },
       );
     return NextResponse.json(
       {
@@ -94,9 +100,9 @@ export async function POST(request: Request): Promise<NextResponse> {
           message: "Log store unavailable",
           retryable: true,
         },
-        requestId: "logs-export",
+        requestId: ctx.requestId,
       },
-      { status: 503, headers: { "Cache-Control": "no-store" } },
+      { status: 503, headers: correlationHeaders(ctx) },
     );
   }
 }

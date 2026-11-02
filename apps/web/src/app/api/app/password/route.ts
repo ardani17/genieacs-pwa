@@ -4,12 +4,17 @@ import {
   nativeCookieFrom,
   requireSameOrigin,
 } from "../../../../server/genieacs-client";
+import {
+  correlationHeaders,
+  requestContextFrom,
+} from "../../../../server/request-context";
 
 export const dynamic = "force-dynamic";
 
 const PUBLIC_ORIGIN = process.env.PUBLIC_ORIGIN ?? "http://localhost:3000";
 
 export async function POST(request: Request): Promise<NextResponse> {
+  const ctx = requestContextFrom(request);
   const sameOrigin = requireSameOrigin(request, PUBLIC_ORIGIN);
   if (!sameOrigin.ok)
     return NextResponse.json(
@@ -20,9 +25,9 @@ export async function POST(request: Request): Promise<NextResponse> {
           message: "Cross-origin request rejected",
           retryable: false,
         },
-        requestId: "password",
+        requestId: ctx.requestId,
       },
-      { status: 403, headers: { "Cache-Control": "no-store" } },
+      { status: 403, headers: correlationHeaders(ctx) },
     );
 
   const cookie = nativeCookieFrom(request.headers.get("cookie"));
@@ -35,9 +40,9 @@ export async function POST(request: Request): Promise<NextResponse> {
           message: "Not authenticated",
           retryable: false,
         },
-        requestId: "password",
+        requestId: ctx.requestId,
       },
-      { status: 401, headers: { "Cache-Control": "no-store" } },
+      { status: 401, headers: correlationHeaders(ctx) },
     );
 
   let body: { oldPassword?: string; newPassword?: string };
@@ -52,9 +57,9 @@ export async function POST(request: Request): Promise<NextResponse> {
           message: "Malformed body",
           retryable: false,
         },
-        requestId: "password",
+        requestId: ctx.requestId,
       },
-      { status: 400, headers: { "Cache-Control": "no-store" } },
+      { status: 400, headers: correlationHeaders(ctx) },
     );
   }
 
@@ -62,6 +67,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     const upstream = await engineFetch("/api/password", {
       method: "POST",
       cookie,
+      requestId: ctx.requestId,
       body: JSON.stringify({
         oldPassword: body.oldPassword ?? "",
         newPassword: body.newPassword ?? "",
@@ -69,8 +75,8 @@ export async function POST(request: Request): Promise<NextResponse> {
     });
     if (upstream.status === 204)
       return NextResponse.json(
-        { ok: true, data: { changed: true }, requestId: "password" },
-        { status: 200, headers: { "Cache-Control": "no-store" } },
+        { ok: true, data: { changed: true }, requestId: ctx.requestId },
+        { status: 200, headers: correlationHeaders(ctx) },
       );
     if (upstream.status === 401)
       return NextResponse.json(
@@ -81,9 +87,9 @@ export async function POST(request: Request): Promise<NextResponse> {
             message: "Authentication failed, check your current password",
             retryable: false,
           },
-          requestId: "password",
+          requestId: ctx.requestId,
         },
-        { status: 401, headers: { "Cache-Control": "no-store" } },
+        { status: 401, headers: correlationHeaders(ctx) },
       );
     if (upstream.status === 400)
       return NextResponse.json(
@@ -94,9 +100,9 @@ export async function POST(request: Request): Promise<NextResponse> {
             message: "The new password does not meet the policy",
             retryable: false,
           },
-          requestId: "password",
+          requestId: ctx.requestId,
         },
-        { status: 400, headers: { "Cache-Control": "no-store" } },
+        { status: 400, headers: correlationHeaders(ctx) },
       );
     return NextResponse.json(
       {
@@ -106,9 +112,9 @@ export async function POST(request: Request): Promise<NextResponse> {
           message: "Backend unavailable",
           retryable: true,
         },
-        requestId: "password",
+        requestId: ctx.requestId,
       },
-      { status: 502, headers: { "Cache-Control": "no-store" } },
+      { status: 502, headers: correlationHeaders(ctx) },
     );
   } catch {
     return NextResponse.json(
@@ -119,9 +125,9 @@ export async function POST(request: Request): Promise<NextResponse> {
           message: "Backend unavailable",
           retryable: true,
         },
-        requestId: "password",
+        requestId: ctx.requestId,
       },
-      { status: 502, headers: { "Cache-Control": "no-store" } },
+      { status: 502, headers: correlationHeaders(ctx) },
     );
   }
 }

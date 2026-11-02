@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import { engineFetch, nativeCookieFrom } from "@/server/genieacs-client";
+import {
+  correlationHeaders,
+  requestContextFrom,
+} from "@/server/request-context";
 import { maskDeviceForUi } from "@/server/mask-device";
 
 export const dynamic = "force-dynamic";
@@ -7,9 +11,10 @@ export const dynamic = "force-dynamic";
 // Single-device detail with secret masking on parameter values.
 export async function GET(
   request: Request,
-  ctx: { params: Promise<{ id: string }> },
+  paramsCtx: { params: Promise<{ id: string }> },
 ): Promise<NextResponse> {
-  const { id } = await ctx.params;
+  const ctx = requestContextFrom(request);
+  const { id } = await paramsCtx.params;
   const cookie = nativeCookieFrom(request.headers.get("cookie"));
   if (!cookie)
     return NextResponse.json(
@@ -20,15 +25,15 @@ export async function GET(
           message: "Not authenticated",
           retryable: false,
         },
-        requestId: "device-detail",
+        requestId: ctx.requestId,
       },
-      { status: 401, headers: { "Cache-Control": "no-store" } },
+      { status: 401, headers: correlationHeaders(ctx) },
     );
 
   try {
     const upstream = await engineFetch(
       `/api/devices/${encodeURIComponent(id)}`,
-      { cookie },
+      { cookie, requestId: ctx.requestId },
     );
     if (upstream.status === 404)
       return NextResponse.json(
@@ -39,9 +44,9 @@ export async function GET(
             message: "Device not found",
             retryable: false,
           },
-          requestId: "device-detail",
+          requestId: ctx.requestId,
         },
-        { status: 404, headers: { "Cache-Control": "no-store" } },
+        { status: 404, headers: correlationHeaders(ctx) },
       );
     if (upstream.status === 403)
       return NextResponse.json(
@@ -52,9 +57,9 @@ export async function GET(
             message: "No permission",
             retryable: false,
           },
-          requestId: "device-detail",
+          requestId: ctx.requestId,
         },
-        { status: 403, headers: { "Cache-Control": "no-store" } },
+        { status: 403, headers: correlationHeaders(ctx) },
       );
     if (!upstream.ok)
       return NextResponse.json(
@@ -65,9 +70,9 @@ export async function GET(
             message: "Upstream unavailable",
             retryable: true,
           },
-          requestId: "device-detail",
+          requestId: ctx.requestId,
         },
-        { status: 502, headers: { "Cache-Control": "no-store" } },
+        { status: 502, headers: correlationHeaders(ctx) },
       );
 
     const device = (await upstream.json()) as Record<string, unknown>;
@@ -75,9 +80,9 @@ export async function GET(
       {
         ok: true,
         data: maskDeviceForUi(device),
-        requestId: "device-detail",
+        requestId: ctx.requestId,
       },
-      { headers: { "Cache-Control": "no-store" } },
+      { headers: correlationHeaders(ctx) },
     );
   } catch {
     return NextResponse.json(
@@ -88,9 +93,9 @@ export async function GET(
           message: "Upstream unavailable",
           retryable: true,
         },
-        requestId: "device-detail",
+        requestId: ctx.requestId,
       },
-      { status: 502, headers: { "Cache-Control": "no-store" } },
+      { status: 502, headers: correlationHeaders(ctx) },
     );
   }
 }

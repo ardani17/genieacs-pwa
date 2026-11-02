@@ -25,7 +25,7 @@ export async function GET(request: Request): Promise<NextResponse> {
             message: "Backend unavailable",
             retryable: true,
           },
-          requestId: "setup",
+          requestId: ctx.requestId,
         },
         { status: 502, headers: { "Cache-Control": "no-store" } },
       );
@@ -50,7 +50,7 @@ export async function GET(request: Request): Promise<NextResponse> {
           message: "Backend unavailable",
           retryable: true,
         },
-        requestId: "setup",
+        requestId: ctx.requestId,
       },
       { status: 502, headers: { "Cache-Control": "no-store" } },
     );
@@ -69,7 +69,7 @@ export async function POST(request: Request): Promise<NextResponse> {
           message: "Cross-origin request rejected",
           retryable: false,
         },
-        requestId: "setup",
+        requestId: ctx.requestId,
       },
       { status: 403, headers: { "Cache-Control": "no-store" } },
     );
@@ -89,13 +89,16 @@ export async function POST(request: Request): Promise<NextResponse> {
           message: "Password minimal 8 karakter",
           retryable: false,
         },
-        requestId: "setup",
+        requestId: ctx.requestId,
       },
       { status: 400, headers: { "Cache-Control": "no-store" } },
     );
 
   try {
-    const statusRes = await engineFetch("/init", { timeoutMs: 5000 });
+    const statusRes = await engineFetch("/init", {
+      requestId: ctx.requestId,
+      timeoutMs: 5000,
+    });
     const status = (await statusRes.json()) as Record<string, unknown>;
     if (status["users"] === false)
       return NextResponse.json(
@@ -106,7 +109,7 @@ export async function POST(request: Request): Promise<NextResponse> {
             message: "Instalasi sudah memiliki pengguna",
             retryable: false,
           },
-          requestId: "setup",
+          requestId: ctx.requestId,
         },
         { status: 409, headers: { "Cache-Control": "no-store" } },
       );
@@ -146,7 +149,7 @@ export async function POST(request: Request): Promise<NextResponse> {
             message: "Payload admin ditolak oleh initializer",
             retryable: false,
           },
-          requestId: "setup",
+          requestId: ctx.requestId,
         },
         { status: 400, headers: { "Cache-Control": "no-store" } },
       );
@@ -158,7 +161,7 @@ export async function POST(request: Request): Promise<NextResponse> {
           message: "Gagal membuat admin",
           retryable: true,
         },
-        requestId: "setup",
+        requestId: ctx.requestId,
       },
       { status: 502, headers: { "Cache-Control": "no-store" } },
     );
@@ -171,7 +174,7 @@ export async function POST(request: Request): Promise<NextResponse> {
           message: "Backend unavailable",
           retryable: true,
         },
-        requestId: "setup",
+        requestId: ctx.requestId,
       },
       { status: 502, headers: { "Cache-Control": "no-store" } },
     );

@@ -43,14 +43,14 @@ function errorEnvelope(status: number, ctx: RequestContext): NextResponse {
   );
 }
 
-function validationError(message: string): NextResponse {
+function validationError(message: string, ctx: RequestContext): NextResponse {
   return NextResponse.json(
     {
       ok: false,
       error: { code: "VALIDATION", message, retryable: false },
-      requestId: "resources",
+      requestId: ctx.requestId,
     },
-    { status: 400, headers: { "Cache-Control": "no-store" } },
+    { status: 400, headers: correlationHeaders(ctx) },
   );
 }
 
@@ -89,11 +89,11 @@ async function handle(
           message: "Method not allowed",
           retryable: false,
         },
-        requestId: "resources",
+        requestId: ctx.requestId,
       },
       {
         status: 405,
-        headers: { Allow: "GET", "Cache-Control": "no-store" },
+        headers: { Allow: "GET", ...correlationHeaders(ctx) },
       },
     );
 
@@ -104,6 +104,7 @@ async function handle(
       resource === "devices" && url.searchParams.get("search")
         ? "invalid filter or search expression"
         : "invalid filter expression",
+      ctx,
     );
 
   let normalized;
@@ -123,7 +124,7 @@ async function handle(
       err instanceof AdapterError || err instanceof Error
         ? err.message
         : "invalid query";
-    return validationError(message);
+    return validationError(message, ctx);
   }
 
   const cookie = nativeCookieFrom(request.headers.get("cookie"));
@@ -203,7 +204,7 @@ export async function HEAD(
   if (!verbAllowed(resource, "GET"))
     return new NextResponse(null, {
       status: 405,
-      headers: { Allow: "GET", "Cache-Control": "no-store" },
+      headers: { Allow: "GET", ...correlationHeaders(reqCtx) },
     });
 
   const url = new URL(request.url);

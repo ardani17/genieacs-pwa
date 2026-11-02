@@ -92,6 +92,54 @@ describe("POST /api/app/login", () => {
     expect(other.status).toBe(401);
   });
 
+  it("two direct-mode peers get separate buckets behind the proxy marker (RE-STD-08)", async () => {
+    engineFetchMock.mockImplementation(
+      async () => upstreamLoginFailure() as never,
+    );
+    const username = "limit-direct-user";
+    // 10 failures as direct peer A (marker + server-injected XFF).
+    for (let i = 0; i < 10; ++i) {
+      const res = await login(
+        loginRequest(
+          { username, password: "wrong" },
+          { "x-app-client-addr": "1", "X-Forwarded-For": "203.0.113.7" },
+        ),
+      );
+      expect(res.status).toBe(401);
+    }
+    // Peer A is limited, with a sane integer Retry-After.
+    const limitedA = await login(
+      loginRequest(
+        { username, password: "wrong" },
+        { "x-app-client-addr": "1", "X-Forwarded-For": "203.0.113.7" },
+      ),
+    );
+    expect(limitedA.status).toBe(429);
+    const retryAfter = Number(limitedA.headers.get("retry-after"));
+    expect(Number.isInteger(retryAfter)).toBe(true);
+    expect(retryAfter).toBeGreaterThan(0);
+
+    // Peer B (same username, different socket address) has its OWN
+    // bucket: NOT limited by A's failures.
+    const peerB = await login(
+      loginRequest(
+        { username, password: "wrong" },
+        { "x-app-client-addr": "1", "X-Forwarded-For": "203.0.113.8" },
+      ),
+    );
+    expect(peerB.status).toBe(401);
+
+    // A spoofed XFF WITHOUT the marker never escapes the shared
+    // "direct" bucket — which peer A's failures did NOT populate.
+    const spoofer = await login(
+      loginRequest(
+        { username, password: "wrong" },
+        { "X-Forwarded-For": "6.6.6.6" },
+      ),
+    );
+    expect(spoofer.status).toBe(401);
+  });
+
   it("honors X-Forwarded-For behind one trusted proxy hop", async () => {
     process.env.TRUSTED_PROXY_HOPS = "1";
     engineFetchMock.mockImplementation(

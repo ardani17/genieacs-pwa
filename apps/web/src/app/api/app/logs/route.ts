@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import { nativeCookieFrom, engineFetch } from "@/server/genieacs-client";
+import {
+  correlationHeaders,
+  requestContextFrom,
+} from "@/server/request-context";
 import { buildLogQuery, LogQueryError } from "@contracts/log-query";
 
 export const dynamic = "force-dynamic";
@@ -7,6 +11,7 @@ export const dynamic = "force-dynamic";
 // Log search proxy: the ENGINE authorizes (logs:3) and executes the
 // bounded query; the BFF never builds VictoriaLogs URLs from raw input.
 export async function POST(request: Request): Promise<NextResponse> {
+  const ctx = requestContextFrom(request);
   const cookie = nativeCookieFrom(request.headers.get("cookie"));
   if (!cookie)
     return NextResponse.json(
@@ -17,9 +22,9 @@ export async function POST(request: Request): Promise<NextResponse> {
           message: "Not authenticated",
           retryable: false,
         },
-        requestId: "logs",
+        requestId: ctx.requestId,
       },
-      { status: 401, headers: { "Cache-Control": "no-store" } },
+      { status: 401, headers: correlationHeaders(ctx) },
     );
 
   let body: Record<string, unknown>;
@@ -34,9 +39,9 @@ export async function POST(request: Request): Promise<NextResponse> {
           message: "Malformed body",
           retryable: false,
         },
-        requestId: "logs",
+        requestId: ctx.requestId,
       },
-      { status: 400, headers: { "Cache-Control": "no-store" } },
+      { status: 400, headers: correlationHeaders(ctx) },
     );
   }
 
@@ -45,6 +50,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     const upstream = await engineFetch("/api/app/logs", {
       method: "POST",
       cookie,
+      requestId: ctx.requestId,
       body: JSON.stringify(q),
       timeoutMs: 6000,
     });
@@ -57,9 +63,9 @@ export async function POST(request: Request): Promise<NextResponse> {
             message: "No log access",
             retryable: false,
           },
-          requestId: "logs",
+          requestId: ctx.requestId,
         },
-        { status: 403, headers: { "Cache-Control": "no-store" } },
+        { status: 403, headers: correlationHeaders(ctx) },
       );
     if (upstream.status === 401)
       return NextResponse.json(
@@ -70,9 +76,9 @@ export async function POST(request: Request): Promise<NextResponse> {
             message: "Not authenticated",
             retryable: false,
           },
-          requestId: "logs",
+          requestId: ctx.requestId,
         },
-        { status: 401, headers: { "Cache-Control": "no-store" } },
+        { status: 401, headers: correlationHeaders(ctx) },
       );
     if (!upstream.ok)
       return NextResponse.json(
@@ -83,17 +89,16 @@ export async function POST(request: Request): Promise<NextResponse> {
             message: "Log store unavailable",
             retryable: true,
           },
-          requestId: "logs",
+          requestId: ctx.requestId,
         },
-        { status: 503, headers: { "Cache-Control": "no-store" } },
+        { status: 503, headers: correlationHeaders(ctx) },
       );
     const text = await upstream.text();
     return new NextResponse(text, {
       status: 200,
       headers: {
         "Content-Type": "application/x-ndjson",
-        "Cache-Control": "no-store",
-        "X-Request-Id": "logs",
+        ...correlationHeaders(ctx),
       },
     });
   } catch (err) {
@@ -106,9 +111,9 @@ export async function POST(request: Request): Promise<NextResponse> {
             message: (err as Error).message,
             retryable: false,
           },
-          requestId: "logs",
+          requestId: ctx.requestId,
         },
-        { status: 400, headers: { "Cache-Control": "no-store" } },
+        { status: 400, headers: correlationHeaders(ctx) },
       );
     return NextResponse.json(
       {
@@ -118,9 +123,9 @@ export async function POST(request: Request): Promise<NextResponse> {
           message: "Log store unavailable",
           retryable: true,
         },
-        requestId: "logs",
+        requestId: ctx.requestId,
       },
-      { status: 503, headers: { "Cache-Control": "no-store" } },
+      { status: 503, headers: correlationHeaders(ctx) },
     );
   }
 }
