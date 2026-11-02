@@ -234,6 +234,12 @@ void test("persisted sink bytes never contain message, URL or stack secrets", as
         "Authorization:Bearer dummy-no-space",
         "authorization = Bearer dummy-eq-form",
         'Authorization: "Bearer dummy-quoted"',
+        // Quoted KEY/VALUE forms (R3-STD-06): JSON-ish free text and
+        // single-quoted pairs must not shield the credentials.
+        '{"authorization":"Bearer dummy-json-auth"}',
+        "{'authorization': 'Basic dummy-squote-auth'}",
+        '{"password":"dummy-json-password"}',
+        '{"token": "dummy-json-token"}',
       ],
       stackError: stackErr,
     },
@@ -256,8 +262,45 @@ void test("persisted sink bytes never contain message, URL or stack secrets", as
     "dummy-quoted",
     "dummy-cause-auth",
     "dummy-stack-token",
+    "dummy-json-auth",
+    "dummy-squote-auth",
+    "dummy-json-password",
+    "dummy-json-token",
   ])
     assert.equal(bytes.includes(sentinel), false, `${sentinel} leaked to sink`);
+});
+
+// R3-STD-09A: the PARENT correlation id must reach the persisted bytes,
+// not just the emit() call — two requests sharing an inbound UUID stay
+// traceable to it.
+void test("parentRequestId persists next to the minted audit id", async () => {
+  const seen: string[] = [];
+  const logger = createAppLogger({
+    service: "web",
+    appVersion: "1.2.17-dev",
+    installationId: "22222222-2222-2222-2222-222222222222",
+    environment: "test",
+    filePath: "/tmp/unused.log",
+    sink: async (line) => {
+      seen.push(line);
+    },
+  });
+  const parent = "3f1c6d92-7d9e-4a4d-b3e2-333333333333";
+  logger.emit({
+    event: "http.request.completed",
+    level: "info",
+    requestId: "4f1c6d92-7d9e-4a4d-b3e2-444444444444",
+    parentRequestId: parent,
+    message: "list devices 200",
+  });
+  await logger.flush(500);
+  const event = JSON.parse(seen[0]);
+  assert.equal(event.parentRequestId, parent);
+  assert.equal(event.requestId, "4f1c6d92-7d9e-4a4d-b3e2-444444444444");
+  // No parent field when none was presented.
+  logger.emit({ event: "x", level: "info", message: "no parent" });
+  await logger.flush(500);
+  assert.equal("parentRequestId" in JSON.parse(seen[1]), false);
 });
 
 void test("request ids accept valid UUIDs and regenerate otherwise", () => {
