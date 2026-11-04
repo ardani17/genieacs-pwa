@@ -28,6 +28,8 @@ import {
 } from "@/components/ui/table";
 import { useSession } from "@/components/session-provider";
 import { readOverviewConfig, type OverviewChart } from "./overview-config";
+import { ConfigRenderer } from "../config-ui/renderer";
+import type { ConfigNode } from "../config-ui/components";
 
 export function Overview() {
   const router = useRouter();
@@ -35,6 +37,9 @@ export function Overview() {
   const [failed, setFailed] = useState(false);
   const [total, setTotal] = useState<number | null>(null);
   const [observedAt, setObservedAt] = useState<string | null>(null);
+  // Deterministic render clock for config expressions: derived from the
+  // observed data timestamp (falls back to epoch until first observe).
+  const observedAtMs = observedAt ? Date.parse(observedAt) : 0;
   // Config comes straight from the session DTO (no state copy): the
   // backend stays the authority and the charts re-derive on refresh.
   const baseCharts = useMemo(
@@ -47,6 +52,14 @@ export function Overview() {
     [state],
   );
   const [counts, setCounts] = useState<Record<string, number | null>>({});
+  const customConfig =
+    state.phase === "authenticated"
+      ? (
+          (state.session.uiConfig as Record<string, unknown> | undefined)?.[
+            "overview"
+          ] as { components?: ConfigNode[] } | undefined
+        )?.components
+      : undefined;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -152,12 +165,23 @@ export function Overview() {
           ) : null}
         </div>
       </div>
-      {charts.length === 0 ? (
+      {charts.length === 0 && !customConfig?.length ? (
         <DataView
           state={observedAt ? "unavailable" : "loading"}
           items={[]}
           renderReady={() => null}
         />
+      ) : null}
+      {customConfig?.length ? (
+        <div className="grid min-w-0 grid-cols-1 gap-6 xl:grid-cols-2">
+          {customConfig.map((child, i) => (
+            <ConfigRenderer
+              key={i}
+              node={child}
+              context={{ device: {}, now: observedAtMs }}
+            />
+          ))}
+        </div>
       ) : null}
       <div className="grid min-w-0 grid-cols-1 gap-6 xl:grid-cols-2">
         {charts.map((chart) => (
