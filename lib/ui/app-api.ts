@@ -2,6 +2,7 @@
 // change used by the BFF. Safe DTOs only — no user snapshot export.
 
 import Router from "@koa/router";
+import { and } from "../common/expression/util.ts";
 import { getUiConfig, getUsers } from "./local-cache.ts";
 import { toSafeSession } from "./session.ts";
 import { changeOwnPassword } from "./self-password.ts";
@@ -208,10 +209,16 @@ router.post("/app/devices/:id/diagnostics", async (ctx) => {
   if (!authorizer.hasAccess("devices", 2)) return void (ctx.status = 403);
 
   // Fetch the device THROUGH the permission filter: a filtered-out
-  // device is 404 to this caller.
-  const { value: device } = await db
-    .query("devices", [filter, ["=", ["PARAM", "DeviceID.ID"], ctx.params.id]])
-    .next();
+  // device is 404 to this caller. Compose with and() — a bare
+  // [filter, equality] array is a LIST literal, not an AND, which the
+  // query synthesizer rejects ("Invalid query expression") and turned
+  // every lookup, including missing devices, into a 500.
+  const deviceQuery = and(filter, [
+    "=",
+    ["PARAM", "DeviceID.ID"],
+    ctx.params.id,
+  ]);
+  const { value: device } = await db.query("devices", deviceQuery).next();
   if (!device) return void (ctx.status = 404);
 
   const controllerAvailable = process.env["DIAGNOSTICS_CONTROLLER"] === "1";
