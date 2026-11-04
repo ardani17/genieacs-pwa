@@ -339,6 +339,32 @@
       "args": ["run", "test"]
     }
   ],
+  "M05-A": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": [
+        "scripts/test-ts.mjs",
+        "packages/device-profiles/src/wan-model.test.ts",
+        "packages/device-profiles/src/management-wan.test.ts"
+      ],
+      "artifacts": [
+        "artifacts/tests/packages/device-profiles/src/wan-model.test.test.cjs",
+        "artifacts/tests/packages/device-profiles/src/management-wan.test.test.cjs"
+      ]
+    },
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/test-ts.mjs", "test/integration/device-profile.ts"],
+      "artifacts": ["artifacts/tests/test/integration/device-profile.test.cjs"]
+    },
+    {
+      "cwd": "apps/web",
+      "command": "npm",
+      "args": ["run", "typecheck"]
+    }
+  ],
   "REV-AUTH": [
     {
       "cwd": ".",
