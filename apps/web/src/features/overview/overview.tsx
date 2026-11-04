@@ -7,7 +7,25 @@
 // filter to the device list URL.
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Status } from "@/components/ui/status";
+import { ArrowUpRight, Cable, Clock3 } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { DataView } from "@/components/ui/data-view";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableRow,
+} from "@/components/ui/table";
 import { useSession } from "@/components/session-provider";
 import { readOverviewConfig, type OverviewChart } from "./overview-config";
 
@@ -83,7 +101,7 @@ export function Overview() {
   }, [baseCharts]);
 
   if (failed)
-    return <Status tone="warning">Ringkasan tidak dapat dimuat.</Status>;
+    return <DataView state="error" items={[]} renderReady={() => null} />;
 
   const charts: OverviewChart[] = baseCharts.map((chart) => ({
     ...chart,
@@ -93,95 +111,144 @@ export function Overview() {
     })),
   }));
 
+  const textCount = (count: number | null) =>
+    count == null
+      ? observedAt
+        ? "Tidak tersedia"
+        : "Memuat…"
+      : count.toLocaleString("id-ID");
   return (
-    <section aria-label="Ringkasan instalasi">
-      {observedAt && (
-        <p style={{ color: "var(--color-muted)" }}>
-          Sumber: live · diamati{" "}
-          {new Date(observedAt).toLocaleTimeString("id-ID")}
-        </p>
-      )}
-      <div
-        style={{
-          display: "grid",
-          gap: "var(--space-12)",
-          gridTemplateColumns: "repeat(auto-fit, minmax(10rem, 1fr))",
-        }}
-      >
-        <div
-          style={{
-            background: "var(--color-surface)",
-            border: "1px solid var(--color-border)",
-            borderRadius: "var(--radius)",
-            padding: "var(--space-16)",
-          }}
-        >
-          <span style={{ color: "var(--color-muted)" }}>Total perangkat</span>
-          <strong style={{ fontSize: "1.5rem", color: "var(--color-primary)" }}>
-            {total == null ? "…" : total}
-          </strong>
-        </div>
-        {charts.map((chart) => (
-          <div
-            key={chart.key}
-            style={{
-              background: "var(--color-surface)",
-              border: "1px solid var(--color-border)",
-              borderRadius: "var(--radius)",
-              padding: "var(--space-16)",
-            }}
-          >
-            <strong>{chart.label}</strong>
-            <table aria-label={`${chart.label} — ringkasan`}>
-              <tbody>
-                {chart.slices.map((slice) => (
-                  <tr key={slice.key}>
-                    <th scope="row">{slice.label}</th>
-                    <td>
-                      {slice.filter ? (
-                        <button
-                          type="button"
-                          onClick={() =>
-                            router.push(
-                              `/devices?filter=${encodeURIComponent(slice.filter ?? "")}`,
-                            )
-                          }
-                          style={{ all: "unset", cursor: "pointer" }}
-                        >
-                          {slice.count == null ? "…" : slice.count}
-                        </button>
-                      ) : slice.count == null ? (
-                        "—"
-                      ) : (
-                        String(slice.count)
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+    <section aria-label="Ringkasan instalasi" className="space-y-6">
+      <Card className="border-primary/20 bg-primary text-primary-foreground">
+        <CardContent className="flex flex-wrap items-center justify-between gap-6">
+          <div className="space-y-2">
+            <p className="text-sm text-white/80">Total perangkat</p>
+            <div className="text-4xl font-semibold tracking-tight">
+              {total == null && !observedAt ? (
+                <Skeleton className="h-10 w-24 bg-white/20" />
+              ) : (
+                textCount(total)
+              )}
+            </div>
+            <p className="text-sm text-white/80">
+              Perangkat yang dapat diakses oleh akun Anda.
+            </p>
           </div>
+          <Cable className="size-12 text-white/60" aria-hidden="true" />
+        </CardContent>
+      </Card>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-lg font-semibold">Distribusi perangkat</h2>
+        <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+          <Badge variant="outline" className="gap-2 bg-card">
+            <span className="size-1.5 rounded-full bg-primary" />
+            Sumber: live
+          </Badge>
+          {observedAt ? (
+            <span className="flex items-center gap-1.5">
+              <Clock3 className="size-3.5" aria-hidden="true" />
+              Diamati {new Date(observedAt).toLocaleTimeString("id-ID")}
+            </span>
+          ) : null}
+        </div>
+      </div>
+      {charts.length === 0 ? (
+        <DataView
+          state={observedAt ? "unavailable" : "loading"}
+          items={[]}
+          renderReady={() => null}
+        />
+      ) : null}
+      <div className="grid min-w-0 grid-cols-1 gap-6 xl:grid-cols-2">
+        {charts.map((chart) => (
+          <Card key={chart.key} className="min-w-0">
+            <CardHeader>
+              <CardTitle role="heading" aria-level={3}>
+                {chart.label}
+              </CardTitle>
+              <CardDescription>
+                Pilih jumlah untuk melihat perangkat dengan filter yang sama.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Table aria-label={chart.label + " — ringkasan"}>
+                <TableBody>
+                  {chart.slices.map((slice) => (
+                    <TableRow key={slice.key}>
+                      <TableHead
+                        scope="row"
+                        className="w-full whitespace-normal font-normal text-foreground"
+                      >
+                        <span>{slice.label}</span>
+                        {slice.count != null && total != null && total > 0 ? (
+                          <div
+                            className="mt-2 h-1.5 w-full max-w-64 rounded-full bg-muted"
+                            aria-hidden="true"
+                          >
+                            <div
+                              className="h-full rounded-full bg-primary/70"
+                              style={{
+                                width:
+                                  Math.min(100, (slice.count / total) * 100) +
+                                  "%",
+                              }}
+                            />
+                          </div>
+                        ) : null}
+                      </TableHead>
+                      <TableCell className="text-right">
+                        {slice.filter ? (
+                          <Button
+                            variant="ghost"
+                            onClick={() =>
+                              router.push(
+                                "/devices?filter=" +
+                                  encodeURIComponent(slice.filter ?? ""),
+                              )
+                            }
+                            className="gap-2 text-primary"
+                            aria-label={
+                              slice.label +
+                              ": " +
+                              textCount(slice.count ?? null)
+                            }
+                          >
+                            {textCount(slice.count ?? null)}
+                            <ArrowUpRight
+                              className="size-4"
+                              aria-hidden="true"
+                            />
+                          </Button>
+                        ) : (
+                          textCount(slice.count ?? null)
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
         ))}
       </div>
-      <table
-        aria-label="Ringkasan instalasi — alternatif teks"
-        style={{ position: "absolute", left: -9999 }}
-      >
-        <tbody>
-          <tr>
-            <th scope="row">Total perangkat</th>
-            <td>{total == null ? "memuat" : total}</td>
-          </tr>
-          {charts.flatMap((chart) =>
-            chart.slices.map((slice) => (
-              <tr key={`${chart.key}-${slice.key}`}>
-                <th scope="row">{`${chart.label}: ${slice.label}`}</th>
-                <td>{slice.count == null ? "memuat" : slice.count}</td>
-              </tr>
-            )),
-          )}
-        </tbody>
-      </table>
+      <div className="sr-only">
+        <table aria-label="Ringkasan instalasi — alternatif teks">
+          <tbody>
+            <tr>
+              <th scope="row">Total perangkat</th>
+              <td>{textCount(total)}</td>
+            </tr>
+            {charts.flatMap((chart) =>
+              chart.slices.map((slice) => (
+                <tr key={chart.key + "/" + slice.key}>
+                  <th scope="row">{chart.label + ": " + slice.label}</th>
+                  <td>{textCount(slice.count ?? null)}</td>
+                </tr>
+              )),
+            )}
+          </tbody>
+        </table>
+      </div>
     </section>
   );
 }

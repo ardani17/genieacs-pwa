@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { AuthPanel } from "@/components/auth-panel";
+import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
 import { Status } from "@/components/ui/status";
 
@@ -59,12 +61,14 @@ export default function AccountPasswordPage() {
   }
 
   return (
-    <main className="app-shell">
-      <h1>Ganti Password</h1>
-      <form onSubmit={onSubmit} noValidate>
+    <AuthPanel
+      title="Ganti Password"
+      description="Perbarui password akun Anda. Gunakan password yang kuat dan unik."
+    >
+      <form onSubmit={onSubmit} className="form-stack" noValidate>
         <Field label="Password saat ini" required>
           {({ id }) => (
-            <input
+            <Input
               id={id}
               name="oldPassword"
               type="password"
@@ -75,7 +79,7 @@ export default function AccountPasswordPage() {
         </Field>
         <Field label="Password baru" required>
           {({ id }) => (
-            <input
+            <Input
               id={id}
               name="newPassword"
               type="password"
@@ -87,7 +91,7 @@ export default function AccountPasswordPage() {
         </Field>
         <Field label="Konfirmasi password baru" required>
           {({ id }) => (
-            <input
+            <Input
               id={id}
               name="confirm"
               type="password"
@@ -101,7 +105,13 @@ export default function AccountPasswordPage() {
         <Button type="submit" busy={busy}>
           Simpan
         </Button>
+        <a
+          href="/overview"
+          className="flex min-h-11 items-center justify-center text-sm font-medium text-primary hover:underline"
+        >
+          Kembali ke ringkasan
+        </a>
       </form>
-    </main>
+    </AuthPanel>
   );
 }

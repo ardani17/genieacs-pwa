@@ -1,7 +1,7 @@
 "use client";
 
 import { useId } from "react";
-import styles from "./ui.module.css";
+import { Label } from "./label";
 
 export interface FieldProps {
   label: string;
@@ -20,18 +20,18 @@ export function Field({ label, required, error, children }: FieldProps) {
   const id = useId();
   const errorId = `${id}-error`;
   return (
-    <div className={styles.field}>
-      <label className={styles.label} htmlFor={id}>
+    <div className="space-y-2">
+      <Label htmlFor={id}>
         {label}
         {required ? " *" : null}
-      </label>
+      </Label>
       {children({
         id,
         describedBy: error ? errorId : undefined,
-        errorClass: error ? styles.inputError : undefined,
+        errorClass: error ? "border-destructive" : undefined,
       })}
       {error ? (
-        <p className={styles.errorText} id={errorId} role="alert">
+        <p className="text-sm text-destructive" id={errorId} role="alert">
           {error}
         </p>
       ) : null}

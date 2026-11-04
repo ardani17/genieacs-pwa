@@ -4,6 +4,8 @@ import {
   type SessionState,
 } from "@/components/session-provider";
 import { Navigation } from "@/components/navigation";
+import { ConnectionProvider } from "@/components/connection-provider";
+import { ConnectionStatus } from "@/components/connection-status";
 import { APP_COOKIE_NAME, GENIEACS_UI_URL } from "@/server/genieacs-client";
 import type { SessionDTO } from "@contracts/api.ts";
 
@@ -42,10 +44,20 @@ export default async function DashboardLayout({
 
   return (
     <SessionProvider initial={initial}>
-      <div style={{ display: "flex", minHeight: "100vh" }}>
-        <Navigation />
-        <main style={{ flex: 1, padding: "var(--space-16)" }}>{children}</main>
-      </div>
+      <ConnectionProvider>
+        <div className="min-h-dvh">
+          <Navigation />
+          <main
+            id="main-content"
+            className="min-w-0 px-4 pb-28 pt-6 md:ml-60 md:px-8 md:pb-8 md:pt-8"
+          >
+            <div className="mx-auto max-w-7xl space-y-6">
+              <ConnectionStatus />
+              {children}
+            </div>
+          </main>
+        </div>
+      </ConnectionProvider>
     </SessionProvider>
   );
 }

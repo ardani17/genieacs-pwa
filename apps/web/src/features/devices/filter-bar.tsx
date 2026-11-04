@@ -5,14 +5,39 @@
 // replace; in-flight requests for older filters are abandoned by the
 // list (AbortController keyed by serialized query).
 import { useRouter, useSearchParams } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { Search, SlidersHorizontal } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 
 export function FilterBar() {
   const router = useRouter();
   const params = useSearchParams();
-  const [search, setSearch] = useState(params.get("search") ?? "");
+  const urlSearch = params.get("search") ?? "";
+  const [search, setSearch] = useState(urlSearch);
+  const [previousSearch, setPreviousSearch] = useState(urlSearch);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Reconcile URL navigation before rendering the controlled field.
+  if (urlSearch !== previousSearch) {
+    setPreviousSearch(urlSearch);
+    setSearch(urlSearch);
+  }
+  const queryText = params.toString();
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current);
+    },
+    [queryText],
+  );
 
   function commit(next: URLSearchParams) {
     // Filter changes reset the page (handled by the backend adapter too).
@@ -47,76 +72,126 @@ export function FilterBar() {
   const currentExpression = params.get("filter") ?? "";
 
   return (
-    <div
-      role="search"
-      aria-label="Filter perangkat"
-      style={{
-        display: "flex",
-        flexWrap: "wrap",
-        gap: "var(--space-8)",
-        alignItems: "flex-end",
-      }}
-    >
-      <label>
-        <span className="sr-only" style={{ position: "absolute", left: -9999 }}>
-          Cari perangkat
-        </span>
-        <input
-          type="search"
-          value={search}
-          placeholder="Cari ID / serial / tag…"
-          onChange={(e) => onSearchChange(e.target.value)}
-          style={{
-            minHeight: "var(--touch-target)",
-            padding: "var(--space-8)",
-            borderRadius: "var(--radius)",
-            border: "1px solid var(--color-border)",
-            minWidth: "14rem",
-          }}
-        />
-      </label>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          const value = (
-            e.currentTarget.elements.namedItem("expression") as HTMLInputElement
-          ).value;
-          onApplyExpression(value);
-        }}
+    <Card>
+      <CardContent
+        role="search"
+        aria-label="Filter perangkat"
+        className="space-y-4"
       >
-        <input
-          name="expression"
-          defaultValue={currentExpression}
-          placeholder={'Ekspresi native (mis. _tags = "online")'}
-          aria-label="Ekspresi filter native"
-          style={{
-            minHeight: "var(--touch-target)",
-            padding: "var(--space-8)",
-            borderRadius: "var(--radius)",
-            border: "1px solid var(--color-border)",
-            minWidth: "16rem",
-          }}
-        />
-        <Button type="submit" variant="secondary">
-          Terapkan
-        </Button>
-      </form>
-      <label>
-        <span style={{ color: "var(--color-muted)" }}>Halaman ukur</span>
-        <select
-          value={params.get("pageSize") ?? "25"}
-          onChange={(e) => onPageSizeChange(e.target.value)}
-          aria-label="Ukuran halaman"
-          style={{
-            minHeight: "var(--touch-target)",
-            borderRadius: "var(--radius)",
+        <div className="grid gap-4 lg:grid-cols-[1fr_auto_auto]">
+          <div className="space-y-2">
+            <Label htmlFor="device-search">Cari perangkat</Label>
+            <div className="relative">
+              <Search
+                className="pointer-events-none absolute left-3 top-3.5 size-4 text-muted-foreground"
+                aria-hidden="true"
+              />
+              <Input
+                id="device-search"
+                type="search"
+                value={search}
+                placeholder="ID, serial, atau tag…"
+                className="pl-10"
+                onChange={(e) => onSearchChange(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="device-sort">Urutkan</Label>
+            <Select
+              value={params.get("sort") ?? "default"}
+              onValueChange={(value) => {
+                const next = new URLSearchParams(params.toString());
+                if (value === "default") next.delete("sort");
+                else next.set("sort", value);
+                commit(next);
+              }}
+            >
+              <SelectTrigger
+                id="device-sort"
+                className="w-full min-w-40"
+                aria-label="Urutkan perangkat"
+              >
+                <SelectValue placeholder="Urutan khusus" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="default">ID: A–Z</SelectItem>
+                <SelectItem value={'{"DeviceID.ID":-1}'}>ID: Z–A</SelectItem>
+                <SelectItem value={'{"Events.Inform":-1}'}>
+                  Inform terbaru
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="page-size">Per halaman</Label>
+            <Select
+              value={params.get("pageSize") ?? "25"}
+              onValueChange={onPageSizeChange}
+            >
+              <SelectTrigger
+                id="page-size"
+                className="w-full min-w-24"
+                aria-label="Ukuran halaman"
+              >
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {[25, 50, 100].map((size) => (
+                  <SelectItem key={size} value={String(size)}>
+                    {size}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        <form
+          className="flex flex-wrap items-end gap-3 border-t pt-4"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const value = (
+              e.currentTarget.elements.namedItem(
+                "expression",
+              ) as HTMLInputElement
+            ).value;
+            onApplyExpression(value);
           }}
         >
-          <option value="25">25</option>
-          <option value="50">50</option>
-          <option value="100">100</option>
-        </select>
-      </label>
-    </div>
+          <div className="min-w-0 flex-1 basis-56 space-y-2">
+            <Label htmlFor="native-filter">Filter lanjutan</Label>
+            <Input
+              key={currentExpression}
+              id="native-filter"
+              name="expression"
+              defaultValue={currentExpression}
+              placeholder={'Contoh: DeviceID.ProductClass = "F670"'}
+              aria-label="Ekspresi filter native"
+              className="font-mono text-xs md:text-xs"
+            />
+          </div>
+          <Button type="submit" variant="secondary">
+            <SlidersHorizontal aria-hidden="true" />
+            Terapkan
+          </Button>
+          {currentExpression || search ? (
+            <Button
+              variant="ghost"
+              type="button"
+              onClick={() => {
+                if (timer.current) clearTimeout(timer.current);
+                setSearch("");
+                const next = new URLSearchParams(params.toString());
+                next.delete("filter");
+                next.delete("search");
+                commit(next);
+              }}
+            >
+              Hapus filter
+            </Button>
+          ) : null}
+        </form>
+      </CardContent>
+    </Card>
   );
 }

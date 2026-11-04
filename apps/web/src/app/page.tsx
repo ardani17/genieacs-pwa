@@ -1,12 +1,22 @@
-// Neutral application entry: no customer data, no device parameters, no
-// credentials — the dashboard surfaces land with M03/M04 behind the BFF.
+import { Network } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { PageHeader } from "@/components/page-header";
 export default function Home() {
   return (
-    <section aria-labelledby="app-title">
-      <h1 id="app-title">GenieACS PWA</h1>
-      <p>
-        Dashboard perangkat akan tersedia setelah autentikasi dikonfigurasi.
-      </p>
-    </section>
+    <main className="app-shell py-16">
+      <Card className="mx-auto max-w-xl">
+        <CardContent className="space-y-6">
+          <Network className="size-10 text-primary" aria-hidden="true" />
+          <PageHeader
+            title="GenieACS PWA"
+            description="Pantau perangkat, telusuri parameter, dan periksa koneksi dalam satu ruang kerja."
+          />
+          <Button asChild>
+            <a href="/login">Masuk ke ruang kerja</a>
+          </Button>
+        </CardContent>
+      </Card>
+    </main>
   );
 }

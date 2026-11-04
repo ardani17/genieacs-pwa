@@ -43,6 +43,16 @@ function buildDevice(i) {
     _id: id,
     _lastInform: new Date(),
     _registered: new Date(),
+    _tags: ["demo", "fixture-a\\b"],
+    "Device.WiFi.KeyPassphrase": param("e2e-secret-passphrase"),
+    // Native device identity is stored under _deviceId; the query engine
+    // maps DeviceID.* filters here rather than to a parameter object.
+    _deviceId: {
+      _Manufacturer: "ZTE",
+      _OUI: "000000",
+      _ProductClass: "F670",
+      _SerialNumber: `TEST-SN-${i}`,
+    },
     DeviceID: {
       ID: param(id),
       Manufacturer: param("ZTE"),

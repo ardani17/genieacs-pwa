@@ -6,6 +6,7 @@ docs/_build
 .env.*
 !.env.example
 backups
+artifacts
 *.log
 
 apps/web/node_modules

@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { AuthPanel } from "@/components/auth-panel";
+import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
 import { Status } from "@/components/ui/status";
 
@@ -64,8 +66,10 @@ export default function SetupPage() {
   }
 
   return (
-    <main className="app-shell">
-      <h1>Penyiapan Awal</h1>
+    <AuthPanel
+      title="Penyiapan Awal"
+      description="Buat akun administrator untuk instalasi pertama."
+    >
       {state === "checking" ? <Status tone="muted">Memeriksa…</Status> : null}
       {state === "locked" ? (
         <Status tone="warning">
@@ -76,13 +80,13 @@ export default function SetupPage() {
         <Status tone="danger">Tidak dapat menghubungi server.</Status>
       ) : null}
       {state === "available" ? (
-        <form onSubmit={onSubmit} noValidate>
+        <form onSubmit={onSubmit} className="form-stack" noValidate>
           <Field label="Nama pengguna admin" required>
-            {({ id }) => <input id={id} value="admin" readOnly />}
+            {({ id }) => <Input id={id} value="admin" readOnly />}
           </Field>
           <Field label="Password admin" required>
             {({ id }) => (
-              <input
+              <Input
                 id={id}
                 name="password"
                 type="password"
@@ -94,7 +98,7 @@ export default function SetupPage() {
           </Field>
           <Field label="Konfirmasi password" required>
             {({ id }) => (
-              <input
+              <Input
                 id={id}
                 name="confirm"
                 type="password"
@@ -113,6 +117,6 @@ export default function SetupPage() {
       {state === "locked" && message ? (
         <Status tone="success">{message}</Status>
       ) : null}
-    </main>
+    </AuthPanel>
   );
 }

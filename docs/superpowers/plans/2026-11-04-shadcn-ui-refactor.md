@@ -67,20 +67,20 @@ Interfaces:
 
 Steps:
 
-- [ ] Resolve the official package versions and record the metadata. Install
+- [x] Resolve the official package versions and record the metadata. Install
       Tailwind 4/PostCSS, shadcn component dependencies and the Radix primitives
       actually used; save exact versions and the package lock.
-- [ ] Configure PostCSS and Tailwind's CSS entry. Map semantic variables to the
+- [x] Configure PostCSS and Tailwind's CSS entry. Map semantic variables to the
       contract palette and keep all fonts/icons local.
-- [ ] Add the official shadcn/ui component source and its attribution. Add cn
+- [x] Add the official shadcn/ui component source and its attribution. Add cn
       with clsx/tailwind-merge and configure components.json paths.
-- [ ] Replace shared primitives and migrate their consumers in one testable
+- [x] Replace shared primitives and migrate their consumers in one testable
       increment; avoid two competing button/form/dialog systems.
-- [ ] Implement desktop sidebar and mobile topbar/bottom navigation + Sheet,
+- [x] Implement desktop sidebar and mobile topbar/bottom navigation + Sheet,
       preserving permission and available-route behavior.
-- [ ] Apply shared form/card/alert patterns to login, setup and account and
+- [x] Apply shared form/card/alert patterns to login, setup and account and
       shared status/error patterns to the shell.
-- [ ] Run component tests including keyboard/focus/Escape, busy, errors and
+- [x] Run component tests including keyboard/focus/Escape, busy, errors and
       navigation permissions. Run lint/typecheck/build, audit dependencies and
       inspect all three viewports before marking ARD-219 Done.
 
@@ -110,25 +110,25 @@ Interfaces and parity:
 
 Steps:
 
-- [ ] Convert overview to shared metric/section cards with labeled data and
+- [x] Convert overview to shared metric/section cards with labeled data and
       text/table alternatives, source and observation time.
-- [ ] Convert filter toolbar, desktop table, mobile cards, pagination and CSV
+- [x] Convert filter toolbar, desktop table, mobile cards, pagination and CSV
       action to shared components while preserving URL/back navigation.
-- [ ] Convert detail headings, status badges, tabs, parameter search and
+- [x] Convert detail headings, status badges, tabs, parameter search and
       diagnosis state panels to the same component/spacing vocabulary.
-- [ ] Remove unused old CSS Modules after the final consumer moves.
-- [ ] Check representative synthetic preview data against the actual native
+- [x] Remove unused old CSS Modules after the final consumer moves.
+- [x] Check representative synthetic preview data against the actual native
       fields so totals and filters agree.
-- [ ] Run Vitest and engine-backed Playwright at all target sizes; verify
+- [x] Run Vitest and engine-backed Playwright at all target sizes; verify
       search/tag/backslash, sorting, paging, CSV/masking and diagnosis parity.
-- [ ] Build and refresh the localhost:3104 preview from development. Save
+- [x] Build and refresh the localhost:3104 preview from development. Save
       screenshots and evidence in Linear before marking ARD-220 Done.
 
 ## Completion
 
-- [ ] M03 and M04 acceptance include visual inspection as well as test results.
-- [ ] Parent/milestone progress reflects the new scope and actual completion.
-- [ ] Preview remains available for the user; no production database or device
+- [x] M03 and M04 acceptance include visual inspection as well as test results.
+- [x] Parent/milestone progress reflects the new scope and actual completion.
+- [x] Preview remains available for the user; no production database or device
       commands are used for visual verification.
 
 Implementation is performed inline in task order. The active M01 source/CI

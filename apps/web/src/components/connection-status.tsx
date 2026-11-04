@@ -34,11 +34,14 @@ export function ConnectionStatus() {
   const vpnView = VPN_TEXT[vpn] ?? VPN_TEXT.unconfigured;
 
   return (
-    <div aria-label="Status koneksi">
+    <div
+      aria-label="Status koneksi"
+      className="flex flex-wrap items-center gap-2"
+    >
       <Status tone={appView.tone}>{appView.text}</Status>
       <Status tone={vpnView.tone}>{vpnView.text}</Status>
       {lastSuccessAt ? (
-        <small>
+        <small className="text-xs text-muted-foreground">
           Terakhir berhasil:{" "}
           {new Date(lastSuccessAt).toLocaleTimeString("id-ID")}
         </small>

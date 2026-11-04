@@ -1,72 +1,104 @@
-/* Mobile-first blue/white design tokens — exact contract values
-   (docs/design/contracts.md): background #F5F9FF, surface #FFFFFF,
-   primary #1D4ED8, primaryHover #1E40AF, text #0F172A, muted #475569,
-   border #CBD5E1, success #166534, warning #92400E, danger #B91C1C.
-   System font stack only; no iconfont/network assets. Touch targets
-   >=44px; radius 12px. */
+@import "tailwindcss";
+@import "tw-animate-css";
+/* Semantic tokens: docs/design/ui-design-system.md. */
 :root {
-  --color-background: #f5f9ff;
-  --color-surface: #ffffff;
-  --color-primary: #1d4ed8;
-  --color-primary-hover: #1e40af;
-  --color-primary-contrast: #ffffff;
-  --color-text: #0f172a;
-  --color-muted: #475569;
-  --color-border: #cbd5e1;
-  --color-success: #166534;
-  --color-warning: #92400e;
-  --color-danger: #b91c1c;
-
-  --space-4: 4px;
-  --space-8: 8px;
-  --space-12: 12px;
-  --space-16: 16px;
-  --space-24: 24px;
-  --space-32: 32px;
-
-  --radius: 12px;
-  --touch-target: 44px;
+  --background: #f5f9ff;
+  --foreground: #0f172a;
+  --card: #fff;
+  --card-foreground: #0f172a;
+  --popover: #fff;
+  --popover-foreground: #0f172a;
+  --primary: #1d4ed8;
+  --primary-hover: #1e40af;
+  --primary-foreground: #fff;
+  --secondary: #e8efff;
+  --secondary-foreground: #1e40af;
+  --muted: #eef3fa;
+  --muted-foreground: #475569;
+  --accent: #e8efff;
+  --accent-foreground: #1e40af;
+  --destructive: #b91c1c;
+  --success: #166534;
+  --warning: #92400e;
+  --border: #cbd5e1;
+  --input: #cbd5e1;
+  --ring: #1d4ed8;
+  --radius: 0.75rem;
 }
-
-html,
-body {
-  margin: 0;
-  padding: 0;
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: var(--radius);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 }
-
-body {
-  background: var(--color-background);
-  color: var(--color-text);
-  font-family:
-    system-ui,
-    -apple-system,
-    "Segoe UI",
-    Roboto,
-    sans-serif;
-  line-height: 1.5;
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply m-0 bg-background font-sans text-foreground antialiased;
+  }
+  button,
+  a,
+  input,
+  select {
+    -webkit-tap-highlight-color: transparent;
+  }
+  button:not(:disabled),
+  a {
+    cursor: pointer;
+  }
+  :focus-visible {
+    outline: 3px solid var(--ring);
+    outline-offset: 3px;
+  }
 }
-
-* {
-  box-sizing: border-box;
+@layer components {
+  .app-shell {
+    @apply mx-auto w-full max-w-7xl p-4 md:p-8;
+  }
+  .form-stack {
+    @apply space-y-6;
+  }
+  .detail-grid {
+    @apply grid gap-6 sm:grid-cols-2;
+  }
+  .detail-grid dt {
+    @apply mb-1 text-sm text-muted-foreground;
+  }
+  .detail-grid dd {
+    @apply m-0 break-all font-medium;
+  }
 }
-
-:focus-visible {
-  outline: 3px solid var(--color-primary);
-  outline-offset: 2px;
-}
-
-.app-shell {
-  max-width: 60rem;
-  margin: 0 auto;
-  padding: var(--space-16);
-}
-
-h1 {
-  color: var(--color-primary);
-  font-size: 1.5rem;
-  margin: 0 0 var(--space-8);
-}
-
-small {
-  color: var(--color-muted);
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

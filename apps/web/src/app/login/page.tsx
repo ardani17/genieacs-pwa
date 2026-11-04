@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { AuthPanel } from "@/components/auth-panel";
+import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
 import { Status } from "@/components/ui/status";
 
@@ -48,12 +50,14 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="app-shell">
-      <h1>Masuk</h1>
-      <form onSubmit={onSubmit} noValidate>
+    <AuthPanel
+      title="Masuk"
+      description="Masuk ke ruang kerja untuk memantau dan mengelola perangkat Anda."
+    >
+      <form onSubmit={onSubmit} className="form-stack" noValidate>
         <Field label="Nama pengguna" required>
           {({ id, describedBy }) => (
-            <input
+            <Input
               id={id}
               name="username"
               autoComplete="username"
@@ -64,7 +68,7 @@ export default function LoginPage() {
         </Field>
         <Field label="Password" required>
           {({ id, describedBy }) => (
-            <input
+            <Input
               id={id}
               name="password"
               type="password"
@@ -79,6 +83,6 @@ export default function LoginPage() {
           Masuk
         </Button>
       </form>
-    </main>
+    </AuthPanel>
   );
 }

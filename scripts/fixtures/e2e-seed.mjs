@@ -30,6 +30,13 @@ function buildDevice(i) {
     _id: `TEST-DEVICE-${String(i).padStart(5, "0")}`,
     _lastInform: new Date(),
     _registered: new Date(),
+    _tags: ["demo", "fixture-a\\b"],
+    _deviceId: {
+      _Manufacturer: "ZTE",
+      _OUI: "000000",
+      _ProductClass: "F670",
+      _SerialNumber: `TEST-SN-${i}`,
+    },
     DeviceID: {
       ID: param(`TEST-DEVICE-${String(i).padStart(5, "0")}`),
       Manufacturer: param("ZTE"),

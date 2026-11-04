@@ -4,7 +4,10 @@
 // Unavailable values show "Belum tersedia"; parameter timestamps are
 // visible; read pages never send tasks automatically.
 import { useEffect, useState } from "react";
-import { DataView } from "@/components/ui/data-view";
+import { DataView, type DataViewProps } from "@/components/ui/data-view";
+import { ArrowLeft, Router } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Status } from "@/components/ui/status";
 import { ParameterBrowser } from "./parameter-browser";
 import { Diagnostics } from "./diagnostics";
@@ -22,9 +25,9 @@ function val(device: FlatDevice | null, path: string): string {
 
 export function DeviceDetail({ deviceId }: { deviceId: string }) {
   const [tab, setTab] = useState<Tab>("Ringkasan");
-  const [state, setState] = useState<"loading" | "ready" | "error" | "empty">(
-    "loading",
-  );
+  const [state, setState] =
+    useState<DataViewProps<FlatDevice>["state"]>("loading");
+  const [reload, setReload] = useState(0);
   const [device, setDevice] = useState<FlatDevice | null>(null);
   const [requestId, setRequestId] = useState<string | undefined>();
 
@@ -36,12 +39,17 @@ export function DeviceDetail({ deviceId }: { deviceId: string }) {
     })
       .then(async (res) => {
         const body = (await res.json()) as ApiResult<FlatDevice>;
+        if (controller.signal.aborted) return;
         if (body.ok !== true) {
           setRequestId(body.requestId);
           setState(
             body.ok === false && body.error.code === "NOT_FOUND"
               ? "empty"
-              : "error",
+              : body.error.code === "FORBIDDEN"
+                ? "permission-denied"
+                : body.error.code === "BACKEND_UNAVAILABLE"
+                  ? "unavailable"
+                  : "error",
           );
           return;
         }
@@ -53,135 +61,121 @@ export function DeviceDetail({ deviceId }: { deviceId: string }) {
         setState("error");
       });
     return () => controller.abort();
-  }, [deviceId]);
+  }, [deviceId, reload]);
 
   const lastInform = val(device, "Events.Inform");
 
+  const fields: Record<string, [string, string][]> = {
+    Ringkasan: [
+      ["Model", "DeviceID.ProductClass"],
+      ["Firmware", "InternetGatewayDevice.DeviceInfo.SoftwareVersion"],
+      ["Serial", "DeviceID.SerialNumber"],
+      ["Terakhir inform", "Events.Inform"],
+      ["Uptime", "InternetGatewayDevice.DeviceInfo.UpTime"],
+    ],
+    WAN: [
+      [
+        "IP eksternal",
+        "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.ExternalIPAddress",
+      ],
+      [
+        "Mode",
+        "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.ConnectionType",
+      ],
+    ],
+    WiFi: [
+      ["SSID", "InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID"],
+    ],
+  };
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: "var(--space-12)",
-      }}
-    >
-      <h2 style={{ wordBreak: "break-all" }}>{deviceId}</h2>
-      <div
-        role="tablist"
-        aria-label="Bagian detail"
-        style={{ display: "flex", gap: "var(--space-4)", flexWrap: "wrap" }}
+    <div className="min-w-0 space-y-6">
+      <a
+        href="/devices"
+        className="inline-flex min-h-11 items-center gap-2 text-sm font-medium text-primary hover:underline"
       >
-        {TABS.map((t) => (
-          <button
-            key={t}
-            role="tab"
-            aria-selected={tab === t}
-            onClick={() => setTab(t)}
-            style={{
-              minHeight: "var(--touch-target)",
-              padding: "var(--space-8) var(--space-12)",
-              borderRadius: "var(--radius)",
-              border: "1px solid var(--color-border)",
-              background:
-                tab === t ? "var(--color-primary)" : "var(--color-surface)",
-              color:
-                tab === t
-                  ? "var(--color-primary-contrast)"
-                  : "var(--color-primary)",
-              font: "inherit",
-            }}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
+        <ArrowLeft className="size-4" aria-hidden="true" />
+        Kembali ke perangkat
+      </a>
+      <Card>
+        <CardContent className="flex items-center gap-4">
+          <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-accent text-primary">
+            <Router aria-hidden="true" />
+          </span>
+          <div className="min-w-0">
+            <p className="mb-1 text-xs text-muted-foreground">ID perangkat</p>
+            <h2 className="break-all text-base font-semibold md:text-xl">
+              {deviceId}
+            </h2>
+          </div>
+        </CardContent>
+      </Card>
       <DataView
         state={state}
         items={[]}
         errorRequestId={requestId}
-        onRetry={() => setState("loading")}
+        onRetry={() => {
+          setState("loading");
+          setReload((n) => n + 1);
+        }}
         renderReady={() => null}
       />
       {state === "ready" && device ? (
-        <div role="tabpanel" aria-label={tab}>
-          {tab === "Ringkasan" ? (
-            <dl style={{ display: "grid", gap: "var(--space-8)" }}>
-              <div>
-                <dt>Model</dt>
-                <dd>
-                  {val(device, "DeviceID.ProductClass") || "Belum tersedia"}
-                </dd>
-              </div>
-              <div>
-                <dt>Firmware</dt>
-                <dd>
-                  {val(
-                    device,
-                    "InternetGatewayDevice.DeviceInfo.SoftwareVersion",
-                  ) || "Belum tersedia"}
-                </dd>
-              </div>
-              <div>
-                <dt>Serial</dt>
-                <dd>
-                  {val(device, "DeviceID.SerialNumber") || "Belum tersedia"}
-                </dd>
-              </div>
-              <div>
-                <dt>Terakhir inform</dt>
-                <dd>{lastInform || "Belum tersedia"}</dd>
-              </div>
-              <div>
-                <dt>Uptime</dt>
-                <dd>
-                  {val(device, "InternetGatewayDevice.DeviceInfo.UpTime") ||
-                    "Belum tersedia"}
-                </dd>
-              </div>
-            </dl>
-          ) : null}
-          {tab === "WAN" ? (
-            <dl style={{ display: "grid", gap: "var(--space-8)" }}>
-              <div>
-                <dt>IP eksternal</dt>
-                <dd>
-                  {val(
-                    device,
-                    "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.ExternalIPAddress",
-                  ) || "Belum tersedia"}
-                </dd>
-              </div>
-              <div>
-                <dt>Mode</dt>
-                <dd>
-                  {val(
-                    device,
-                    "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANPPPConnection.1.ConnectionType",
-                  ) || "Belum tersedia"}
-                </dd>
-              </div>
-            </dl>
-          ) : null}
-          {tab === "WiFi" ? (
-            <dl style={{ display: "grid", gap: "var(--space-8)" }}>
-              <div>
-                <dt>SSID</dt>
-                <dd>
-                  {val(
-                    device,
-                    "InternetGatewayDevice.LANDevice.1.WLANConfiguration.1.SSID",
-                  ) || "Belum tersedia"}
-                </dd>
-              </div>
-              <div>
-                <dt>PreSharedKey</dt>
-                <dd>[REDACTED]</dd>
-              </div>
-            </dl>
-          ) : null}
-          {tab === "Parameter" ? <ParameterBrowser device={device} /> : null}
-          {tab === "Diagnosis" ? <Diagnostics deviceId={deviceId} /> : null}
-        </div>
+        <Tabs
+          value={tab}
+          onValueChange={(value) => setTab(value as Tab)}
+          className="min-w-0 gap-6"
+        >
+          <div className="overflow-x-auto pb-1">
+            <TabsList
+              aria-label="Bagian detail"
+              className="w-max min-w-full justify-start border bg-card p-1"
+            >
+              {TABS.map((t) => (
+                <TabsTrigger
+                  value={t}
+                  key={t}
+                  className="px-4 data-[state=active]:bg-accent data-[state=active]:text-primary"
+                >
+                  {t}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </div>
+          {TABS.map((t) => (
+            <TabsContent value={t} key={t}>
+              {fields[t] ? (
+                <Card>
+                  <CardContent>
+                    <dl className="detail-grid">
+                      {fields[t].map(([label, path]) => (
+                        <div key={path}>
+                          <dt>{label}</dt>
+                          <dd>
+                            {path === "Events.Inform" && lastInform
+                              ? Number.isFinite(Number(lastInform))
+                                ? new Date(Number(lastInform)).toLocaleString(
+                                    "id-ID",
+                                  )
+                                : lastInform
+                              : val(device, path) || "Belum tersedia"}
+                          </dd>
+                        </div>
+                      ))}
+                      {t === "WiFi" ? (
+                        <div>
+                          <dt>PreSharedKey</dt>
+                          <dd className="font-mono text-sm">[REDACTED]</dd>
+                        </div>
+                      ) : null}
+                    </dl>
+                  </CardContent>
+                </Card>
+              ) : null}
+              {t === "Parameter" ? <ParameterBrowser device={device} /> : null}
+              {t === "Diagnosis" ? <Diagnostics deviceId={deviceId} /> : null}
+            </TabsContent>
+          ))}
+        </Tabs>
       ) : null}
       {state === "empty" ? (
         <Status tone="warning">Perangkat tidak ditemukan.</Status>

@@ -1,7 +1,14 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
+import { useState } from "react";
 import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
-import { Dialog } from "./dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogDescription,
+  DialogTrigger,
+} from "./dialog";
 import { Button } from "./button";
 import { Field } from "./field";
 import { Status } from "./status";
@@ -9,25 +16,37 @@ import { DataView } from "./data-view";
 
 test("dialog traps focus and closes on Escape", async () => {
   const user = userEvent.setup();
-  let closed = false;
-  render(
-    <Dialog
-      open
-      title="Konfirmasi"
-      onClose={() => {
-        closed = true;
-      }}
-    >
-      <button>Batal</button>
-      <button>Simpan</button>
-    </Dialog>,
-  );
+  function Example() {
+    const [open, setOpen] = useState(false);
+    return (
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogTrigger asChild>
+          <Button>Buka</Button>
+        </DialogTrigger>
+        <DialogContent>
+          <DialogTitle>Konfirmasi</DialogTitle>
+          <DialogDescription>Periksa sebelum menyimpan.</DialogDescription>
+          <button>Batal</button>
+          <button>Simpan</button>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+  render(<Example />);
+  const trigger = screen.getByRole("button", { name: "Buka" });
+  await user.click(trigger);
   expect(screen.getByRole("dialog", { name: "Konfirmasi" })).toHaveAttribute(
     "aria-modal",
     "true",
   );
+  expect(screen.getByRole("button", { name: "Batal" })).toHaveFocus();
+  await user.tab({ shift: true });
+  expect(screen.getByRole("button", { name: "Tutup" })).toHaveFocus();
+  await user.tab();
+  expect(screen.getByRole("button", { name: "Batal" })).toHaveFocus();
   await user.keyboard("{Escape}");
-  expect(closed).toBe(true);
+  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  await waitFor(() => expect(trigger).toHaveFocus());
 });
 
 test("button variants, disabled and busy semantics", () => {
@@ -35,7 +54,7 @@ test("button variants, disabled and busy semantics", () => {
     <>
       <Button>Simpan</Button>
       <Button variant="secondary">Batal</Button>
-      <Button variant="danger">Hapus</Button>
+      <Button variant="destructive">Hapus</Button>
       <Button disabled>Terkunci</Button>
       <Button busy>Simpan</Button>
     </>,
@@ -103,4 +122,23 @@ test("dataView never treats loading-empty as empty state", () => {
   render(<DataView state="loading" items={[]} renderReady={() => null} />);
   expect(screen.queryByText("Belum ada data.")).toBeNull();
   expect(vi.fn()).not.toHaveBeenCalled();
+});
+
+test("denied and unavailable states carry distinct messages", () => {
+  const { rerender } = render(
+    <DataView
+      state="permission-denied"
+      items={[]}
+      onRetry={vi.fn()}
+      renderReady={() => null}
+    />,
+  );
+  expect(screen.getByRole("alert")).toHaveTextContent("Akses tidak diizinkan.");
+  expect(
+    screen.queryByRole("button", { name: "Coba lagi" }),
+  ).not.toBeInTheDocument();
+  rerender(
+    <DataView state="unavailable" items={[]} renderReady={() => null} />,
+  );
+  expect(screen.getByRole("alert")).toHaveTextContent("Data belum tersedia.");
 });

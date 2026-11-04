@@ -76,6 +76,9 @@ test.describe("authenticated admin", () => {
     // The fixture device carries a secret parameter whose VALUE must
     // never reach the browser, in the panel or anywhere on the page.
     await expect(page.getByText("e2e-secret-passphrase")).toHaveCount(0);
+    // Search before inspecting the row: larger fixtures paginate the
+    // parameter table, so this row need not be on the first page.
+    await search.fill("KeyPassphrase");
     await expect(
       page
         .getByRole("row", {
