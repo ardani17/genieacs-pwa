@@ -196,7 +196,12 @@
     {
       "cwd": ".",
       "command": "node",
-      "args": ["--test", "scripts/security/github-alert-gate.test.mjs"]
+      "args": [
+        "--test",
+        "scripts/security/github-alert-gate.test.mjs",
+        "scripts/security/github-alert-gate-regression.test.mjs",
+        "scripts/security/github-security-check.test.mjs"
+      ]
     }
   ],
   "M02-A": [

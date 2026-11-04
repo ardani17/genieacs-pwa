@@ -1,5 +1,16 @@
 {
   "schemaVersion": 1,
+  "verification": {
+    "status": "needs_validation",
+    "collector": "scripts/security/github-security-check-cli.mjs",
+    "report": "artifacts/security/github-alert-report.json",
+    "requiredCategories": [
+      "/language:javascript-typescript",
+      "/language:actions"
+    ],
+    "approvalPolicy": "Pending exceptions below are proposals. They require named approvedBy and reviewedAt, full scope/CWE/compensation/owner and expiry within 30 days. No approval is inferred from this file or unit tests.",
+    "publicationPolicy": "Local tests do not close GitHub alerts. Publish through an authorized PR to development, transition the existing default CodeQL setup to this advanced workflow, then evaluate actual exact-ref evidence."
+  },
   "scope": "Evidence mapping for the 16 CodeQL + 1 Dependabot alerts in the 2026-11-01 snapshot (docs/design/github-security-alerts.json). Alert closure is only claimed as fixed_verified after the security-alerts workflow scans the exact ref/SHA; until the branch is pushed and scanned, every entry stays needs_validation. Residual protocol-crypto findings are risk_accepted via reviewed exceptions with expiry, never silently fixed.",
   "sourceSnapshot": {
     "checkedAt": "2026-11-01T14:24:50Z",
@@ -80,6 +91,7 @@
       "state": "risk_accepted_pending_scan",
       "tests": ["test/security/http-digest.ts"],
       "exception": {
+        "reviewStatus": "pending_human_review",
         "reason": "HTTP Digest MD5 is a TR-069 wire requirement; removal needs a CPE lab",
         "scope": "lib/auth.ts digest (CWMP handshake only)",
         "cwe": "CWE-327",
@@ -94,6 +106,7 @@
       "state": "risk_accepted_pending_scan",
       "tests": ["test/security/udp-cr-auth.ts"],
       "exception": {
+        "reviewStatus": "pending_human_review",
         "reason": "UDP Connection Request HMAC-SHA1 fixed by TR-069 Annex G",
         "scope": "lib/udp-cr-auth.ts (protocol-only)",
         "cwe": "CWE-327",
@@ -108,6 +121,7 @@
       "state": "risk_accepted_pending_scan",
       "tests": ["test/security/xmpp-scram.ts"],
       "exception": {
+        "reviewStatus": "pending_human_review",
         "reason": "SCRAM-SHA-1 legacy path behind explicit XMPP_ALLOW_LEGACY_SHA1",
         "scope": "lib/xmpp-scram.ts legacy branch only",
         "cwe": "CWE-327",

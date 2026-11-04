@@ -15,10 +15,14 @@ const OPEN_ALERT = (number, severity = "critical") => ({
   rule: { id: "rule-" + number, security_severity_level: severity },
 });
 
-const FRESH = (sha, ref = "refs/heads/development") => ({
-  commit_sha: sha,
-  ref,
-});
+const FRESH = (sha, ref = "refs/heads/development") =>
+  ["javascript-typescript", "actions"].map((language) => ({
+    commit_sha: sha,
+    ref,
+    category: `/language:${language}`,
+    tool: { name: "CodeQL" },
+    error: "",
+  }));
 
 test("successful analysis job with open alert is not a clean gate", () => {
   const r = evaluateGithubAlerts({
@@ -70,7 +74,7 @@ test("mapped fixed alerts on the fresh sha pass the gate", () => {
       FIXED_ALERT(16),
       FIXED_ALERT("dependabot1", { tool: "dependabot" }),
     ],
-    analyses: [FRESH("sha-new")],
+    analyses: FRESH("sha-new"),
     expectedRef: "refs/heads/development",
     expectedSha: "sha-new",
     exceptions: [],
@@ -82,7 +86,7 @@ test("mapped fixed alerts on the fresh sha pass the gate", () => {
 test("unmapped or category-less open alerts block", () => {
   const unmapped = evaluateGithubAlerts({
     alerts: [OPEN_ALERT(99)],
-    analyses: [FRESH("sha-new")],
+    analyses: FRESH("sha-new"),
     expectedRef: "refs/heads/development",
     expectedSha: "sha-new",
     exceptions: [],
@@ -96,7 +100,7 @@ test("unmapped or category-less open alerts block", () => {
 
   const noCategory = evaluateGithubAlerts({
     alerts: [{ number: 5, state: "open", rule: {} }],
-    analyses: [FRESH("sha-new")],
+    analyses: FRESH("sha-new"),
     expectedRef: "refs/heads/development",
     expectedSha: "sha-new",
     exceptions: [],
@@ -112,7 +116,7 @@ test("unmapped or category-less open alerts block", () => {
 test("expired or incomplete exceptions do not count as accepted", () => {
   const expired = evaluateGithubAlerts({
     alerts: [OPEN_ALERT(11)],
-    analyses: [FRESH("sha-new")],
+    analyses: FRESH("sha-new"),
     expectedRef: "refs/heads/development",
     expectedSha: "sha-new",
     exceptions: [
@@ -121,6 +125,8 @@ test("expired or incomplete exceptions do not count as accepted", () => {
         reason: "legacy",
         scope: "cwmp",
         owner: "admin",
+        approvedBy: "reviewer@example.invalid",
+        reviewedAt: "2026-11-01T00:00:00.000Z",
         expiresAt: "2026-10-01T00:00:00.000Z",
       },
     ],
@@ -133,7 +139,7 @@ test("expired or incomplete exceptions do not count as accepted", () => {
 
   const incomplete = evaluateGithubAlerts({
     alerts: [OPEN_ALERT(12)],
-    analyses: [FRESH("sha-new")],
+    analyses: FRESH("sha-new"),
     expectedRef: "refs/heads/development",
     expectedSha: "sha-new",
     exceptions: [{ number: 12, expiresAt: "2026-12-01T00:00:00.000Z" }],
@@ -145,7 +151,7 @@ test("expired or incomplete exceptions do not count as accepted", () => {
 test("residual protocol crypto risks are risk_accepted, not fixed", () => {
   const r = evaluateGithubAlerts({
     alerts: [OPEN_ALERT(11), OPEN_ALERT(12), OPEN_ALERT(13)],
-    analyses: [FRESH("sha-new")],
+    analyses: FRESH("sha-new"),
     expectedRef: "refs/heads/development",
     expectedSha: "sha-new",
     exceptions: [
@@ -156,6 +162,8 @@ test("residual protocol crypto risks are risk_accepted, not fixed", () => {
         cwe: "CWE-327",
         compensation: "TLS + mgmt network",
         owner: "admin",
+        approvedBy: "reviewer@example.invalid",
+        reviewedAt: "2026-11-01T00:00:00.000Z",
         expiresAt: "2026-11-30T00:00:00.000Z",
       },
       {
@@ -165,6 +173,8 @@ test("residual protocol crypto risks are risk_accepted, not fixed", () => {
         cwe: "CWE-327",
         compensation: "mgmt network",
         owner: "admin",
+        approvedBy: "reviewer@example.invalid",
+        reviewedAt: "2026-11-01T00:00:00.000Z",
         expiresAt: "2026-11-30T00:00:00.000Z",
       },
       {
@@ -174,6 +184,8 @@ test("residual protocol crypto risks are risk_accepted, not fixed", () => {
         cwe: "CWE-327",
         compensation: "TLS mandatory, flag off",
         owner: "admin",
+        approvedBy: "reviewer@example.invalid",
+        reviewedAt: "2026-11-01T00:00:00.000Z",
         expiresAt: "2026-11-30T00:00:00.000Z",
       },
     ],
@@ -186,7 +198,7 @@ test("residual protocol crypto risks are risk_accepted, not fixed", () => {
 test("a new critical alert after the snapshot blocks the gate", () => {
   const r = evaluateGithubAlerts({
     alerts: [FIXED_ALERT(1), OPEN_ALERT(777, "critical")],
-    analyses: [FRESH("sha-new")],
+    analyses: FRESH("sha-new"),
     expectedRef: "refs/heads/development",
     expectedSha: "sha-new",
     exceptions: [],
@@ -207,7 +219,7 @@ test("incomplete pagination is reflected by the caller-provided apiOk=false path
   // the evaluator must keep the gate blocked rather than empty.
   const r = evaluateGithubAlerts({
     alerts: [FIXED_ALERT(1)],
-    analyses: [FRESH("sha-new")],
+    analyses: FRESH("sha-new"),
     expectedRef: "refs/heads/development",
     expectedSha: "sha-new",
     exceptions: [],
