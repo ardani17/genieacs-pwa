@@ -55,7 +55,7 @@ melalui source/release resmi.
 | Frontend             | Next16.4.3, React/react-dom19.3.1, sharp0.35.5                                                                                    |
 | Frontend lint        | @next/eslint-plugin-next16.4.3 + react-hooks7.1.1 + lint kandidat; tanpa full eslint-config-next yang masih menarik plugin peer≤9 |
 | Types                | @types/node24.19.2, @types/react19.3.0, @types/react-dom19.3.0                                                                    |
-| UI CSS               | CSS variables + CSS Modules; tanpa framework CSS tambahan                                                                         |
+| UI CSS               | shadcn/ui + Tailwind CSS 4 + CSS variables; revisi UI 4 November 2026                                                             |
 | Editor admin         | CodeMirror5.65.21, @types/codemirror5.60.18 melalui React wrapper; lock transitive @types/tern dan audit graph                    |
 | HTTPS overlay        | Caddy2.11.7; [release resmi](https://github.com/caddyserver/caddy/releases/tag/v2.11.7), digest/scan gate M01-D                   |
 | Test frontend        | Vitest5.0.5, Vite8.3.5, jsdom30.1.3; Testing Library React16.3.3/DOM10.4.2/user-event14.6.8/jest-dom7.0.1; Playwright1.64.1       |

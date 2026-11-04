@@ -59,7 +59,7 @@ target pembuktian awal. Platform tambahan perlu CI image dan uji PPP tersendiri.
 
 | Path target                    | Tanggung jawab                                                                          |
 | ------------------------------ | --------------------------------------------------------------------------------------- |
-| `apps/web`                     | Next App Router, React, CSS Modules, BFF same-origin                                    |
+| `apps/web`                     | Next App Router, React, shadcn/ui, Tailwind CSS 4, BFF same-origin                      |
 | `packages/app-contracts/src`   | DTO/result/error/log/schema validator pure TS; tidak mengimpor Node di browser          |
 | `packages/device-profiles/src` | resolver vendor/model/firmware, aturan WAN dan task builder pure TS                     |
 | `lib/ui/app-api.ts`            | endpoint tambahan yang memakai Authorizer native                                        |
@@ -587,6 +587,12 @@ Route UI: /login, /setup, /overview, /devices, /devices/[id], /tasks, /faults,
 /admin/config, /admin/users, /admin/permissions, /settings/vpn,
 /diagnostics/logs, /account/password. Detail tabs: Ringkasan, WAN, WiFi,
 Parameter, Task/Fault, Diagnosis.
+
+Revisi 4 November 2026: fondasi UI memakai source komponen shadcn/ui, primitive
+Radix, Tailwind CSS 4 dan CSS variables semantik.
+[Kontrak sistem desain UI](ui-design-system.md) mengatur komponen, tema,
+responsivitas dan acceptance visual M03–M04; keputusan ini mengganti pilihan CSS
+Modules custom sebagai fondasi frontend.
 
 Token CSS: background#F5F9FF, surface#FFFFFF, primary#1D4ED8,
 primaryHover#1E40AF, text#0F172A, muted#475569, border#CBD5E1, success#166534,
