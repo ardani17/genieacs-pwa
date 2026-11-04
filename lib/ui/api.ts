@@ -1,14 +1,12 @@
 import { Readable } from "node:stream";
 import Router from "@koa/router";
-import { ObjectId } from "mongodb";
 import * as db from "./db.ts";
 import * as apiFunctions from "../api-functions.ts";
 import { evaluate, and, extractParams } from "../common/expression/util.ts";
 import { parse } from "../common/expression/parser.ts";
 import * as logger from "../logger.ts";
 import { emitPermissionDenied } from "../engine-app-logger.ts";
-import { getConfig } from "../ui/local-cache.ts";
-import { Expression, Task } from "../types.ts";
+import { Expression } from "../types.ts";
 import { generateSalt, hashPassword } from "../auth.ts";
 import { del } from "../cache.ts";
 import Authorizer from "../common/authorizer.ts";
@@ -16,9 +14,11 @@ import { ping } from "../ping.ts";
 import { decodeTag } from "../util.ts";
 import { stringify as yamlStringify } from "../common/yaml.ts";
 import { ResourceLockedError } from "../common/errors.ts";
-import { acquireLock, releaseLock } from "../lock.ts";
-import { collections } from "../db/db.ts";
 import { quoteCsvCell, sendSafeLegacyError } from "./safe-error.ts";
+import {
+  CommandExecutionError,
+  executeAuthorizedTasks,
+} from "./device-commands.ts";
 
 const router = new Router();
 export default router;
@@ -585,112 +585,49 @@ router.post("/devices/:id/tasks", async (ctx) => {
   // Extend socket timeout while waiting for session
   if (socketTimeout) ctx.socket.setTimeout(300000);
 
-  const token = await acquireLock(`cwmp_session_${deviceId}`, 5000, 30000);
-  if (!token) {
-    log.message += " failed";
-    logger.accessWarn(log);
-    ctx.body = "Device is in session";
-    ctx.status = 503;
-    // Restore socket timeout
-    if (socketTimeout) ctx.socket.setTimeout(socketTimeout);
-    return;
-  }
-
-  let device;
-
-  let statuses: { _id: string; status: string }[];
-
   try {
-    const filter = and(authorizer.getFilter("devices", 3), [
-      "=",
-      ["PARAM", "DeviceID.ID"],
+    // Legacy adapter over the shared guarded executor (M05-B): the
+    // response shape (statuses array + Connection-Request header) and
+    // every legacy status code stay identical; new whitelist and
+    // management-WAN guard rejections surface as 400 instead of the old
+    // unstructured 500.
+    const result = await executeAuthorizedTasks(
+      {
+        authorizer,
+        configSnapshot: ctx.state.configSnapshot,
+        username: ctx.state.user?.username ?? null,
+      },
       deviceId,
-    ]);
-    device = (await db.query("devices", filter).next()).value;
-    if (!device) return void (ctx.status = 404);
+      ctx.request.body as unknown[],
+    );
 
-    const validate = authorizer.getValidator("devices", device);
-    for (const t of ctx.request.body as unknown[]) {
-      if (!validate("task", t)) {
-        logUnauthorizedWarning(log);
+    log.tasks = result.statuses.map((t) => t._id).join(",");
+    logger.accessInfo(log);
+
+    ctx.set("Connection-Request", result.connectionRequestStatus || "OK");
+    ctx.body = result.statuses;
+  } catch (err) {
+    if (err instanceof CommandExecutionError) {
+      log.message += " failed";
+      logger.accessWarn(log);
+      if (err.status === 403) {
+        emitPermissionDenied(ctx, "Commit tasks");
         return void (ctx.status = 403);
       }
-    }
-
-    let tasks = ctx.request.body as Task[];
-
-    for (const task of tasks) {
-      delete task._id;
-      task["device"] = deviceId;
-    }
-
-    tasks = await apiFunctions.insertTasks(tasks);
-
-    statuses = tasks.map((t) => ({ _id: t._id, status: "pending" }));
-  } finally {
-    await releaseLock(`cwmp_session_${deviceId}`, token);
-  }
-
-  const onlineThreshold = getConfig(
-    ctx.state.configSnapshot,
-    "cwmp.deviceOnlineThreshold",
-    {},
-    Date.now(),
-    (exp) => {
-      if (!Array.isArray(exp)) return exp;
-      if (exp[0] === "PARAM") {
-        const p = device[exp[1]];
-        if (p?.value) return p.value[0];
-      } else if (exp[0] === "FUNC") {
-        if (exp[1] === "REMOTE_ADDRESS") {
-          for (const root of ["InternetGatewayDevice", "Device"]) {
-            const p = device[`${root}.ManagementServer.ConnectionRequestURL`];
-            if (p?.value) return new URL(p.value[0]).hostname;
-          }
-          return null;
-        }
+      if (err.status === 404) return void (ctx.status = 404);
+      if (err.status === 503) {
+        ctx.status = 503;
+        ctx.body = err.message;
+        return;
       }
-      return exp;
-    },
-  ) as number;
-
-  const lastInform = device["Events.Inform"].value[0] as number;
-
-  let status = await apiFunctions.connectionRequest(deviceId, device);
-  if (!status) {
-    const sessionStarted = await apiFunctions.awaitSessionStart(
-      deviceId,
-      lastInform,
-      onlineThreshold,
-    );
-    if (!sessionStarted) {
-      status = "No contact from CPE";
-    } else {
-      const sessionEnded = await apiFunctions.awaitSessionEnd(deviceId, 120000);
-      if (!sessionEnded) status = "Session took too long to complete";
+      sendSafeLegacyError(ctx, 400, "tasks_rejected", err.message);
+      return;
     }
+    throw err;
+  } finally {
+    // Restore socket timeout
+    if (socketTimeout) ctx.socket.setTimeout(socketTimeout);
   }
-
-  if (!status) {
-    const promises = statuses.map((t) =>
-      collections.faults.count({ _id: `${deviceId}:task_${t._id}` }),
-    );
-
-    const res = await Promise.all(promises);
-    for (const [i, r] of statuses.entries())
-      r.status = res[i] ? "fault" : "done";
-  }
-
-  await Promise.all(statuses.map((t) => db.deleteTask(new ObjectId(t._id))));
-
-  // Restore socket timeout
-  if (socketTimeout) ctx.socket.setTimeout(socketTimeout);
-
-  log.tasks = statuses.map((t) => t._id).join(",");
-  logger.accessInfo(log);
-
-  ctx.set("Connection-Request", status || "OK");
-  ctx.body = statuses;
 });
 
 router.post("/devices/:id/tags", async (ctx) => {

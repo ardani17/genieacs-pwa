@@ -10,8 +10,47 @@ import { sendSafeLegacyError } from "./safe-error.ts";
 import { authorizeAppResource } from "./app-permissions.ts";
 import { runDeviceDiagnostics } from "./device-diagnostics.ts";
 import { resolveProfile } from "../../packages/device-profiles/src/resolve.ts";
+import {
+  validOperationId,
+  type DeviceCommandRequest,
+} from "../../packages/app-contracts/src/commands.ts";
+import {
+  CommandExecutionError,
+  authorizeOperationRead,
+  executeAuthorizedTasks,
+} from "./device-commands.ts";
+import {
+  getOperation,
+  operationOutcome,
+  requestFingerprint,
+} from "./operation-store.ts";
+import { emitPermissionDenied } from "../engine-app-logger.ts";
 import * as db from "./db.ts";
 import { buildLogQuery } from "./log-query.ts";
+
+// Minimal structural type for the Koa context pieces appError touches.
+interface ErrorCtx {
+  status: number;
+  type: string;
+  set: (field: string, value: string) => void;
+  body: unknown;
+}
+
+function appError(
+  ctx: ErrorCtx,
+  status: number,
+  code: string,
+  message: string,
+  retryable: boolean,
+): void {
+  ctx.status = status;
+  ctx.type = "application/json";
+  ctx.set("Cache-Control", "no-store");
+  ctx.body = JSON.stringify({
+    ok: false,
+    error: { code, message, retryable },
+  });
+}
 
 const router = new Router();
 
@@ -261,6 +300,113 @@ router.get("/app/devices/:id/profile", async (ctx) => {
   ctx.type = "application/json";
   ctx.set("Cache-Control", "no-store");
   ctx.body = JSON.stringify({ profile });
+});
+
+// POST /api/app/devices/:id/commands — guarded executor with operation
+// idempotency. The device id comes from the URL only; client-supplied
+// task _id fields are dropped inside the executor, validation and the
+// management-WAN guard run before any task is inserted.
+router.post("/app/devices/:id/commands", async (ctx) => {
+  if (!ctx.state.user?.username) return void (ctx.status = 401);
+
+  const body = ctx.request.body as Partial<DeviceCommandRequest> | null;
+  if (!validOperationId(body?.operationId) || !Array.isArray(body?.tasks)) {
+    appError(
+      ctx,
+      400,
+      "VALIDATION",
+      "operationId (UUID) dan tasks wajib diisi",
+      false,
+    );
+    return;
+  }
+  if (body.deviceId != null && body.deviceId !== ctx.params.id) {
+    appError(
+      ctx,
+      400,
+      "VALIDATION",
+      "deviceId body tidak cocok dengan target URL",
+      false,
+    );
+    return;
+  }
+
+  const fingerprint = requestFingerprint({
+    deviceId: ctx.params.id,
+    tasks: body.tasks,
+  });
+
+  try {
+    const result = await executeAuthorizedTasks(
+      {
+        authorizer: ctx.state.authorizer,
+        configSnapshot: ctx.state.configSnapshot,
+        username: ctx.state.user.username,
+      },
+      ctx.params.id,
+      body.tasks,
+      {
+        operation: {
+          operationId: body.operationId,
+          kind: "commands",
+          fingerprint,
+        },
+      },
+    );
+    ctx.status = 200;
+    ctx.type = "application/json";
+    ctx.set("Cache-Control", "no-store");
+    ctx.body = JSON.stringify({
+      ok: true,
+      data: result.outcome ?? {
+        operationId: body.operationId,
+        deviceId: ctx.params.id,
+        state: result.state,
+        phases: result.phases,
+      },
+    });
+  } catch (err) {
+    if (err instanceof CommandExecutionError) {
+      if (err.status === 403) emitPermissionDenied(ctx, "Commit tasks (app)");
+      appError(
+        ctx,
+        err.status,
+        err.code,
+        err.message,
+        err.status === 503 || err.status === 504,
+      );
+      return;
+    }
+    appError(ctx, 500, "INTERNAL", "Perintah perangkat gagal dijalankan", true);
+  }
+});
+
+// GET /api/app/operations/:operationId — stored outcome for the owner
+// (or an authorized admin). Never re-submits anything.
+router.get("/app/operations/:operationId", async (ctx) => {
+  if (!ctx.state.user?.username) return void (ctx.status = 401);
+
+  const operation = await getOperation(ctx.params.operationId);
+  if (!operation) {
+    appError(ctx, 404, "NOT_FOUND", "Operasi tidak ditemukan", false);
+    return;
+  }
+
+  const allowed = await authorizeOperationRead(
+    ctx.state.authorizer,
+    operation,
+    ctx.state.user.username,
+  );
+  if (!allowed) {
+    emitPermissionDenied(ctx, "Read operation");
+    appError(ctx, 403, "FORBIDDEN", "Tidak ada izin membaca operasi", false);
+    return;
+  }
+
+  ctx.status = 200;
+  ctx.type = "application/json";
+  ctx.set("Cache-Control", "no-store");
+  ctx.body = JSON.stringify({ ok: true, data: operationOutcome(operation) });
 });
 
 // Health for internal callers reuses /status from the root router.

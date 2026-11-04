@@ -365,6 +365,26 @@
       "args": ["run", "typecheck"]
     }
   ],
+  "M05-B": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": [
+        "scripts/test-ts.mjs",
+        "test/device-commands.ts",
+        "test/operation-store.ts"
+      ],
+      "artifacts": [
+        "artifacts/tests/test/device-commands.test.cjs",
+        "artifacts/tests/test/operation-store.test.cjs"
+      ]
+    },
+    {
+      "cwd": "apps/web",
+      "command": "npm",
+      "args": ["run", "typecheck"]
+    }
+  ],
   "REV-AUTH": [
     {
       "cwd": ".",
