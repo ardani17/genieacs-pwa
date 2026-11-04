@@ -240,6 +240,14 @@ void test("persisted sink bytes never contain message, URL or stack secrets", as
         "{'authorization': 'Basic dummy-squote-auth'}",
         '{"password":"dummy-json-password"}',
         '{"token": "dummy-json-token"}',
+        // Quoted values with SPACES/COMMAS inside (review wave 5): the
+        // JSON separator consumes the value's opening quote, so the
+        // value must run to the CLOSING quote — a bare-word match would
+        // stop at the first space/comma and leak the tail.
+        '{"password":"dummy json pw, with spaces"}',
+        "{'token': 'dummy squote token, comma'}",
+        '{"authorization":"Basic dummy auth, with spaces"}',
+        '{"secret":"dummy \\"escaped quote, secret\\""}',
       ],
       stackError: stackErr,
     },
@@ -266,6 +274,10 @@ void test("persisted sink bytes never contain message, URL or stack secrets", as
     "dummy-squote-auth",
     "dummy-json-password",
     "dummy-json-token",
+    "dummy json pw, with spaces",
+    "dummy squote token, comma",
+    "dummy auth, with spaces",
+    "escaped quote, secret",
   ])
     assert.equal(bytes.includes(sentinel), false, `${sentinel} leaked to sink`);
 });
