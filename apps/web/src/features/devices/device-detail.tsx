@@ -11,6 +11,9 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Status } from "@/components/ui/status";
 import { ParameterBrowser } from "./parameter-browser";
 import { Diagnostics } from "./diagnostics";
+import { DeviceActions } from "../tasks/staging-panel";
+import { WanEditor } from "../wan/wan-editor";
+import { useSession } from "@/components/session-provider";
 import type { ApiResult } from "@contracts/api.ts";
 
 type FlatDevice = Record<string, { value?: [unknown, string] } | unknown>;
@@ -24,6 +27,7 @@ function val(device: FlatDevice | null, path: string): string {
 }
 
 export function DeviceDetail({ deviceId }: { deviceId: string }) {
+  const { state: session } = useSession();
   const [tab, setTab] = useState<Tab>("Ringkasan");
   const [state, setState] =
     useState<DataViewProps<FlatDevice>["state"]>("loading");
@@ -64,6 +68,26 @@ export function DeviceDetail({ deviceId }: { deviceId: string }) {
   }, [deviceId, reload]);
 
   const lastInform = val(device, "Events.Inform");
+
+  // First WAN IP instance/collection from the flat device: every entry
+  // point (row, Atur, Tambah) opens the SAME full editor server-side.
+  // An instance node wins over the bare collection key so an existing
+  // connection opens in edit (not add) mode.
+  const keys = Object.keys(device ?? {});
+  const wanInstance =
+    keys.find((k) =>
+      /^InternetGatewayDevice\.WANDevice\.\d+\.WANConnectionDevice\.\d+\.WANIPConnection\.\d+$/.test(
+        k,
+      ),
+    ) ?? null;
+  const wanCollection =
+    keys.find((k) =>
+      /^InternetGatewayDevice\.WANDevice\.\d+\.WANConnectionDevice\.\d+\.WANIPConnection$/.test(
+        k,
+      ),
+    ) ??
+    (wanInstance ? wanInstance.replace(/\.\d+$/, "") : null) ??
+    "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection";
 
   const fields: Record<string, [string, string][]> = {
     Ringkasan: [
@@ -173,6 +197,23 @@ export function DeviceDetail({ deviceId }: { deviceId: string }) {
               ) : null}
               {t === "Parameter" ? <ParameterBrowser device={device} /> : null}
               {t === "Diagnosis" ? <Diagnostics deviceId={deviceId} /> : null}
+              {t === "Ringkasan" ? (
+                <Card>
+                  <CardContent className="space-y-3">
+                    <h3 className="text-sm font-semibold">Aksi perangkat</h3>
+                    {session.phase === "authenticated" ? (
+                      <DeviceActions deviceId={deviceId} />
+                    ) : null}
+                  </CardContent>
+                </Card>
+              ) : null}
+              {t === "WAN" ? (
+                <WanEditor
+                  deviceId={deviceId}
+                  collection={wanCollection}
+                  instance={wanInstance}
+                />
+              ) : null}
             </TabsContent>
           ))}
         </Tabs>

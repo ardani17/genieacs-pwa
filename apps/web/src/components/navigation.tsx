@@ -1,12 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Activity,
   Cable,
   CircleUserRound,
   LayoutDashboard,
+  ListChecks,
   MoreHorizontal,
   Network,
   ScrollText,
@@ -37,7 +39,7 @@ export const FEATURE_AVAILABILITY: Record<string, boolean> = {
   "/overview": true,
   "/devices": true,
   "/devices/[id]": true,
-  "/tasks": false,
+  "/tasks": true,
   "/faults": false,
   "/diagnostics/logs": false,
   "/account/password": true,
@@ -46,6 +48,7 @@ export const FEATURE_AVAILABILITY: Record<string, boolean> = {
 export const NAV_ITEMS: NavItem[] = [
   { href: "/overview", label: "Ringkasan" },
   { href: "/devices", label: "Perangkat" },
+  { href: "/tasks", label: "Task" },
   { href: "/faults", label: "Diagnosis" },
   {
     href: "/diagnostics/logs",
@@ -76,6 +79,7 @@ function hasResource(
 const icons = {
   "/overview": LayoutDashboard,
   "/devices": Cable,
+  "/tasks": ListChecks,
   "/faults": Activity,
   "/diagnostics/logs": ScrollText,
   "/account/password": CircleUserRound,
@@ -103,7 +107,7 @@ export function Navigation() {
   const link = (item: NavItem, mobile = false) => {
     const Icon = icons[item.href as keyof typeof icons];
     return (
-      <a
+      <Link
         key={item.href}
         href={item.href}
         aria-current={active(item.href) ? "page" : undefined}
@@ -117,7 +121,7 @@ export function Navigation() {
       >
         <Icon className="size-5 shrink-0" aria-hidden="true" />
         {item.label}
-      </a>
+      </Link>
     );
   };
   const brand = (

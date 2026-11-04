@@ -11,6 +11,10 @@ COPY package.json npm-shrinkwrap.json ./
 RUN npm ci --no-audit --no-fund
 COPY bin bin
 COPY lib lib
+# lib/ui's app API imports the shared contracts and the device-profiles
+# WAN model/guard (bundled by the esbuild engine build).
+COPY packages/app-contracts packages/app-contracts
+COPY packages/device-profiles packages/device-profiles
 COPY build build
 COPY ui ui
 COPY public public
