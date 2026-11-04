@@ -24,6 +24,8 @@ import {
   operationOutcome,
   requestFingerprint,
 } from "./operation-store.ts";
+import { executeWanOperation } from "./wan-operations.ts";
+import { validateWanOperationRequest } from "../../packages/app-contracts/src/wan.ts";
 import { emitPermissionDenied } from "../engine-app-logger.ts";
 import * as db from "./db.ts";
 import { buildLogQuery } from "./log-query.ts";
@@ -407,6 +409,47 @@ router.get("/app/operations/:operationId", async (ctx) => {
   ctx.type = "application/json";
   ctx.set("Cache-Control", "no-store");
   ctx.body = JSON.stringify({ ok: true, data: operationOutcome(operation) });
+});
+
+// POST /api/app/devices/:id/wan — phased WAN orchestration (write →
+// refresh → binding reapply → verify) through the guarded executor and
+// the shared operation store. The browser sends form settings only.
+router.post("/app/devices/:id/wan", async (ctx) => {
+  if (!ctx.state.user?.username) return void (ctx.status = 401);
+
+  const parsed = validateWanOperationRequest(ctx.request.body, ctx.params.id);
+  if (!parsed.ok) {
+    appError(
+      ctx,
+      400,
+      "VALIDATION",
+      (parsed as { error: string }).error,
+      false,
+    );
+    return;
+  }
+
+  try {
+    const outcome = await executeWanOperation(
+      {
+        authorizer: ctx.state.authorizer,
+        configSnapshot: ctx.state.configSnapshot,
+        username: ctx.state.user.username,
+      },
+      parsed.value,
+    );
+    ctx.status = 200;
+    ctx.type = "application/json";
+    ctx.set("Cache-Control", "no-store");
+    ctx.body = JSON.stringify({ ok: true, data: outcome });
+  } catch (err) {
+    if (err instanceof CommandExecutionError) {
+      if (err.status === 403) emitPermissionDenied(ctx, "WAN operation");
+      appError(ctx, err.status, err.code, err.message, err.status === 503);
+      return;
+    }
+    appError(ctx, 500, "INTERNAL", "Operasi WAN gagal dijalankan", true);
+  }
 });
 
 // Health for internal callers reuses /status from the root router.

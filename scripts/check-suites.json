@@ -407,5 +407,18 @@
       "args": ["scripts/test-ts.mjs", "test/integration/auth-log-events.ts"],
       "artifacts": ["artifacts/tests/test/integration/auth-log-events.test.cjs"]
     }
+  ],
+  "M05-C": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/test-ts.mjs", "test/wan-operations.ts"],
+      "artifacts": ["artifacts/tests/test/wan-operations.test.cjs"]
+    },
+    {
+      "cwd": "apps/web",
+      "command": "npm",
+      "args": ["run", "typecheck"]
+    }
   ]
 }
