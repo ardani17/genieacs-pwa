@@ -16,6 +16,8 @@ import { WanEditor } from "../wan/wan-editor";
 import { WifiManager } from "../wifi/wifi-manager";
 import { TagEditor } from "./tag-editor";
 import { ParameterActions } from "./parameter-actions";
+import { ConfigRenderer } from "../config-ui/renderer";
+import type { ConfigNode } from "../config-ui/components";
 import { useSession } from "@/components/session-provider";
 import type { ApiResult } from "@contracts/api.ts";
 
@@ -36,6 +38,14 @@ export function DeviceDetail({ deviceId }: { deviceId: string }) {
     useState<DataViewProps<FlatDevice>["state"]>("loading");
   const [reload, setReload] = useState(0);
   const [device, setDevice] = useState<FlatDevice | null>(null);
+  const customConfig =
+    session.phase === "authenticated"
+      ? (
+          (session.session.uiConfig as Record<string, unknown> | undefined)?.[
+            "device"
+          ] as { components?: ConfigNode[] } | undefined
+        )?.components
+      : undefined;
   const [paramTarget, setParamTarget] = useState<{
     path: string;
     entry: { value?: [unknown, string]; writable?: boolean };
@@ -225,6 +235,23 @@ export function DeviceDetail({ deviceId }: { deviceId: string }) {
                       <h4 className="text-xs font-semibold">Tags</h4>
                       <TagEditor deviceId={deviceId} />
                     </div>
+                    {customConfig?.length ? (
+                      <div className="space-y-2 pt-2">
+                        <h4 className="text-xs font-semibold">
+                          Konfigurasi khusus
+                        </h4>
+                        {customConfig.map((child, i) => (
+                          <ConfigRenderer
+                            key={i}
+                            node={child}
+                            context={{
+                              device: device as never,
+                              now: Date.now(),
+                            }}
+                          />
+                        ))}
+                      </div>
+                    ) : null}
                   </CardContent>
                 </Card>
               ) : null}
