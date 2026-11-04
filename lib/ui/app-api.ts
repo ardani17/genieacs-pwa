@@ -9,6 +9,7 @@ import { changeOwnPassword } from "./self-password.ts";
 import { sendSafeLegacyError } from "./safe-error.ts";
 import { authorizeAppResource } from "./app-permissions.ts";
 import { runDeviceDiagnostics } from "./device-diagnostics.ts";
+import { resolveProfile } from "../../packages/device-profiles/src/resolve.ts";
 import * as db from "./db.ts";
 import { buildLogQuery } from "./log-query.ts";
 
@@ -231,6 +232,35 @@ router.post("/app/devices/:id/diagnostics", async (ctx) => {
   ctx.type = "application/json";
   ctx.set("Cache-Control", "no-store");
   ctx.body = JSON.stringify(result);
+});
+
+// GET /api/app/devices/:id/profile — resolver profile + capabilities.
+// devices:2 + the caller's device filter decide access; the response is
+// derived server-side from the authorized flat device and carries no
+// parameter values (therefore no secrets).
+router.get("/app/devices/:id/profile", async (ctx) => {
+  if (!ctx.state.user?.username) return void (ctx.status = 401);
+
+  const authorizer = ctx.state.authorizer;
+  const filter = authorizer.getFilter("devices", 2);
+  if (!authorizer.hasAccess("devices", 2)) return void (ctx.status = 403);
+
+  const deviceQuery = and(filter, [
+    "=",
+    ["PARAM", "DeviceID.ID"],
+    ctx.params.id,
+  ]);
+  const { value: device } = await db.query("devices", deviceQuery).next();
+  if (!device) return void (ctx.status = 404);
+
+  const profile = resolveProfile(
+    device as Record<string, { value?: [unknown, string] }>,
+  );
+
+  ctx.status = 200;
+  ctx.type = "application/json";
+  ctx.set("Cache-Control", "no-store");
+  ctx.body = JSON.stringify({ profile });
 });
 
 // Health for internal callers reuses /status from the root router.
