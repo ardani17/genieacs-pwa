@@ -6,8 +6,6 @@
 // behavior stays byte-identical. Compose opts the ui service in via
 // GENIEACS_UI_APP_LOG_FILE=/logs/ui/app.ndjson on the shared volume
 // Vector reads.
-import { mkdirSync } from "node:fs";
-import { dirname } from "node:path";
 import { version as VERSION } from "../package.json";
 import * as config from "./config.ts";
 import { createAppLogger, type AppLogger } from "./app-logger.ts";
@@ -36,14 +34,12 @@ export function getEngineAppLogger(): AppLogger {
 
   // The mount race on a FRESH shared volume (web and ui each initialize
   // their own subdirectory; the first mounter copies only its image's
-  // content) makes this runtime mkdir load-bearing, not belt-and-braces.
-  // Failure degrades to running without app logs — never a crash.
-  try {
-    mkdirSync(dirname(filePath), { recursive: true });
-  } catch {
-    engineLogger = NOOP_LOGGER;
-    return engineLogger;
-  }
+  // content) is handled inside the shared core: createAppLogger creates
+  // the directory eagerly and its sink recreates it on ENOENT. An
+  // initially-unusable directory (a blocker on the path, a volume that
+  // appears later) therefore degrades VISIBLY — state "degraded" with
+  // lost events counted — and heals by itself once storage is repaired.
+  // Never a crash, and never a silent "healthy" while events drop.
 
   engineLogger = createAppLogger({
     service: "ui",
