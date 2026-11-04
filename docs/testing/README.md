@@ -76,7 +76,69 @@ docker compose -f compose.dev.yaml run --rm tooling node --test scripts/security
   full request bodies.
 - `artifacts/` content is synthetic data only.
 
-## Registering a suite
+## GitHub security acceptance (M01-S9)
+
+The offline suite tests the evaluator and collector with dummy API pages. It
+does not assert that GitHub alerts are fixed. Run it without network using the
+existing bounded sandbox image:
+
+```sh
+docker compose -f compose.security-test.yaml run --rm --no-deps security-verify \
+  timeout 35s env -i PATH=/usr/local/bin:/usr/bin:/bin HOME=/scratch/home \
+  TMPDIR=/scratch/tmp NODE_ENV=test CI=1 \
+  node /source/scripts/security/check-alerts.mjs M01-S9
+```
+
+After an authorized publication, `security-alerts.yml` runs CodeQL independently
+for JavaScript/TypeScript and Actions, with security-extended queries and
+distinct categories. The gate reads real analyses and repository/ref-scoped
+alerts plus Dependabot metadata with full pagination
+(`gh api --paginate --slurp`). Its token has `contents: read`,
+`security-events: read` and `vulnerability-alerts: read`; no token is exposed on
+fork PRs or written to the report.
+
+Repository default CodeQL setup was still enabled at verification on 4
+November 2026. Before accepting the advanced workflow, an authorized
+administrator must transition default setup to advanced setup. Do not claim an
+advanced scan passed while default setup is still preventing its upload. This
+local change does not modify repository settings or publish a branch. See
+GitHub's
+[advanced setup transition](https://docs.github.com/en/code-security/how-tos/find-and-fix-code-vulnerabilities/configure-code-scanning/configuring-advanced-setup-for-code-scanning).
+
+To collect acceptance evidence from the exact checked-out, published revision:
+
+```sh
+EXPECTED_REF=refs/heads/development EXPECTED_SHA="$(git rev-parse HEAD)" \
+  GITHUB_REPOSITORY=ardani17/genieacs-pwa \
+  node scripts/security/github-security-check-cli.mjs
+```
+
+Use the authenticated GitHub CLI (or the workflow's ephemeral token). The
+command performs metadata reads only and writes
+`artifacts/security/github-alert-report.json`. The workflow retains this report
+for 14 days, including a blocked verdict when collection fails. A checkout
+mismatch, missing category, stale/failed analysis, incomplete API response,
+unmapped alert or unapproved risk fails the gate.
+
+Known alerts may remain open on main before release. A clean scan on development
+can prove absence on that ref; a patched esbuild graph is bound to the
+checked-out SHA and all matching lock entries. The report retains
+`githubState: open` for an esbuild fix on development and does not close or
+dismiss the main alert.
+
+Exceptions in `github-security-evidence.json` are pending proposals. If still
+needed after scanning, a human reviewer must provide `approvedBy`, `reviewedAt`,
+`reason`, `scope`, `cwe`, `compensation`, `owner` and `expiresAt` (within 30
+days of review). Placeholder reviewers, invalid dates and automatic dismissals
+do not constitute approval. M01 remains In Review until actual evidence and the
+required dispositions pass; local unit-test success alone is insufficient.
+
+References:
+[Code scanning REST](https://docs.github.com/en/rest/code-scanning/code-scanning),
+[Dependabot REST](https://docs.github.com/en/rest/dependabot/alerts),
+[workflow permissions](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#permissions).
+
+## Registering another suite
 
 Append to `scripts/check-suites.json`:
 

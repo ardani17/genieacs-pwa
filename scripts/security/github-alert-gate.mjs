@@ -124,6 +124,58 @@ export const ALERT_MAPPING = {
   },
 };
 
+export const ANALYSIS_CATEGORIES = Object.freeze([
+  "/language:javascript-typescript",
+  "/language:actions",
+]);
+
+function exceptionProblems(ex, now) {
+  const fields = [
+    "reason",
+    "scope",
+    "cwe",
+    "compensation",
+    "owner",
+    "approvedBy",
+    "reviewedAt",
+    "expiresAt",
+  ];
+  const problems = [];
+  const missing = fields.filter(
+    (f) => typeof ex[f] !== "string" || !ex[f].trim(),
+  );
+  if (missing.length)
+    problems.push("INCOMPLETE_EXCEPTION: missing " + missing.join("/"));
+  if (
+    /^(human-reviewer|pending|tbd|todo|unknown|agent|codex|bot)$/i.test(
+      ex.approvedBy ?? "",
+    ) ||
+    /\[bot\]$/i.test(ex.approvedBy ?? "")
+  )
+    problems.push("UNREVIEWED_EXCEPTION");
+  const reviewed = Date.parse(ex.reviewedAt);
+  const expiry = Date.parse(ex.expiresAt);
+  const current = Date.parse(now);
+  const canonical = (value, parsed) =>
+    Number.isFinite(parsed) && new Date(parsed).toISOString() === value;
+  if (
+    !canonical(ex.reviewedAt, reviewed) ||
+    !canonical(ex.expiresAt, expiry) ||
+    !canonical(now, current)
+  )
+    problems.push("INVALID_EXCEPTION_DATE");
+  else {
+    if (expiry <= current) problems.push("EXPIRED_EXCEPTION");
+    if (
+      reviewed > current ||
+      expiry <= reviewed ||
+      expiry - reviewed > 30 * 86400_000
+    )
+      problems.push("INVALID_EXCEPTION_WINDOW");
+  }
+  return problems;
+}
+
 export function evaluateGithubAlerts({
   alerts,
   analyses,
@@ -142,31 +194,56 @@ export function evaluateGithubAlerts({
       "API_ERROR: alert/analysis fetch failed; not a zero-alert result",
     );
 
-  // An analysis on the exact expected SHA must exist; anything else is
-  // stale/missing evidence.
-  const freshAnalysis = analyses.find((a) => a.commit_sha === expectedSha);
-  const refMatch = analyses.find(
-    (a) => a.ref === undefined || a.ref === expectedRef,
+  if (!expectedRef || !expectedSha)
+    reasons.push("MISSING_TARGET: ref and SHA are required");
+  if (
+    !Array.isArray(analyses) ||
+    !Array.isArray(alerts) ||
+    !Array.isArray(exceptions)
+  )
+    return {
+      passed: false,
+      blocked: true,
+      gateReasons: ["INVALID_PAYLOAD"],
+      alerts: [],
+      expectedRef,
+      expectedSha,
+      checkedAt: now,
+    };
+  const exact = analyses.filter(
+    (a) => a?.commit_sha === expectedSha && a.ref === expectedRef,
   );
   if (!analyses.length)
     reasons.push("MISSING_ANALYSIS: no analysis results at all");
-  else if (!freshAnalysis)
-    reasons.push("STALE_SHA: no analysis on expected commit " + expectedSha);
-  if (analyses.length && !refMatch)
-    reasons.push("STALE_REF: no analysis on expected ref " + expectedRef);
+  else if (!exact.length)
+    reasons.push("STALE_SHA: no analysis on the exact expected SHA and ref");
+  for (const category of ANALYSIS_CATEGORIES) {
+    const matching = exact
+      .filter((a) => a.category === category && a.tool?.name === "CodeQL")
+      .sort((a, b) => (b.id ?? 0) - (a.id ?? 0));
+    if (!matching.length) reasons.push("CATEGORY_MISSING: " + category);
+    else if (
+      typeof matching[0].error !== "string" ||
+      matching[0].error.length > 0 ||
+      matching[0].rules_count === 0
+    )
+      reasons.push("ANALYSIS_FAILED: " + category);
+  }
 
   const activeExceptions = new Map();
   for (const ex of exceptions) {
-    const expiry = ex.expiresAt;
-    if (!expiry || expiry <= now) {
+    const problems = exceptionProblems(ex, now);
+    if (problems.length) {
       findings.push({
         number: ex.number,
         tool: "exception",
         state: "needs_validation",
-        reasons: ["EXPIRED_EXCEPTION"],
+        reasons: problems,
       });
       continue;
     }
+    if (activeExceptions.has(ex.number))
+      reasons.push("DUPLICATE_EXCEPTION: " + ex.number);
     activeExceptions.set(ex.number, ex);
   }
 
@@ -186,6 +263,7 @@ export function evaluateGithubAlerts({
       state: "needs_validation",
       mapped: Boolean(mapping),
       reasons: [],
+      ...(alert.evidence ? { evidence: alert.evidence } : {}),
     };
 
     if (!mapping) {
@@ -199,18 +277,23 @@ export function evaluateGithubAlerts({
         entry.reasons.push("CATEGORY_MISSING: severity/category unavailable");
     }
 
-    if (alert.state === "fixed" || alert.state === "dismissed") {
-      entry.state =
-        alert.state === "fixed" ? "fixed_verified" : "risk_accepted";
+    const instance = alert.most_recent_instance;
+    if (
+      instance &&
+      (instance.ref !== expectedRef || instance.commit_sha !== expectedSha)
+    )
+      entry.reasons.push("STALE_ALERT_INSTANCE");
+    if (alert.state === "fixed") {
+      if (blocked || reasons.length > 0)
+        entry.reasons.push("UNVERIFIED_ANALYSIS");
+      else if (entry.reasons.length === 0) entry.state = "fixed_verified";
     } else if (activeExceptions.has(alert.number)) {
-      const ex = activeExceptions.get(alert.number);
-      const requiredFields = ["reason", "scope", "owner", "expiresAt"];
-      if (requiredFields.some((f) => !ex[f]))
-        entry.reasons.push(
-          "INCOMPLETE_EXCEPTION: missing " +
-            requiredFields.filter((f) => !ex[f]).join("/"),
-        );
-      else entry.state = "risk_accepted";
+      if (entry.reasons.length === 0) entry.state = "risk_accepted";
+    } else if (
+      alert.state === "dismissed" ||
+      alert.state === "auto_dismissed"
+    ) {
+      entry.reasons.push("UNREVIEWED_DISMISSAL");
     } else if (alert.state === "open") {
       entry.reasons.push(
         "OPEN_ALERT: no fixed-verified evidence on " + expectedSha,
@@ -228,9 +311,7 @@ export function evaluateGithubAlerts({
     findings.push(entry);
   }
 
-  const unresolved = findings.filter(
-    (f) => f.reasons.length > 0 && f.state !== "risk_accepted",
-  );
+  const unresolved = findings.filter((f) => f.reasons.length > 0);
   const passed =
     !blocked &&
     reasons.length === 0 &&
@@ -241,7 +322,7 @@ export function evaluateGithubAlerts({
 
   return {
     passed,
-    blocked,
+    blocked: blocked || reasons.length > 0,
     checkedAt: now,
     expectedRef,
     expectedSha,
