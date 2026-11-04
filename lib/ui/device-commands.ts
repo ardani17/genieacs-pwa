@@ -1,0 +1,409 @@
+// Guarded device-task executor (M05-B). Extracts the native flow from
+// the legacy POST /devices/:id/tasks route — Authorizer/filter/
+// validator/lock/insertion/connection-request/await-session/removal —
+// so the legacy route and the app endpoint run the SAME code. New
+// server-side guarantees before any task is inserted: app-contract
+// whitelist validation (typed SPV tuples, max 100) and the
+// management-WAN guard from M05-B's predecessor. Idempotency goes
+// through lib/ui/operation-store.ts (unique operationId + HMAC
+// fingerprint); a crashed in_progress operation becomes "unknown" and
+// is never replayed.
+
+import { ObjectId } from "mongodb";
+import { and } from "../common/expression/util.ts";
+import * as apiFunctions from "../api-functions.ts";
+import { acquireLock, releaseLock } from "../lock.ts";
+import { collections } from "../db/db.ts";
+import Authorizer from "../common/authorizer.ts";
+import { getConfig } from "./local-cache.ts";
+import * as db from "./db.ts";
+import { getEngineAppLogger } from "../engine-app-logger.ts";
+import {
+  validateDeviceCommandTasks,
+  type CommandOutcome,
+  type CommandPhase,
+  type OperationState,
+  type TaskInput,
+} from "../../packages/app-contracts/src/commands.ts";
+import {
+  ManagementWanGuardError,
+  assertManagementWanSafe,
+} from "../../packages/device-profiles/src/management-wan.ts";
+import type { WanDevice } from "../../packages/device-profiles/src/wan-types.ts";
+import {
+  claimOperation,
+  completeOperation,
+  getOperation,
+  operationOutcome,
+} from "./operation-store.ts";
+import type { AppOperationDoc } from "../db/db.ts";
+import { Expression, Task } from "../types.ts";
+
+// Typed failure surfaced to route adapters (legacy text semantics or
+// the ApiResult envelope) without leaking stacks or upstream bodies.
+export class CommandExecutionError extends Error {
+  constructor(
+    public status: number,
+    public code: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = "CommandExecutionError";
+  }
+}
+
+export interface ExecutorContext {
+  authorizer: Authorizer;
+  configSnapshot: unknown;
+  username: string | null;
+  requestId?: string;
+}
+
+export interface ExecutorDeps {
+  connectionRequest(
+    deviceId: string,
+    device: Record<string, { value?: [boolean | number | string, string] }>,
+  ): Promise<string>;
+  awaitSessionStart(
+    deviceId: string,
+    lastInform: number,
+    timeout: number,
+  ): Promise<boolean>;
+  awaitSessionEnd(deviceId: string, timeout: number): Promise<boolean>;
+  insertTasks(tasks: Task[]): Promise<Task[]>;
+  deleteTask(id: ObjectId): Promise<unknown>;
+  countFaults(deviceId: string, taskId: string): Promise<number>;
+  faultCode(deviceId: string, taskId: string): Promise<string | undefined>;
+}
+
+export const defaultExecutorDeps: ExecutorDeps = {
+  connectionRequest: apiFunctions.connectionRequest,
+  awaitSessionStart: apiFunctions.awaitSessionStart,
+  awaitSessionEnd: apiFunctions.awaitSessionEnd,
+  insertTasks: apiFunctions.insertTasks,
+  deleteTask: (id) => db.deleteTask(id),
+  countFaults: (deviceId, taskId) =>
+    collections.faults.countDocuments({
+      _id: `${deviceId}:task_${taskId}`,
+    }),
+  faultCode: async (deviceId, taskId) => {
+    const fault = await collections.faults.findOne({
+      _id: `${deviceId}:task_${taskId}`,
+    });
+    return fault?.code;
+  },
+};
+
+// CR statuses that are a DETERMINISTIC failure (the device path itself
+// refused/invalid). Everything else non-empty — "No contact from CPE",
+// "Session took too long to complete" — means the outcome could not be
+// confirmed: unknown, never success.
+const CR_FAILURE_STATUSES = new Set([
+  "Connection request failed",
+  "Invalid connection request URL",
+]);
+
+export function normalizeTaskOutcome(result: {
+  status: string;
+  tasks: { status: string }[];
+}): { state: OperationState } {
+  if (result.status) {
+    return {
+      state: CR_FAILURE_STATUSES.has(result.status) ? "failed" : "unknown",
+    };
+  }
+  const states = result.tasks.map((t) => t.status);
+  if (states.some((s) => ["fault", "failed", "error"].includes(s)))
+    return { state: "failed" };
+  if (states.length && states.every((s) => s === "done"))
+    return { state: "succeeded" };
+  return { state: "unknown" };
+}
+
+export interface TaskExecutionResult {
+  state: OperationState;
+  phases: CommandPhase[];
+  statuses: { _id: string; status: string; faultCode?: string }[];
+  // null means the connection request itself was OK.
+  connectionRequestStatus: string | null;
+  outcome?: CommandOutcome;
+  claim?: "new" | "existing";
+}
+
+export interface ExecuteOptions {
+  operation?: { operationId: string; kind: string; fingerprint: string };
+  deps?: Partial<ExecutorDeps>;
+}
+
+function deviceOnlineThreshold(
+  configSnapshot: unknown,
+  device: Record<string, { value?: [unknown, string] }>,
+): number {
+  return getConfig(
+    configSnapshot as string,
+    "cwmp.deviceOnlineThreshold",
+    {},
+    Date.now(),
+    (exp): Expression => {
+      if (!Array.isArray(exp)) return exp;
+      if (exp[0] === "PARAM") {
+        const p = device[exp[1] as string];
+        if (p?.value) return p.value[0] as Expression;
+      } else if (exp[0] === "FUNC") {
+        if (exp[1] === "REMOTE_ADDRESS") {
+          for (const root of ["InternetGatewayDevice", "Device"]) {
+            const p = device[`${root}.ManagementServer.ConnectionRequestURL`];
+            if (p?.value) return new URL(String(p.value[0])).hostname;
+          }
+          return null;
+        }
+      }
+      return exp;
+    },
+  ) as number;
+}
+
+export async function executeAuthorizedTasks(
+  ctx: ExecutorContext,
+  deviceId: string,
+  tasks: unknown[],
+  options: ExecuteOptions = {},
+): Promise<TaskExecutionResult> {
+  const deps: ExecutorDeps = { ...defaultExecutorDeps, ...options.deps };
+  const log = getEngineAppLogger();
+
+  // 1. Contract whitelist BEFORE anything touches the database or the
+  //    authorizer state: unknown names/shapes and >100 tasks never
+  //    reach insertTasks (which stays authoritative for the rest).
+  const validationErrors = validateDeviceCommandTasks(tasks);
+  if (validationErrors.length)
+    throw new CommandExecutionError(
+      400,
+      "VALIDATION",
+      validationErrors.join("; "),
+    );
+
+  if (!ctx.authorizer.hasAccess("devices", 3))
+    throw new CommandExecutionError(403, "FORBIDDEN", "not authorized");
+
+  // 2. Idempotent claim: same operationId + same fingerprint returns
+  //    the stored outcome (never a second submission); a different
+  //    fingerprint is a conflict.
+  if (options.operation) {
+    const claim = await claimOperation(
+      options.operation.operationId,
+      ctx.username ?? "",
+      deviceId,
+      options.operation.kind,
+      options.operation.fingerprint,
+    );
+    if (claim.claim === "conflict")
+      throw new CommandExecutionError(
+        409,
+        "CONFLICT",
+        "operationId sudah dipakai untuk request berbeda",
+      );
+    if (claim.claim === "existing") {
+      return {
+        state: claim.operation.state,
+        phases: claim.operation.phases as CommandPhase[],
+        statuses: [],
+        connectionRequestStatus: null,
+        outcome: operationOutcome(claim.operation),
+        claim: "existing",
+      };
+    }
+  }
+
+  const operationId = options.operation?.operationId;
+  const startedAt = Date.now();
+  log.emit({
+    event: "device.command.started",
+    level: "info",
+    message: `device command started for ${deviceId}`,
+    ...(ctx.requestId ? { requestId: ctx.requestId } : {}),
+    ...(operationId ? { operationId } : {}),
+    ...(ctx.username ? { actorId: ctx.username } : {}),
+    deviceId,
+    details: { taskCount: (tasks as TaskInput[]).length },
+  });
+
+  // 3. Serialize concurrent task submissions per device (native lock
+  //    semantics preserved: the lock covers validation + insertion).
+  const token = await acquireLock(`cwmp_session_${deviceId}`, 5000, 30000);
+  if (!token)
+    throw new CommandExecutionError(503, "CONFLICT", "Device is in session");
+
+  let device: Record<string, { value?: [unknown, string] }> | null = null;
+  let statuses: { _id: string; status: string; faultCode?: string }[] = [];
+
+  try {
+    const filter = and(ctx.authorizer.getFilter("devices", 3), [
+      "=",
+      ["PARAM", "DeviceID.ID"],
+      deviceId,
+    ]);
+    device = (await db.query("devices", filter).next()).value as Record<
+      string,
+      { value?: [unknown, string] }
+    >;
+    if (!device)
+      throw new CommandExecutionError(404, "NOT_FOUND", "no such device");
+
+    const validate = ctx.authorizer.getValidator("devices", device);
+    for (const t of tasks) {
+      if (!validate("task", t))
+        throw new CommandExecutionError(403, "FORBIDDEN", "not authorized");
+    }
+
+    // 4. Management-WAN guard on EVERY relevant task (raw SPV/delete
+    //    included) before insertion — the legacy UI only guarded forms.
+    try {
+      assertManagementWanSafe(
+        device as unknown as WanDevice,
+        tasks as TaskInput[],
+      );
+    } catch (err) {
+      if (err instanceof ManagementWanGuardError)
+        throw new CommandExecutionError(400, "VALIDATION", err.message);
+      throw err;
+    }
+
+    const prepared = (tasks as Task[]).map((t) => {
+      const task = { ...t };
+      delete task._id;
+      task["device"] = deviceId;
+      return task;
+    });
+
+    const inserted = await deps.insertTasks(prepared);
+    statuses = inserted.map((t) => ({ _id: t._id, status: "pending" }));
+  } finally {
+    await releaseLock(`cwmp_session_${deviceId}`, token);
+  }
+
+  // 5. Connection request + session await (outside the insert lock,
+  //    exactly like the native route). Cleanup runs in the finally so a
+  //    probe failure never leaves attempted tasks behind.
+  let status = "";
+  try {
+    const onlineThreshold = deviceOnlineThreshold(ctx.configSnapshot, device);
+    const lastInform = device["Events.Inform"].value[0] as number;
+
+    status = await deps.connectionRequest(
+      deviceId,
+      device as unknown as Record<
+        string,
+        { value?: [boolean | number | string, string] }
+      >,
+    );
+    if (!status) {
+      const sessionStarted = await deps.awaitSessionStart(
+        deviceId,
+        lastInform,
+        onlineThreshold,
+      );
+      if (!sessionStarted) {
+        status = "No contact from CPE";
+      } else {
+        const sessionEnded = await deps.awaitSessionEnd(deviceId, 120000);
+        if (!sessionEnded) status = "Session took too long to complete";
+      }
+    }
+
+    if (!status) {
+      for (const [i, t] of statuses.entries()) {
+        const faults = await deps.countFaults(deviceId, t._id);
+        if (faults) {
+          statuses[i].status = "fault";
+          statuses[i].faultCode = await deps.faultCode(deviceId, t._id);
+        } else {
+          statuses[i].status = "done";
+        }
+      }
+    }
+  } finally {
+    // Attempted tasks are always cleaned up (native semantics); on
+    // probe failure they stay "pending" in the RESULT while the queued
+    // docs are removed.
+    await Promise.all(
+      statuses.map((t) => deps.deleteTask(new ObjectId(t._id))),
+    );
+  }
+
+  const { state } = normalizeTaskOutcome({
+    status,
+    tasks: statuses,
+  });
+  const phases: CommandPhase[] = [
+    {
+      name: "execute",
+      state,
+      taskIds: statuses.map((t) => t._id),
+      ...(statuses.find((t) => t.faultCode)
+        ? { faultCode: statuses.find((t) => t.faultCode)?.faultCode }
+        : {}),
+    },
+  ];
+
+  let outcome: CommandOutcome | undefined;
+  if (operationId) {
+    await completeOperation(operationId, state, phases);
+    const stored = await getOperation(operationId);
+    if (stored) outcome = operationOutcome(stored);
+  }
+
+  log.emit({
+    event: "device.command.completed",
+    level: state === "failed" ? "warn" : "info",
+    message: `device command ${state} for ${deviceId}`,
+    ...(ctx.requestId ? { requestId: ctx.requestId } : {}),
+    ...(operationId ? { operationId } : {}),
+    ...(ctx.username ? { actorId: ctx.username } : {}),
+    deviceId,
+    durationMs: Date.now() - startedAt,
+    outcome:
+      state === "succeeded"
+        ? "success"
+        : state === "failed"
+          ? "failure"
+          : state === "partial"
+            ? "partial"
+            : "unknown",
+    details: {
+      taskIds: statuses.map((t) => t._id),
+      ...(statuses.find((t) => t.faultCode)
+        ? { faultCode: statuses.find((t) => t.faultCode)?.faultCode }
+        : {}),
+    },
+  });
+
+  return {
+    state,
+    phases,
+    statuses,
+    connectionRequestStatus: status || null,
+    outcome,
+    claim: "new",
+  };
+}
+
+// Result lookup for GET /api/app/operations/:id — permission stays
+// server-side: everyone needs devices:2 + the target inside their
+// filter; a non-owner additionally needs logs:2.
+export async function authorizeOperationRead(
+  authorizer: Authorizer,
+  operation: AppOperationDoc,
+  username: string,
+): Promise<boolean> {
+  if (!authorizer.hasAccess("devices", 2)) return false;
+  const filter = and(authorizer.getFilter("devices", 2), [
+    "=",
+    ["PARAM", "DeviceID.ID"],
+    operation.device,
+  ]);
+  const visible = await db.count("devices", filter);
+  if (!visible) return false;
+  if (operation.user === username) return true;
+  return authorizer.hasAccess("logs", 2);
+}

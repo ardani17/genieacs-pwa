@@ -19,7 +19,29 @@ export const collections = {
   config: null as Collection<MongoTypes.Config>,
   cache: null as Collection<MongoTypes.Cache>,
   locks: null as Collection<MongoTypes.Lock>,
+  // App-side idempotency/diagnosis store (contracts.md "app_operations");
+  // never a durable work queue — holds fingerprints and outcomes only.
+  appOperations: null as Collection<AppOperationDoc>,
 };
+
+export interface AppOperationDoc {
+  _id: string;
+  user: string;
+  device: string;
+  kind: string;
+  fingerprint: string;
+  state: "in_progress" | "succeeded" | "failed" | "partial" | "unknown";
+  phases: {
+    name: string;
+    state: string;
+    taskIds: string[];
+    faultCode?: string;
+    errorCode?: string;
+  }[];
+  createdAt: Date;
+  updatedAt: Date;
+  expiresAt: Date;
+}
 
 let clientPromise: Promise<MongoClient>;
 
@@ -43,12 +65,19 @@ export async function connect(): Promise<void> {
   collections.config = db.collection("config");
   collections.cache = db.collection("cache");
   collections.locks = db.collection("locks");
+  collections.appOperations = db.collection("app_operations");
   filesBucket = new GridFSBucket(db);
 
   await Promise.all([
     collections.tasks.createIndex({ device: 1, timestamp: 1 }),
     collections.cache.createIndex({ expire: 1 }, { expireAfterSeconds: 0 }),
     collections.locks.createIndex({ expire: 1 }, { expireAfterSeconds: 0 }),
+    // Diagnosis/idempotency window only (24h TTL); _id (the operationId)
+    // gives uniqueness — no durable queue is ever built on this.
+    collections.appOperations.createIndex(
+      { expiresAt: 1 },
+      { expireAfterSeconds: 0 },
+    ),
   ]);
 }
 
