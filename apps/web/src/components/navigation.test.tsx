@@ -40,12 +40,17 @@ test("navigation marks the device section active and hides unavailable routes", 
   expect(nav.getByRole("link", { name: "Ringkasan" })).not.toHaveAttribute(
     "aria-current",
   );
+  // M05-D/M05-E made /tasks and /faults available; logs stay gated
+  // until their milestone merges.
   expect(
     screen.queryByRole("link", { name: "Log global" }),
   ).not.toBeInTheDocument();
+  expect(screen.getAllByRole("link", { name: "Task" }).length).toBeGreaterThan(
+    0,
+  );
   expect(
-    screen.queryByRole("link", { name: "Diagnosis" }),
-  ).not.toBeInTheDocument();
+    screen.getAllByRole("link", { name: "Diagnosis" }).length,
+  ).toBeGreaterThan(0);
 });
 
 test("mobile menu traps focus, closes with Escape, and returns focus", async () => {

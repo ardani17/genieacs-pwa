@@ -40,7 +40,7 @@ export const FEATURE_AVAILABILITY: Record<string, boolean> = {
   "/devices": true,
   "/devices/[id]": true,
   "/tasks": true,
-  "/faults": false,
+  "/faults": true,
   "/diagnostics/logs": false,
   "/account/password": true,
 };
