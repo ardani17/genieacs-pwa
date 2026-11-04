@@ -1,5 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { redact, createAppLogger, makeRequestId } from "../lib/app-logger.ts";
 
 void test("redacts typed values, nested secrets and URL credentials", () => {
@@ -151,6 +154,39 @@ void test("recovery returns state to healthy after a successful write", async ()
   logger.emit({ event: "b", level: "warn" });
   await logger.flush(500);
   assert.equal(logger.status().state, "healthy");
+});
+
+// Fresh shared volumes are seeded from whichever image mounts them
+// first, so a writer's own directory may not exist yet (review wave 5
+// Standards P1: engine-initialized volume -> web ENOENT). The file sink
+// must create it up front and RECREATE it if it vanishes mid-run.
+void test("file sink creates and recreates its log directory (ENOENT self-heal)", async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), "app-logger-heal-"));
+  const filePath = path.join(dir, "nested", "web", "app.ndjson");
+  try {
+    const logger = createAppLogger({
+      service: "web",
+      appVersion: "0",
+      installationId: "11111111-1111-1111-1111-111111111111",
+      environment: "test",
+      filePath,
+    });
+
+    logger.emit({ event: "a", level: "info" });
+    await logger.flush(500);
+    assert.equal(logger.status().state, "healthy");
+    assert.ok(existsSync(filePath), "directory created before first write");
+
+    // Storage wiped while running: the next write recreates and
+    // recovers instead of failing ENOENT forever.
+    rmSync(path.join(dir, "nested"), { recursive: true, force: true });
+    logger.emit({ event: "b", level: "info" });
+    await logger.flush(500);
+    assert.equal(logger.status().state, "healthy");
+    assert.ok(existsSync(filePath), "directory recreated after wipe");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 void test("events carry the full envelope and sanitized details", async () => {

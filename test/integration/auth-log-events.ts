@@ -75,7 +75,8 @@ void test("login outcomes and permission denials land as sanitized service:ui ev
       await new Promise((r) => setTimeout(r, 200));
     }
 
-    const byId = (id: string) => events.filter((e) => e.requestId === id);
+    const byId = (id: string): Record<string, unknown>[] =>
+      events.filter((e) => e.requestId === id);
     const failedEvents = byId(failedId);
     assert.ok(failedEvents.length >= 1, "login_failed event with requestId");
     assert.equal(failedEvents[0].event, "auth.login_failed");

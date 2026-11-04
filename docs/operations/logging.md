@@ -55,3 +55,9 @@ which is NOT a match.
 - App log volume failing (ENOSPC): the app logger degrades with dropped counters
   and recovers when writes succeed again (unit-covered in test/app-logger.ts
   with stub sinks; the harness does not fill real disks).
+- Log directory missing (fresh shared volume seeded by another service's image,
+  or storage wiped mid-run): every writer creates its own directory up front and
+  recreates it on ENOENT at runtime — writes never fail forever (unit-covered in
+  test/app-logger.ts and test/engine-app-logger-broken-dir.ts). While the
+  directory is genuinely uncreatable, the engine adapter reports `degraded` with
+  lost events counted and heals by itself once storage is repaired.

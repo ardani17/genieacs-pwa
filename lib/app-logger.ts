@@ -5,7 +5,9 @@
 // degraded state + dropped counters and the application keeps running.
 
 import { randomUUID } from "node:crypto";
-import { appendFile, rename } from "node:fs/promises";
+import { mkdirSync } from "node:fs";
+import { appendFile, mkdir, rename } from "node:fs/promises";
+import { dirname } from "node:path";
 import type {
   LogEvent,
   LogLevel,
@@ -278,10 +280,34 @@ export function createAppLogger(options: AppLoggerOptions): AppLogger {
   let writing = false;
   let currentBytes = 0;
 
+  if (!options.sink) {
+    // Fresh-volume hygiene: on a new shared volume Docker seeds the
+    // mount from the FIRST image to mount it, shadowing the other
+    // writers' baked subdirectories — every writer must create its own
+    // directory at runtime (web, ui and vpn all share this core).
+    // Failure never throws here: the sink below surfaces it visibly as
+    // degraded state with counted drops.
+    try {
+      mkdirSync(dirname(options.filePath), { recursive: true });
+    } catch {
+      // Reported through the sink when writes begin.
+    }
+  }
+
   const sink =
     options.sink ??
     (async (line: string) => {
-      await appendFile(options.filePath, line + "\n");
+      try {
+        await appendFile(options.filePath, line + "\n");
+      } catch (err) {
+        // The log directory can disappear under a running process (the
+        // shared volume re-seeded by another service, storage wiped).
+        // Recreate it and retry ONCE; other errors — or a second
+        // failure — degrade visibly through the drain error path.
+        if ((err as NodeJS.ErrnoException)?.code !== "ENOENT") throw err;
+        await mkdir(dirname(options.filePath), { recursive: true });
+        await appendFile(options.filePath, line + "\n");
+      }
       currentBytes += line.length + 1;
       if (currentBytes >= ROTATE_MAX_BYTES) {
         for (let i = ROTATE_KEEP - 1; i > 0; --i) {
