@@ -16,6 +16,8 @@ RUN ln -s apps/web/node_modules node_modules
 COPY lib lib
 COPY apps/web apps/web
 COPY packages/app-contracts packages/app-contracts
+# lib/ui imports the device-profiles WAN model/guard for the app API.
+COPY packages/device-profiles packages/device-profiles
 RUN npm run build --prefix apps/web
 
 FROM node:24.22.2-bookworm-slim@sha256:c86ecead9e55a5210ac1727de38a4ca840bf03dcaf34dc9749addbf383b1920c AS runtime
