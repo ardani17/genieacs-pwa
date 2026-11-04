@@ -146,7 +146,11 @@ void test("search needles with quotes, backslashes and wildcards match literally
   const app = await startApp();
   try {
     await collections.devices.deleteMany({});
-    const ids = ['a"b', "a\b", "50%", "a_b", "UNRELATED"];
+    // "a\\b" is a REAL backslash id — the original test wrote "a\b",
+    // which TypeScript reads as the BACKSPACE escape, so the Mongo
+    // backslash conversion was never exercised (review wave 5).
+    // "a/b" proves a backslash needle no longer matches a slash.
+    const ids = ['a"b', "a\\b", "a/b", "50%", "a_b", "UNRELATED"];
     for (const id of ids) {
       await collections.devices.insertOne({
         _id: id,
@@ -184,13 +188,69 @@ void test("search needles with quotes, backslashes and wildcards match literally
     };
 
     assert.deepEqual(await searchFor('a"b'), ['a"b']);
-    assert.deepEqual(await searchFor("a\b"), ["a\b"]);
+    assert.deepEqual(await searchFor("a\\b"), ["a\\b"]);
+    assert.deepEqual(await searchFor("a/b"), ["a/b"]);
     assert.deepEqual(await searchFor("%"), ["50%"]);
     assert.deepEqual(await searchFor("_"), ["a_b"]);
     assert.deepEqual(await searchFor("50%"), ["50%"]);
     // The reviewer's proof case: a bare % used to match everything.
     const pct = await searchFor("%");
     assert.equal(pct.includes("UNRELATED"), false);
+  } finally {
+    await app.stop();
+  }
+});
+
+// Review wave 5 (Spec): search must also find a device whose ONLY match
+// is a tag — the shared builder LIKEs over the raw _tags array, and the
+// Mongo synthesizer used to point that clause at a nonexistent
+// _tags._value field, so tag-only devices never surfaced.
+void test("search finds devices that match only through a tag", async () => {
+  const app = await startApp();
+  try {
+    await collections.devices.deleteMany({});
+    const tagged = {
+      _id: "TEST-TAG-1",
+      _lastInform: new Date(),
+      _registered: new Date(),
+      _tags: ["office-jakarta"],
+      DeviceID: {
+        ID: {
+          _value: "TEST-TAG-1",
+          _type: "xsd:string",
+          _object: false,
+          _timestamp: 1,
+        },
+      },
+    };
+    const untagged = {
+      _id: "TEST-PLAIN-1",
+      _lastInform: new Date(),
+      _registered: new Date(),
+      DeviceID: {
+        ID: {
+          _value: "TEST-PLAIN-1",
+          _type: "xsd:string",
+          _object: false,
+          _timestamp: 1,
+        },
+      },
+    };
+    await collections.devices.insertOne(tagged as never);
+    await collections.devices.insertOne(untagged as never);
+
+    const res = await app.appRequest(
+      `/api/devices?filter=${encodeURIComponent(buildDeviceFilter("office"))}`,
+      {},
+      "operator",
+    );
+    assert.equal(res.status, 200);
+    const items = (await res.json()) as Record<string, unknown>[];
+    assert.equal(items.length, 1);
+    assert.equal(
+      (items[0]["DeviceID.ID"] as { value: [string] }).value[0],
+      "TEST-TAG-1",
+    );
   } finally {
     await app.stop();
   }

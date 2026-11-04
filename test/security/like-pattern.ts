@@ -128,4 +128,11 @@ void test("mongo synthesis consumes the same tokens safely", () => {
     show(toMongoQuery(parse('DeviceID.ID LIKE "a.b|c"'), "devices")),
     '{"_id":{"pattern":"^a\\\\.b\\\\|c$","options":"s"}}',
   );
+  // A literal backslash stays a backslash: the old conversion table
+  // mapped it to "\/", so a backslash needle MATCHED A SLASH in Mongo
+  // (review wave 5).
+  assert.equal(
+    show(toMongoQuery(parse('DeviceID.ID LIKE "a\\\\b"'), "devices")),
+    '{"_id":{"pattern":"^a\\\\\\\\b$","options":"s"}}',
+  );
 });
