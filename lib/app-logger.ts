@@ -87,13 +87,20 @@ function redactUrl(value: string): string {
   }
 }
 
-// Separator between a sensitive key and its value, tolerating the
-// QUOTED KEY/VALUE forms free text actually carries: JSON-ish
-// `{"password":"x"}`, `'Authorization': 'Basic x'`, and the plain
-// `password: x` / `token = y`. A closing quote directly after the key
-// name must not shield the value from redaction. (Capturing: the
-// replacement re-emits key + separator and drops only the value.)
-const KV_SEPARATOR = /("\s*[:=]\s*"|'\s*[:=]\s*'|\s*[:=][ \t]*)/;
+// Separator/value shapes between a sensitive key and its value,
+// tolerating the QUOTED KEY/VALUE forms free text actually carries:
+// JSON-ish `{"password":"x"}`, `'Authorization': 'Basic x'`, and the
+// plain `password: x` / `token = y`. In the quoted forms the separator
+// consumes the value's OPENING quote too, so the value runs to the
+// CLOSING quote — a quoted secret containing spaces, commas or escaped
+// quotes must be consumed whole, never truncated mid-value (a partial
+// match would leak its tail). Capturing: the replacement re-emits key +
+// separator and drops only the value; the closing quote stays put.
+const KV_BODY =
+  '("\\s*[:=]\\s*")(?:[^"\\\\]|\\\\.)*' + // "key":"value…
+  "|('\\s*[:=]\\s*')(?:[^'\\\\]|\\\\.)*"; // 'key':'value…
+
+const KV_PLAIN_SEPARATOR = "(\\s*[:=][ \\t]*)";
 
 // Free text (log messages, Error.message, stack lines) is sanitized as
 // a WHOLE: embedded URLs lose userinfo/credential query values, and
@@ -101,8 +108,12 @@ const KV_SEPARATOR = /("\s*[:=]\s*"|'\s*[:=]\s*'|\s*[:=][ \t]*)/;
 // or single-quoted — drop their value. Length stays bounded.
 const SENSITIVE_KV = new RegExp(
   "\\b(password|passwd|secret|token|api[_-]?key|apikey|authpassword|presharedkey|keypassphrase|credentials?|privatekey|jwt|session(?:id)?)\\b" +
-    KV_SEPARATOR.source +
-    "(\"[^\"]*\"|'[^']*'|[^\\s,;)}\\]]+)",
+    "(?:" +
+    KV_BODY +
+    "|" +
+    KV_PLAIN_SEPARATOR +
+    "(\"[^\"]*\"|'[^']*'|[^\\s,;)}\\]]+)" +
+    ")",
   "gi",
 );
 
@@ -116,16 +127,29 @@ const SENSITIVE_KV = new RegExp(
 // Proxy-Authorization, and the separator form accepts quoted JSON keys.
 const AUTH_HEADER = new RegExp(
   "\\b(authorization)\\b" +
-    KV_SEPARATOR.source +
-    "(\"[^\"]*\"|'[^']*'|[^\\s,;)}\\]]+(?:[ \\t]+[^\\s,;)}\\]]+)*)",
+    "(?:" +
+    KV_BODY +
+    "|" +
+    KV_PLAIN_SEPARATOR +
+    "(\"[^\"]*\"|'[^']*'|[^\\s,;)}\\]]+(?:[ \\t]+[^\\s,;)}\\]]+)*)" +
+    ")",
   "gi",
 );
+
+// Re-emits key + the separator form that matched (quote-quoted
+// separators keep the value's opening quote, so the output stays
+// well-formed JSON-ish text) and drops only the value.
+function replaceKvValue(...m: unknown[]): string {
+  const key = m[1] as string;
+  const sep = (m[2] ?? m[3] ?? m[4] ?? "") as string;
+  return `${key}${sep} [REDACTED]`;
+}
 
 export function sanitizeText(text: string): string {
   let out = text.slice(0, REDACT_MAX_STRING);
   out = out.replace(/https?:\/\/\S+/g, (m) => redactUrl(m));
-  out = out.replace(AUTH_HEADER, "$1$2 [REDACTED]");
-  out = out.replace(SENSITIVE_KV, "$1$2 [REDACTED]");
+  out = out.replace(AUTH_HEADER, replaceKvValue);
+  out = out.replace(SENSITIVE_KV, replaceKvValue);
   if (out.length > REDACT_MAX_STRING)
     out = out.slice(0, REDACT_MAX_STRING) + "…";
   return out;
