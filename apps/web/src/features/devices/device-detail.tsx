@@ -13,6 +13,9 @@ import { ParameterBrowser } from "./parameter-browser";
 import { Diagnostics } from "./diagnostics";
 import { DeviceActions } from "../tasks/staging-panel";
 import { WanEditor } from "../wan/wan-editor";
+import { WifiManager } from "../wifi/wifi-manager";
+import { TagEditor } from "./tag-editor";
+import { ParameterActions } from "./parameter-actions";
 import { useSession } from "@/components/session-provider";
 import type { ApiResult } from "@contracts/api.ts";
 
@@ -33,6 +36,10 @@ export function DeviceDetail({ deviceId }: { deviceId: string }) {
     useState<DataViewProps<FlatDevice>["state"]>("loading");
   const [reload, setReload] = useState(0);
   const [device, setDevice] = useState<FlatDevice | null>(null);
+  const [paramTarget, setParamTarget] = useState<{
+    path: string;
+    entry: { value?: [unknown, string]; writable?: boolean };
+  } | null>(null);
   const [requestId, setRequestId] = useState<string | undefined>();
 
   useEffect(() => {
@@ -195,7 +202,17 @@ export function DeviceDetail({ deviceId }: { deviceId: string }) {
                   </CardContent>
                 </Card>
               ) : null}
-              {t === "Parameter" ? <ParameterBrowser device={device} /> : null}
+              {t === "WiFi" ? <WifiManager deviceId={deviceId} /> : null}
+              {t === "Parameter" ? (
+                <>
+                  <ParameterBrowser device={device} onSelect={setParamTarget} />
+                  <ParameterActions
+                    deviceId={deviceId}
+                    target={paramTarget}
+                    objectRoot="InternetGatewayDevice."
+                  />
+                </>
+              ) : null}
               {t === "Diagnosis" ? <Diagnostics deviceId={deviceId} /> : null}
               {t === "Ringkasan" ? (
                 <Card>
@@ -204,6 +221,10 @@ export function DeviceDetail({ deviceId }: { deviceId: string }) {
                     {session.phase === "authenticated" ? (
                       <DeviceActions deviceId={deviceId} />
                     ) : null}
+                    <div className="space-y-2 pt-2">
+                      <h4 className="text-xs font-semibold">Tags</h4>
+                      <TagEditor deviceId={deviceId} />
+                    </div>
                   </CardContent>
                 </Card>
               ) : null}

@@ -60,7 +60,13 @@ function buildDevice(i) {
       LANDevice: {
         1: {
           WLANConfiguration: {
-            2: { SSID: param("Lab", "xsd:string", true) },
+            2: {
+              SSID: param("Lab", "xsd:string", true),
+              Enable: param(true, "xsd:boolean", true),
+              Standard: param("802.11b/g/n"),
+              BeaconType: param("11i"),
+              "PreSharedKey.1.PreSharedKey": param("", "xsd:string", true),
+            },
           },
         },
       },

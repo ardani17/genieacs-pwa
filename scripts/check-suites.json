@@ -438,5 +438,34 @@
       "args": ["run", "build"],
       "artifacts": ["apps/web/.next/BUILD_ID"]
     }
+  ],
+  "M05-E": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": [
+        "scripts/test-ts.mjs",
+        "packages/device-profiles/src/wifi.test.ts"
+      ],
+      "artifacts": [
+        "artifacts/tests/packages/device-profiles/src/wifi.test.test.cjs"
+      ]
+    },
+    {
+      "cwd": "apps/web",
+      "command": "npm",
+      "args": ["run", "test"]
+    },
+    {
+      "cwd": "apps/web",
+      "command": "npm",
+      "args": ["run", "typecheck"]
+    },
+    {
+      "cwd": "apps/web",
+      "command": "npm",
+      "args": ["run", "build"],
+      "artifacts": ["apps/web/.next/BUILD_ID"]
+    }
   ]
 }

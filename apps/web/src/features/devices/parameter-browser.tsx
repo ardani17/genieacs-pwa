@@ -32,7 +32,16 @@ interface Row {
   masked: boolean;
 }
 
-export function ParameterBrowser({ device }: { device: FlatDevice }) {
+export function ParameterBrowser({
+  device,
+  onSelect,
+}: {
+  device: FlatDevice;
+  onSelect?: (target: {
+    path: string;
+    entry: { value?: [unknown, string]; writable?: boolean };
+  }) => void;
+}) {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
 
@@ -107,7 +116,19 @@ export function ParameterBrowser({ device }: { device: FlatDevice }) {
               </TableHeader>
               <TableBody>
                 {slice.map((row) => (
-                  <TableRow key={row.path}>
+                  <TableRow
+                    key={row.path}
+                    {...(onSelect
+                      ? {
+                          onClick: () =>
+                            onSelect({
+                              path: row.path,
+                              entry: device[row.path] as never,
+                            }),
+                          className: "cursor-pointer",
+                        }
+                      : {})}
+                  >
                     <TableCell className="max-w-80 whitespace-normal break-all font-mono text-xs">
                       {row.path}
                     </TableCell>
