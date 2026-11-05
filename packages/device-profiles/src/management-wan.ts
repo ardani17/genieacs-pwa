@@ -128,28 +128,29 @@ export function assertManagementWanSafe(
   resolvedHosts: string[] = [],
 ): void {
   const identity = managementWanInstances(device, resolvedHosts);
-  // Without a resolvable CRURL host we cannot know the management path:
-  // destructive WAN mutations are refused rather than guessed at
-  // (contracts: ambiguity => VALIDATION with diagnosis instruction).
-  const hasHost = crurlHost(device) != null;
+  const host = crurlHost(device);
   const paths = identity.paths;
-  if (!paths.length && !hasHost) {
-    // No CRURL at all: nothing identifies the management WAN; only
-    // destructive operations need the warning path (SPV on unknown
-    // instances is harmless because we cannot map them).
-    for (const task of tasks) {
-      if (
-        task.name === "deleteObject" &&
-        task.objectName &&
-        touchesWan(task.objectName)
-      )
-        throw new ManagementWanGuardError(
-          "VALIDATION Jalur manajemen tidak dapat ditentukan (ConnectionRequestURL tidak ada). Jalankan diagnosis sebelum menghapus objek WAN.",
-        );
+  // The management identity is UNKNOWABLE when there is no CRURL at
+  // all, or when the CRURL host is a name that resolved to nothing.
+  // Destructive WAN mutations are held either way — missing evidence is
+  // not permission; SPV stays allowed like the reference form guard.
+  if (paths.length === 0) {
+    const hostUnidentifiable =
+      host == null || (!/^[0-9.]+$/.test(host) && !host.includes(":"));
+    if (hostUnidentifiable) {
+      for (const task of tasks) {
+        if (
+          task.name === "deleteObject" &&
+          task.objectName &&
+          touchesWan(task.objectName)
+        )
+          throw new ManagementWanGuardError(
+            "VALIDATION Jalur manajemen tidak dapat ditentukan (ConnectionRequestURL tidak ada atau host tidak teresolusi). Jalankan diagnosis sebelum menghapus objek WAN.",
+          );
+      }
     }
     return;
   }
-  if (!paths.length) return;
 
   const reject = (why: string): never => {
     throw new ManagementWanGuardError(

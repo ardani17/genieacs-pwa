@@ -38,6 +38,7 @@ import {
 } from "./operation-store.ts";
 import type { AppOperationDoc } from "../db/db.ts";
 import { Expression, Task } from "../types.ts";
+import { lookup } from "node:dns/promises";
 
 // Typed failure surfaced to route adapters (legacy text semantics or
 // the ApiResult envelope) without leaking stacks or upstream bodies.
@@ -59,6 +60,47 @@ export interface ExecutorContext {
   requestId?: string;
 }
 
+// Resolve the CRURL hostname (when it is not an IP literal) with a
+// bounded timeout; failures simply yield no addresses — the guard then
+// treats the path as unidentified and blocks destructive mutations.
+export async function resolveCrurlHosts(
+  device: WanDevice,
+  resolver?: (host: string) => Promise<string[]>,
+): Promise<string[]> {
+  const raw = value2(
+    device,
+    "InternetGatewayDevice.ManagementServer.ConnectionRequestURL",
+  );
+  if (typeof raw !== "string" || !raw) return [];
+  let host: string;
+  try {
+    host = new URL(raw).hostname;
+  } catch {
+    return [];
+  }
+  // IP literals need no resolution.
+  if (/^[0-9.]+$/.test(host) || host.includes(":")) return [host];
+  try {
+    const resolve = resolver ?? defaultResolve;
+    return await resolve(host);
+  } catch {
+    return [];
+  }
+}
+
+const defaultResolve = (host: string): Promise<string[]> =>
+  lookup(host, { all: true })
+    .then((addrs) => addrs.map((a) => a.address))
+    .catch(() => []);
+
+function value2(
+  device: WanDevice,
+  path: string,
+): string | number | boolean | undefined {
+  return (device[path] as { value?: [string | number | boolean, string] })
+    ?.value?.[0];
+}
+
 export interface ExecutorDeps {
   connectionRequest(
     deviceId: string,
@@ -74,6 +116,7 @@ export interface ExecutorDeps {
   deleteTask(id: ObjectId): Promise<unknown>;
   countFaults(deviceId: string, taskId: string): Promise<number>;
   faultCode(deviceId: string, taskId: string): Promise<string | undefined>;
+  resolveHosts?(host: string): Promise<string[]>;
 }
 
 export const defaultExecutorDeps: ExecutorDeps = {
@@ -269,10 +312,17 @@ export async function executeAuthorizedTasks(
 
     // 4. Management-WAN guard on EVERY relevant task (raw SPV/delete
     //    included) before insertion — the legacy UI only guarded forms.
+    //    CRURL hostnames resolve HERE (server-side, bounded) so DNS-based
+    //    management paths are identifiable; ambiguity stays ambiguous.
+    const resolvedHosts = await resolveCrurlHosts(
+      device as unknown as WanDevice,
+      options.deps?.resolveHosts,
+    );
     try {
       assertManagementWanSafe(
         device as unknown as WanDevice,
         tasks as TaskInput[],
+        resolvedHosts,
       );
     } catch (err) {
       if (err instanceof ManagementWanGuardError)
