@@ -173,8 +173,6 @@ export function WanEditor({
         else setError(result.error.message);
       } else {
         setOutcome(result.data);
-        // The submitted password leaves memory immediately.
-        setSettings({ ...settings, password: "" });
       }
     };
     try {
@@ -202,8 +200,13 @@ export function WanEditor({
       apply((await res.json()) as ApiResult<WanOutcome>);
     } catch {
       setError("Hasil belum terkonfirmasi — koneksi terputus.");
+    } finally {
+      // busy ALWAYS releases (STD-06: an early HTTP-error return used
+      // to leave the editor un-submittable until the dialog closed) and
+      // the typed secret leaves memory on EVERY exit, success or not.
+      setSettings((current) => ({ ...current, password: "" }));
+      setBusy(false);
     }
-    setBusy(false);
   };
 
   const stageWan = () => {
