@@ -52,8 +52,22 @@ export async function seedConfig({ mode, seed, client }) {
       results.push({ key: item.key, status: "would-create" });
       continue;
     }
-    await collection.insertOne({ _id: item.key, ...item.doc });
-    results.push({ key: item.key, status: "created" });
+    try {
+      await collection.insertOne({ _id: item.key, ...item.doc });
+      results.push({ key: item.key, status: "created" });
+    } catch (err) {
+      if (err?.code !== 11000) throw err;
+      // A concurrent seeder created it first: classify without writing.
+      const winner = await collection.findOne({ _id: item.key });
+      results.push({
+        key: item.key,
+        status:
+          JSON.stringify(winner) ===
+          JSON.stringify({ _id: item.key, ...item.doc })
+            ? "skipped-existing"
+            : "conflict",
+      });
+    }
   }
   return results;
 }

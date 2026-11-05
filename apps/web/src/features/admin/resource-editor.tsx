@@ -262,7 +262,17 @@ export function ResourceEditor({
     return body.ok ? body.data : null;
   };
 
+  // Switching entries with unsaved changes asks once; the dialog
+  // cannot reuse window.confirm cleanly inside React state flow, so
+  // the guard runs before any state is touched.
+  const confirmDiscard = (): boolean =>
+    !dirty ||
+    window.confirm(
+      "Perubahan belum disimpan. Buang perubahan dan buka entri lain?",
+    );
+
   const open = async (id: string | null): Promise<void> => {
+    if (!confirmDiscard()) return;
     setError(null);
     setRevealed(false);
     if (id == null) {
@@ -300,7 +310,15 @@ export function ResourceEditor({
       // saving unless the user explicitly chose to overwrite.
       if (!overwrite && selected && selected["_id"]) {
         const fresh = await fetchOne(id);
-        if (fresh && JSON.stringify(fresh) !== JSON.stringify(selected)) {
+        if (fresh === null) {
+          // The revision read failed (network/engine): do NOT write —
+          // writing would bypass the conflict check entirely.
+          setError(
+            "Tidak dapat memeriksa revisi terbaru; simpan dibatalkan. Coba lagi atau Muat ulang.",
+          );
+          return;
+        }
+        if (JSON.stringify(fresh) !== JSON.stringify(selected)) {
           conflictRef.current = () => {
             setConflictOpen(false);
             void put(true);
