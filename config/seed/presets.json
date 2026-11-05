@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "note": "Generic provisioning presets only. The upstream 'useradmin' preset is deliberately NOT seeded (it stays inactive). No literal credentials.",
+  "presets": {
+    "inform-basic": {
+      "precondition": "null",
+      "configurations": [
+        {
+          "type": "provision",
+          "name": "inform",
+          "args": []
+        }
+      ]
+    }
+  }
+}

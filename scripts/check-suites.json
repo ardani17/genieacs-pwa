@@ -509,5 +509,29 @@
       "args": ["run", "build"],
       "artifacts": ["apps/web/.next/BUILD_ID"]
     }
+  ],
+  "M06-C": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/test-ts.mjs", "test/seed-config.ts"],
+      "artifacts": ["artifacts/tests/test/seed-config.test.cjs"]
+    },
+    {
+      "cwd": "apps/web",
+      "command": "npm",
+      "args": ["run", "test"]
+    },
+    {
+      "cwd": "apps/web",
+      "command": "npm",
+      "args": ["run", "typecheck"]
+    },
+    {
+      "cwd": "apps/web",
+      "command": "npm",
+      "args": ["run", "build"],
+      "artifacts": ["apps/web/.next/BUILD_ID"]
+    }
   ]
 }

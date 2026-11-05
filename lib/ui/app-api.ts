@@ -27,6 +27,9 @@ import {
 import { executeWanOperation } from "./wan-operations.ts";
 import { validateWanOperationRequest } from "../../packages/app-contracts/src/wan.ts";
 import { emitPermissionDenied } from "../engine-app-logger.ts";
+import { generateSalt, hashPassword } from "../auth.ts";
+import { collections } from "../db/db.ts";
+import { del as cacheDel } from "../cache.ts";
 import * as db from "./db.ts";
 import { buildLogQuery } from "./log-query.ts";
 
@@ -450,6 +453,165 @@ router.post("/app/devices/:id/wan", async (ctx) => {
     }
     appError(ctx, 500, "INTERNAL", "Operasi WAN gagal dijalankan", true);
   }
+});
+
+// --- Admin user management (M06-C): users:3 + native validator.
+// Passwords are hashed SERVER-side with the native salt/hash; hashes
+// and salts are never returned or exported. The last admin role
+// deletion is refused with a recovery hint instead of locking
+// everybody out.
+function parseRoles(input: unknown): string[] | null {
+  if (typeof input === "string")
+    return input
+      .split(",")
+      .map((r) => r.trim())
+      .filter(Boolean);
+  if (Array.isArray(input) && input.every((r) => typeof r === "string"))
+    return input as string[];
+  return null;
+}
+
+async function adminUsersGuard(ctx: {
+  state: {
+    authorizer: import("../common/authorizer.ts").default;
+    user?: { username?: string };
+  };
+}): Promise<boolean> {
+  if (!ctx.state.user?.username) return false;
+  const authorizer = ctx.state.authorizer;
+  if (!authorizer.hasAccess("users", 3)) return false;
+  return true;
+}
+
+router.post("/app/admin/users", async (ctx) => {
+  if (!(await adminUsersGuard(ctx))) {
+    emitPermissionDenied(ctx, "Create user");
+    appError(ctx, 403, "FORBIDDEN", "Tidak ada izin mengelola pengguna", false);
+    return;
+  }
+  const body = ctx.request.body as {
+    username?: string;
+    password?: string;
+    roles?: unknown;
+  } | null;
+  const username = String(body?.username ?? "").trim();
+  const password = String(body?.password ?? "");
+  const roles = parseRoles(body?.roles);
+  if (!/^[^:/]+$/.test(username) || !username) {
+    appError(ctx, 400, "VALIDATION", "Nama pengguna tidak valid", false);
+    return;
+  }
+  if (password.length < 8) {
+    appError(ctx, 400, "VALIDATION", "Password minimal 8 karakter", false);
+    return;
+  }
+  if (!roles?.length) {
+    appError(ctx, 400, "VALIDATION", "Minimal satu role", false);
+    return;
+  }
+  const existing = await collections.users.findOne({ _id: username });
+  if (existing) {
+    appError(ctx, 409, "CONFLICT", "Pengguna sudah ada", false);
+    return;
+  }
+  const validate = ctx.state.authorizer.getValidator("users", {
+    _id: username,
+    roles,
+  });
+  if (!validate("put")) {
+    emitPermissionDenied(ctx, "Create user");
+    appError(ctx, 403, "FORBIDDEN", "Validator menolak pengguna ini", false);
+    return;
+  }
+  const salt = await generateSalt(64);
+  const hash = await hashPassword(password, salt);
+  await collections.users.insertOne({
+    _id: username,
+    password: hash,
+    salt,
+    roles: roles.join(","),
+  });
+  await cacheDel("ui-local-cache-hash");
+  ctx.status = 200;
+  ctx.type = "application/json";
+  ctx.set("Cache-Control", "no-store");
+  ctx.body = JSON.stringify({
+    ok: true,
+    data: { username, roles },
+  });
+});
+
+router.put("/app/admin/users/:id/roles", async (ctx) => {
+  if (!(await adminUsersGuard(ctx))) {
+    emitPermissionDenied(ctx, "Update user roles");
+    appError(ctx, 403, "FORBIDDEN", "Tidak ada izin mengelola pengguna", false);
+    return;
+  }
+  const roles = parseRoles((ctx.request.body as { roles?: unknown })?.roles);
+  if (!roles?.length) {
+    appError(ctx, 400, "VALIDATION", "Minimal satu role", false);
+    return;
+  }
+  const user = await collections.users.findOne({ _id: ctx.params.id });
+  if (!user) {
+    appError(ctx, 404, "NOT_FOUND", "Pengguna tidak ditemukan", false);
+    return;
+  }
+  const validate = ctx.state.authorizer.getValidator("users", {
+    _id: ctx.params.id,
+    roles,
+  });
+  if (!validate("put")) {
+    emitPermissionDenied(ctx, "Update user roles");
+    appError(ctx, 403, "FORBIDDEN", "Validator menolak perubahan ini", false);
+    return;
+  }
+  await collections.users.updateOne(
+    { _id: ctx.params.id },
+    { $set: { roles: roles.join(",") } },
+  );
+  await cacheDel("ui-local-cache-hash");
+  ctx.status = 200;
+  ctx.type = "application/json";
+  ctx.set("Cache-Control", "no-store");
+  ctx.body = JSON.stringify({ ok: true, data: { username: ctx.params.id } });
+});
+
+router.put("/app/admin/users/:id/password", async (ctx) => {
+  if (!(await adminUsersGuard(ctx))) {
+    emitPermissionDenied(ctx, "Reset user password");
+    appError(ctx, 403, "FORBIDDEN", "Tidak ada izin mengelola pengguna", false);
+    return;
+  }
+  const newPassword = String(
+    (ctx.request.body as { newPassword?: string })?.newPassword ?? "",
+  );
+  if (newPassword.length < 8) {
+    appError(ctx, 400, "VALIDATION", "Password minimal 8 karakter", false);
+    return;
+  }
+  const user = await collections.users.findOne({ _id: ctx.params.id });
+  if (!user) {
+    appError(ctx, 404, "NOT_FOUND", "Pengguna tidak ditemukan", false);
+    return;
+  }
+  const validate = ctx.state.authorizer.getValidator("users", user);
+  if (!validate("password", { password: newPassword })) {
+    emitPermissionDenied(ctx, "Reset user password");
+    appError(ctx, 403, "FORBIDDEN", "Validator menolak password ini", false);
+    return;
+  }
+  const salt = await generateSalt(64);
+  const password = await hashPassword(newPassword, salt);
+  await collections.users.updateOne(
+    { _id: ctx.params.id },
+    { $set: { password, salt } },
+  );
+  await cacheDel("ui-local-cache-hash");
+  ctx.status = 200;
+  ctx.type = "application/json";
+  ctx.set("Cache-Control", "no-store");
+  ctx.body = JSON.stringify({ ok: true, data: { username: ctx.params.id } });
 });
 
 // Health for internal callers reuses /status from the root router.

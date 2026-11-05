@@ -4,9 +4,26 @@ import * as config from "./config.ts";
 const CLOCK_SKEW_TOLERANCE = 30000;
 const MAX_CACHE_TTL = +config.get("MAX_CACHE_TTL");
 
-export async function get(key: string): Promise<string> {
+// Optional maxAge: treat entries older than maxAge milliseconds (or
+// past their expire time) as missing. The local-cache revision hash
+// uses this so permission/user changes propagate cross-process within
+// one refresh window (contracts.md: effective ≤10s) instead of waiting
+// for Mongo's TTL monitor on the stored entry.
+export async function get(
+  key: string,
+  maxAge?: number,
+): Promise<string | null> {
   const res = await collections.cache.findOne({ _id: key });
-  return res?.value;
+  if (!res) return null;
+  const now = Date.now();
+  if (res.expire && +new Date(res.expire) < now) return null;
+  if (
+    maxAge != null &&
+    res.timestamp &&
+    now - +new Date(res.timestamp) > maxAge
+  )
+    return null;
+  return res.value ?? null;
 }
 
 export async function del(key: string): Promise<void> {

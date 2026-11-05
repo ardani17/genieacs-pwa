@@ -48,6 +48,9 @@ export const FEATURE_AVAILABILITY: Record<string, boolean> = {
   "/admin/provisions": true,
   "/admin/virtual-parameters": true,
   "/admin/config": true,
+  "/admin/users": true,
+  "/admin/permissions": true,
+  "/admin/files": true,
 };
 
 export const NAV_ITEMS: NavItem[] = [
