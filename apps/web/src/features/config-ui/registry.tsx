@@ -7,6 +7,14 @@
 import type { ReactNode } from "react";
 import { Status } from "@/components/ui/status";
 import {
+  SummonButtonView,
+  ConfigTagsView,
+  ConfigPingWithDevice,
+  ConfigDeviceFaultsView,
+  ConfigDeviceActionsView,
+  ConfigAllParametersView,
+} from "./interactive";
+import {
   AnchorView,
   ContainerView,
   DeviceLinkView,
@@ -56,14 +64,6 @@ function unknownPlaceholder(node: ConfigNode, path: string): ReactNode {
 // Interactive types (summon/ping/faults/actions/tags/all-parameters)
 // render as labeled rows: their behavior belongs to the device page,
 // never to strings inside configuration.
-function interactiveStub(label: string): ReactNode {
-  return (
-    <span className="text-xs text-muted-foreground">
-      {label} — aksi tersedia pada halaman perangkat.
-    </span>
-  );
-}
-
 export function renderConfigNode(
   node: ConfigNode,
   ctx: RenderContext,
@@ -110,12 +110,17 @@ export function renderConfigNode(
     case "loading":
       return <LoadingView label={node.label} />;
     case "summon-button":
+      return <SummonButtonView node={node} ctx={ctx} />;
     case "tags":
+      return <ConfigTagsView ctx={ctx} />;
     case "ping":
+      return <ConfigPingWithDevice ctx={ctx} />;
     case "device-faults":
+      return <ConfigDeviceFaultsView ctx={ctx} />;
     case "device-actions":
+      return <ConfigDeviceActionsView ctx={ctx} />;
     case "all-parameters":
-      return interactiveStub(node.label ?? node.type);
+      return <ConfigAllParametersView ctx={ctx} />;
     default:
       return unknownPlaceholder(node, childPath);
   }

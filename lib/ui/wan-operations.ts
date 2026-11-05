@@ -23,6 +23,7 @@ import {
   completeOperation,
   getOperation,
   operationOutcome,
+  recordPhases,
   requestFingerprint,
 } from "./operation-store.ts";
 import {
@@ -168,24 +169,83 @@ export async function executeWanOperation(
       "CONFLICT",
       "operationId sudah dipakai untuk request berbeda",
     );
-  if (claim.claim === "existing")
+  if (claim.claim === "existing") {
+    // Replay re-authorization: same rule as the commands executor —
+    // only the owner (or logs:2 admin) who can STILL see the device
+    // receives the stored outcome; warnings observed during the run
+    // travel WITH the record from now on.
+    const { authorizeOperationRead } = await import("./device-commands.ts");
+    const stillAuthorized = await authorizeOperationRead(
+      ctx.authorizer,
+      claim.operation,
+      ctx.username ?? "",
+    );
+    if (!stillAuthorized)
+      throw new CommandExecutionError(404, "NOT_FOUND", "no such device");
     return {
       ...operationOutcome(claim.operation),
-      warnings: [],
+      warnings: (claim.operation as { warnings?: string[] }).warnings ?? [],
     };
+  }
 
   const warnings: string[] = [];
   const phases: CommandPhase[] = [];
+  const phase = (
+    name: string,
+    state: OperationState,
+    taskIds: string[],
+  ): CommandPhase => {
+    const entry: CommandPhase = { name, state, taskIds };
+    phases.push(entry);
+    log.emit({
+      event: "device.wan.phase",
+      level: state === "failed" ? "warn" : "info",
+      message: `wan phase ${name}: ${state}`,
+      operationId,
+      deviceId,
+      outcome:
+        state === "succeeded"
+          ? "success"
+          : state === "failed"
+            ? "failure"
+            : state === "partial"
+              ? "partial"
+              : "unknown",
+      details: { phase: name, taskIds },
+    });
+    return entry;
+  };
 
   // One WAN operation per device+collection at a time.
+  // Whole-operation lease (STD-04): a WAN mutation spans write → CR →
+  // awaitSessionEnd (120s) → verify — far beyond the old 5s lease, so a
+  // second operation could start mid-flight once the lock expired.
+  // Hold 300s and renew at each phase boundary; ownership is reverified
+  // before every mutation.
   const wanLock = `wan_${deviceId}_${collection}`;
-  const lockToken = await acquireLock(wanLock, 5000, 30000);
+  const LOCK_TTL_MS = 300_000;
+  let lockToken = await acquireLock(wanLock, LOCK_TTL_MS, 30_000);
   if (!lockToken)
     throw new CommandExecutionError(
       409,
       "CONFLICT",
       "Operasi WAN lain sedang berjalan pada target ini",
     );
+  const renewLease = async (): Promise<boolean> => {
+    const renewed = await acquireLock(wanLock, LOCK_TTL_MS, 0, lockToken);
+    if (renewed === lockToken) return true;
+    // Lost ownership — a renewing competitor took the lock.
+    lockToken = null;
+    return false;
+  };
+  const ensureLease = (): void => {
+    if (!lockToken)
+      throw new CommandExecutionError(
+        409,
+        "CONFLICT",
+        "Lease operasi WAN hilang; operasi dihentikan",
+      );
+  };
 
   const run = async (
     authorizer: Authorizer,
@@ -232,15 +292,15 @@ export async function executeWanOperation(
     );
 
     // --- phase: write (exactly once) ---
+    if (!(await renewLease())) ensureLease();
     const write = await run(ctx.authorizer, [task]);
-    phases.push({
-      name: "write",
-      state: write.state,
-      taskIds: write.statuses.map((t) => t._id),
-      ...(write.statuses.find((t) => t.faultCode)
-        ? { faultCode: write.statuses.find((t) => t.faultCode)?.faultCode }
-        : {}),
-    });
+    phase(
+      "write",
+      write.state,
+      write.statuses.map((t) => t._id),
+    );
+    const writeFault = write.statuses.find((t) => t.faultCode)?.faultCode;
+    if (writeFault) phases[phases.length - 1].faultCode = writeFault;
     if (write.state === "failed" || write.state === "unknown") {
       return await finish(operationId, deviceId, write.state, phases, warnings);
     }
@@ -259,11 +319,12 @@ export async function executeWanOperation(
       { name: "refreshObject", objectName: collection },
     ]);
     const freshDevice = await fetchAuthorizedDevice(reauth, deviceId);
-    phases.push({
-      name: "refresh",
-      state: refresh.state,
-      taskIds: refresh.statuses.map((t) => t._id),
-    });
+    phase(
+      "refresh",
+      refresh.state,
+      refresh.statuses.map((t) => t._id),
+    );
+    await recordPhases(operationId, phases);
     if (refresh.state !== "succeeded") {
       // Write applied, confirmation missing: partial, no follow-up.
       return await finish(operationId, deviceId, "partial", phases, warnings);
@@ -327,6 +388,7 @@ export async function executeWanOperation(
           "",
       );
       if (desiredBind && currentBind !== desiredBind) {
+        if (!(await renewLease())) ensureLease();
         const reapply = await run(reauth, [
           {
             name: "setParameterValues",
@@ -339,11 +401,12 @@ export async function executeWanOperation(
             ],
           },
         ]);
-        phases.push({
-          name: "reapply_binding",
-          state: reapply.state,
-          taskIds: reapply.statuses.map((t) => t._id),
-        });
+        phase(
+          "reapply_binding",
+          reapply.state,
+          reapply.statuses.map((t) => t._id),
+        );
+        await recordPhases(operationId, phases);
         if (reapply.state !== "succeeded") {
           return await finish(
             operationId,
@@ -375,11 +438,7 @@ export async function executeWanOperation(
             .map((x) => x.trim())
             .filter(Boolean)
             .join(","));
-    phases.push({
-      name: "verify",
-      state: verified ? "succeeded" : "failed",
-      taskIds: [],
-    });
+    phase("verify", verified ? "succeeded" : "failed", []);
     if (!verified) {
       warnings.push(
         "Nilai hasil tulis belum terbaca sama pada verifikasi; periksa manual.",
@@ -406,7 +465,7 @@ export async function executeWanOperation(
       observedInstance,
     );
   } finally {
-    await releaseLock(wanLock, lockToken);
+    if (lockToken) await releaseLock(wanLock, lockToken);
   }
 }
 

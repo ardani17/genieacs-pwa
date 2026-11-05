@@ -185,6 +185,96 @@ function EditorDialog({
   );
 }
 
+interface SaveDeps {
+  resource: string;
+  sourceField: string;
+  deserialize?: ResourceEditorConfig["deserialize"];
+  draft: Record<string, unknown> | null;
+  selected: Record<string, unknown> | null;
+  source: string;
+  fetchOne(id: string): Promise<Record<string, unknown> | null>;
+  conflictRef: React.MutableRefObject<(() => void) | null>;
+  setBusy(v: boolean): void;
+  setError(v: string | null): void;
+  setConflictOpen(v: boolean): void;
+  setDirty(v: boolean): void;
+  reload(id: string): Promise<void>;
+  retryOverwrite(): void;
+}
+
+// Save flow, module-level so the component stays small: revision
+// re-check (a failed read NEVER writes), deserialize, PUT, refresh.
+async function saveResource(overwrite: boolean, deps: SaveDeps): Promise<void> {
+  const { draft } = deps;
+  if (!draft) return;
+  const id = String(draft["_id"] ?? "");
+  if (!id.trim()) {
+    deps.setError("Nama wajib diisi.");
+    return;
+  }
+  deps.setBusy(true);
+  deps.setError(null);
+  try {
+    if (!overwrite && deps.selected && deps.selected["_id"]) {
+      const fresh = await deps.fetchOne(id);
+      if (fresh === null) {
+        deps.setError(
+          "Tidak dapat memeriksa revisi terbaru; simpan dibatalkan. Coba lagi atau Muat ulang.",
+        );
+        return;
+      }
+      if (JSON.stringify(fresh) !== JSON.stringify(deps.selected)) {
+        deps.conflictRef.current = () => {
+          deps.setConflictOpen(false);
+          deps.retryOverwrite();
+        };
+        deps.setConflictOpen(true);
+        return;
+      }
+    }
+    let doc: Record<string, unknown>;
+    if (deps.deserialize) {
+      try {
+        doc = deps.deserialize(deps.source, draft);
+      } catch (err) {
+        deps.setError(`Format tidak valid: ${(err as Error).message}`);
+        return;
+      }
+    } else {
+      doc = { ...draft, [deps.sourceField]: deps.source };
+    }
+    const res = await fetch(
+      `/api/app/resources/${deps.resource}/${encodeURIComponent(id)}`,
+      {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          "X-App-Request": "1",
+        },
+        body: JSON.stringify(doc),
+        cache: "no-store",
+      },
+    );
+    if (!res.ok) {
+      const body = (await res
+        .json()
+        .catch(() => null)) as ApiResult<unknown> | null;
+      deps.setError(
+        body && body.ok === false
+          ? `${body.error.message} (requestId ${body.requestId})`
+          : "Resource tidak dapat disimpan.",
+      );
+    } else {
+      deps.setDirty(false);
+      await deps.reload(id);
+    }
+  } catch {
+    deps.setError("Resource tidak dapat disimpan — koneksi terputus.");
+  } finally {
+    deps.setBusy(false);
+  }
+}
+
 export function ResourceEditor({
   config,
   canRevealSecrets = false,
@@ -262,7 +352,17 @@ export function ResourceEditor({
     return body.ok ? body.data : null;
   };
 
+  // Switching entries with unsaved changes asks once; the dialog
+  // cannot reuse window.confirm cleanly inside React state flow, so
+  // the guard runs before any state is touched.
+  const confirmDiscard = (): boolean =>
+    !dirty ||
+    window.confirm(
+      "Perubahan belum disimpan. Buang perubahan dan buka entri lain?",
+    );
+
   const open = async (id: string | null): Promise<void> => {
+    if (!confirmDiscard()) return;
     setError(null);
     setRevealed(false);
     if (id == null) {
@@ -287,67 +387,25 @@ export function ResourceEditor({
   };
 
   const put = async (overwrite: boolean): Promise<void> => {
-    if (!draft) return;
-    const id = String(draft["_id"] ?? "");
-    if (!id.trim()) {
-      setError("Nama wajib diisi.");
-      return;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      // Native has no atomic CAS: compare against a FRESH fetch before
-      // saving unless the user explicitly chose to overwrite.
-      if (!overwrite && selected && selected["_id"]) {
-        const fresh = await fetchOne(id);
-        if (fresh && JSON.stringify(fresh) !== JSON.stringify(selected)) {
-          conflictRef.current = () => {
-            setConflictOpen(false);
-            void put(true);
-          };
-          setConflictOpen(true);
-          return;
-        }
-      }
-      let doc: Record<string, unknown>;
-      if (config.deserialize) {
-        try {
-          doc = config.deserialize(source, draft);
-        } catch (err) {
-          setError(`Format tidak valid: ${(err as Error).message}`);
-          return;
-        }
-      } else {
-        doc = { ...draft, [sourceField]: source };
-      }
-      const res = await fetch(
-        `/api/app/resources/${resource}/${encodeURIComponent(id)}`,
-        {
-          method: "PUT",
-          headers: { "Content-Type": "application/json", "X-App-Request": "1" },
-          body: JSON.stringify(doc),
-          cache: "no-store",
-        },
-      );
-      if (!res.ok) {
-        const body = (await res
-          .json()
-          .catch(() => null)) as ApiResult<unknown> | null;
-        setError(
-          body && body.ok === false
-            ? `${body.error.message} (requestId ${body.requestId})`
-            : "Resource tidak dapat disimpan.",
-        );
-      } else {
-        setDirty(false);
+    await saveResource(overwrite, {
+      resource,
+      sourceField,
+      deserialize: config.deserialize,
+      draft,
+      selected,
+      source,
+      fetchOne,
+      conflictRef,
+      setBusy,
+      setError,
+      setConflictOpen,
+      setDirty,
+      reload: async (id) => {
         await load();
         await open(id);
-      }
-    } catch {
-      setError("Resource tidak dapat disimpan — koneksi terputus.");
-    } finally {
-      setBusy(false);
-    }
+      },
+      retryOverwrite: () => void put(true),
+    });
   };
 
   const remove = async (): Promise<void> => {

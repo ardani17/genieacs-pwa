@@ -5,7 +5,10 @@ import * as apiFunctions from "../api-functions.ts";
 import { evaluate, and, extractParams } from "../common/expression/util.ts";
 import { parse } from "../common/expression/parser.ts";
 import * as logger from "../logger.ts";
-import { emitPermissionDenied } from "../engine-app-logger.ts";
+import {
+  emitPermissionDenied,
+  getEngineAppLogger,
+} from "../engine-app-logger.ts";
 import { Expression } from "../types.ts";
 import { generateSalt, hashPassword } from "../auth.ts";
 import { del } from "../cache.ts";
@@ -15,6 +18,7 @@ import { decodeTag } from "../util.ts";
 import { stringify as yamlStringify } from "../common/yaml.ts";
 import { ResourceLockedError } from "../common/errors.ts";
 import { quoteCsvCell, sendSafeLegacyError } from "./safe-error.ts";
+import { countAdminsAfter, withLastAdminGuard } from "./users-guard.ts";
 import {
   CommandExecutionError,
   executeAuthorizedTasks,
@@ -407,6 +411,29 @@ for (const [resource, flags] of Object.entries(resources)) {
         return void (ctx.status = 403);
       }
 
+      // Last-admin guard: deleting the final account whose roles grant
+      // users:3 would lock every installation administrator out (the
+      // runbook recovery requires direct database access). The check
+      // and the delete run under the shared user-guard lock so two
+      // parallel deletes cannot both pass the invariant.
+      if (resource === "users") {
+        try {
+          await withLastAdminGuard(async () => ({
+            remainingAdmins: await countAdminsAfter([ctx.params.id]),
+          }));
+        } catch (err) {
+          log.message += " refused (last admin)";
+          logger.accessWarn(log);
+          sendSafeLegacyError(
+            ctx,
+            (err as { status?: number }).status ?? 409,
+            "last_admin_refused",
+            "Menghapus admin terakhir ditolak. Pulihkan lewat runbook reset admin.",
+          );
+          return;
+        }
+      }
+
       try {
         await apiFunctions.deleteResource(resource, ctx.params.id);
       } catch (err) {
@@ -425,6 +452,18 @@ for (const [resource, flags] of Object.entries(resources)) {
       }
 
       logger.accessInfo(log);
+      // Audit: resource + id + config revision only (never the body).
+      getEngineAppLogger().emit({
+        event: "admin.resource.updated",
+        level: "info",
+        message: `deleted ${resource}/${ctx.params.id}`,
+        actorId: ctx.state.user?.username,
+        details: {
+          resource,
+          id: ctx.params.id,
+          revision: ctx.state.configSnapshot,
+        },
+      });
 
       ctx.body = "";
     });
@@ -485,6 +524,13 @@ for (const [resource, flags] of Object.entries(resources)) {
       }
 
       logger.accessInfo(log);
+      getEngineAppLogger().emit({
+        event: "admin.resource.updated",
+        level: "info",
+        message: `updated ${resource}/${id}`,
+        actorId: ctx.state.user?.username,
+        details: { resource, id, revision: ctx.state.configSnapshot },
+      });
 
       ctx.body = "";
     });

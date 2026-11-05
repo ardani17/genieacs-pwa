@@ -13,6 +13,30 @@ import { FILE_UPLOAD_MAX_BYTES } from "@contracts/resources.ts";
 
 const PUBLIC_ORIGIN = process.env.PUBLIC_ORIGIN ?? "http://localhost:3000";
 
+// Byte-counted passthrough: the 100MiB cap is enforced on the ACTUAL
+// bytes streamed, not the (optional, spoofable) Content-Length. Past
+// the limit the stream errors — the upstream fetch aborts mid-body
+// and the engine keeps the previous firmware version intact.
+function countBytes(
+  body: ReadableStream<Uint8Array> | null,
+  max: number,
+): ReadableStream<Uint8Array> | null {
+  if (!body) return body;
+  let seen = 0;
+  return body.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        seen += chunk.byteLength;
+        if (seen > max) {
+          controller.error(new Error("upload exceeds size limit"));
+          return;
+        }
+        controller.enqueue(chunk);
+      },
+    }),
+  );
+}
+
 export const dynamic = "force-dynamic";
 
 // File content: GET streams the native blob (status/type/disposition
@@ -26,23 +50,9 @@ export async function GET(
   const ctx = requestContextFrom(request);
   const { id } = await paramsCtx.params;
 
-  // Contracts.md mutation rules: same-origin + X-App-Request on every
-  // state-changing route, checked BEFORE the body is read or the
-  // upstream is contacted.
-  const sameOrigin = requireSameOrigin(request, PUBLIC_ORIGIN);
-  if (!sameOrigin.ok)
-    return NextResponse.json(
-      {
-        ok: false,
-        error: {
-          code: "FORBIDDEN",
-          message: "Permintaan ditolak (same-origin)",
-          retryable: false,
-        },
-        requestId: ctx.requestId,
-      },
-      { status: 403, headers: correlationHeaders(ctx) },
-    );
+  // GET is a safe read: plain browser download links carry no
+  // X-App-Request/Origin. The session cookie and the engine's
+  // files:2 filter still gate the download.
   const cookie = nativeCookieFrom(request.headers.get("cookie"));
   if (!cookie) return unauthenticated(ctx);
 
@@ -114,6 +124,21 @@ export async function PUT(
 ): Promise<NextResponse> {
   const ctx = requestContextFrom(request);
   const { id } = await paramsCtx.params;
+  // Contracts.md mutation rules on the upload itself.
+  const sameOrigin = requireSameOrigin(request, PUBLIC_ORIGIN);
+  if (!sameOrigin.ok)
+    return NextResponse.json(
+      {
+        ok: false,
+        error: {
+          code: "FORBIDDEN",
+          message: "Permintaan ditolak (same-origin)",
+          retryable: false,
+        },
+        requestId: ctx.requestId,
+      },
+      { status: 403, headers: correlationHeaders(ctx) },
+    );
   const cookie = nativeCookieFrom(request.headers.get("cookie"));
   if (!cookie) return unauthenticated(ctx) as NextResponse;
 
@@ -152,10 +177,12 @@ export async function PUT(
           // carry a duplex body): the id joins engine access logs.
           "X-Request-Id": ctx.requestId,
         },
-        body: request.body,
+        body: countBytes(request.body, FILE_UPLOAD_MAX_BYTES),
         // @ts-expect-error Node undici duplex streaming
         duplex: "half",
-        signal: AbortSignal.timeout(120_000),
+        // Client aborts propagate (request.signal); the 120s cap only
+        // guards against abandoned streams.
+        signal: AbortSignal.any([request.signal, AbortSignal.timeout(120_000)]),
       },
     );
     if (upstream.ok)

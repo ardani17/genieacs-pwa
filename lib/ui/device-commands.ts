@@ -38,6 +38,7 @@ import {
 } from "./operation-store.ts";
 import type { AppOperationDoc } from "../db/db.ts";
 import { Expression, Task } from "../types.ts";
+import { lookup } from "node:dns/promises";
 
 // Typed failure surfaced to route adapters (legacy text semantics or
 // the ApiResult envelope) without leaking stacks or upstream bodies.
@@ -59,6 +60,47 @@ export interface ExecutorContext {
   requestId?: string;
 }
 
+// Resolve the CRURL hostname (when it is not an IP literal) with a
+// bounded timeout; failures simply yield no addresses — the guard then
+// treats the path as unidentified and blocks destructive mutations.
+const defaultResolve = (host: string): Promise<string[]> =>
+  lookup(host, { all: true })
+    .then((addrs) => addrs.map((a) => a.address))
+    .catch(() => []);
+
+export async function resolveCrurlHosts(
+  device: WanDevice,
+  resolver?: (host: string) => Promise<string[]>,
+): Promise<string[]> {
+  const raw = value2(
+    device,
+    "InternetGatewayDevice.ManagementServer.ConnectionRequestURL",
+  );
+  if (typeof raw !== "string" || !raw) return [];
+  let host: string;
+  try {
+    host = new URL(raw).hostname;
+  } catch {
+    return [];
+  }
+  // IP literals need no resolution.
+  if (/^[0-9.]+$/.test(host) || host.includes(":")) return [host];
+  try {
+    const resolve = resolver ?? defaultResolve;
+    return await resolve(host);
+  } catch {
+    return [];
+  }
+}
+
+function value2(
+  device: WanDevice,
+  path: string,
+): string | number | boolean | undefined {
+  return (device[path] as { value?: [string | number | boolean, string] })
+    ?.value?.[0];
+}
+
 export interface ExecutorDeps {
   connectionRequest(
     deviceId: string,
@@ -74,6 +116,7 @@ export interface ExecutorDeps {
   deleteTask(id: ObjectId): Promise<unknown>;
   countFaults(deviceId: string, taskId: string): Promise<number>;
   faultCode(deviceId: string, taskId: string): Promise<string | undefined>;
+  resolveHosts?(host: string): Promise<string[]>;
 }
 
 export const defaultExecutorDeps: ExecutorDeps = {
@@ -163,6 +206,42 @@ function deviceOnlineThreshold(
   ) as number;
 }
 
+// Whitelisted fields per task name (contracts.md TaskInput): the
+// server rebuilds each task from validated input — client _id,
+// timestamp and uniqueKey never reach insertTasks, and expiry is
+// clamped into the native 1..86400 second band. NaN/negative values
+// silently became "already expired" tasks the CPE skips while the UI
+// reported success (STD-03).
+const TASK_FIELDS: Record<string, Set<string>> = {
+  getParameterValues: new Set(["name", "parameterNames"]),
+  setParameterValues: new Set(["name", "parameterValues"]),
+  refreshObject: new Set(["name", "objectName"]),
+  addObject: new Set(["name", "objectName", "parameterValues"]),
+  deleteObject: new Set(["name", "objectName"]),
+  download: new Set(["name", "fileType", "fileName", "file", "targetFileName"]),
+  provisions: new Set(["name", "provisions"]),
+  reboot: new Set(["name"]),
+  factoryReset: new Set(["name"]),
+};
+
+function rebuildTask(input: TaskInput, deviceId: string): Task {
+  const allowed = TASK_FIELDS[input.name];
+  if (!allowed) throw new Error(`Invalid task name: ${input.name}`);
+  const task: Record<string, unknown> = {};
+  const source = input as unknown as Record<string, unknown>;
+  for (const field of allowed)
+    if (source[field] !== undefined) task[field] = source[field];
+  // Bound expiry into a sane band; absent stays absent (native default).
+  const expiry = (input as { expiry?: number }).expiry;
+  if (expiry !== undefined) {
+    if (typeof expiry !== "number" || !Number.isFinite(expiry))
+      throw new Error("expiry harus number (detik).");
+    task["expiry"] = Math.min(86400, Math.max(1, Math.round(expiry)));
+  }
+  task["device"] = deviceId;
+  return task as unknown as Task;
+}
+
 export async function executeAuthorizedTasks(
   ctx: ExecutorContext,
   deviceId: string,
@@ -204,6 +283,17 @@ export async function executeAuthorizedTasks(
         "operationId sudah dipakai untuk request berbeda",
       );
     if (claim.claim === "existing") {
+      // Replay re-authorization: the stored outcome is only visible to
+      // the owner (or a logs:2 admin) who can STILL see the target
+      // device under their CURRENT permission filter — a revoked or
+      // out-of-scope caller gets a 404, never the result.
+      const stillAuthorized = await authorizeOperationRead(
+        ctx.authorizer,
+        claim.operation,
+        ctx.username ?? "",
+      );
+      if (!stillAuthorized)
+        throw new CommandExecutionError(404, "NOT_FOUND", "no such device");
       return {
         state: claim.operation.state,
         phases: claim.operation.phases as CommandPhase[],
@@ -258,10 +348,17 @@ export async function executeAuthorizedTasks(
 
     // 4. Management-WAN guard on EVERY relevant task (raw SPV/delete
     //    included) before insertion — the legacy UI only guarded forms.
+    //    CRURL hostnames resolve HERE (server-side, bounded) so DNS-based
+    //    management paths are identifiable; ambiguity stays ambiguous.
+    const resolvedHosts = await resolveCrurlHosts(
+      device as unknown as WanDevice,
+      options.deps?.resolveHosts,
+    );
     try {
       assertManagementWanSafe(
         device as unknown as WanDevice,
         tasks as TaskInput[],
+        resolvedHosts,
       );
     } catch (err) {
       if (err instanceof ManagementWanGuardError)
@@ -269,12 +366,9 @@ export async function executeAuthorizedTasks(
       throw err;
     }
 
-    const prepared = (tasks as Task[]).map((t) => {
-      const task = { ...t };
-      delete task._id;
-      task["device"] = deviceId;
-      return task;
-    });
+    const prepared = (tasks as TaskInput[]).map((t) =>
+      rebuildTask(t, deviceId),
+    );
 
     const inserted = await deps.insertTasks(prepared);
     statuses = inserted.map((t) => ({ _id: t._id, status: "pending" }));

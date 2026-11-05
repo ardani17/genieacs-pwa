@@ -12,6 +12,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Status } from "@/components/ui/status";
 import { ParameterBrowser } from "./parameter-browser";
 import { Diagnostics } from "./diagnostics";
+import { DeviceTaskFault } from "./device-task-fault";
 import { DeviceActions } from "../tasks/staging-panel";
 import { WanEditor } from "../wan/wan-editor";
 import { WifiManager } from "../wifi/wifi-manager";
@@ -25,7 +26,14 @@ import type { ApiResult } from "@contracts/api.ts";
 
 type FlatDevice = Record<string, { value?: [unknown, string] } | unknown>;
 
-const TABS = ["Ringkasan", "WAN", "WiFi", "Parameter", "Diagnosis"] as const;
+const TABS = [
+  "Ringkasan",
+  "WAN",
+  "WiFi",
+  "Parameter",
+  "Task/Fault",
+  "Diagnosis",
+] as const;
 type Tab = (typeof TABS)[number];
 
 function val(device: FlatDevice | null, path: string): string {
@@ -245,6 +253,9 @@ export function DeviceDetail({ deviceId }: { deviceId: string }) {
                     objectRoot="InternetGatewayDevice."
                   />
                 </>
+              ) : null}
+              {t === "Task/Fault" ? (
+                <DeviceTaskFault deviceId={deviceId} />
               ) : null}
               {t === "Diagnosis" ? <Diagnostics deviceId={deviceId} /> : null}
               {t === "Ringkasan" ? (

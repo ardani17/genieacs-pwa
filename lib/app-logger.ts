@@ -298,7 +298,7 @@ export function createAppLogger(options: AppLoggerOptions): AppLogger {
     options.sink ??
     (async (line: string) => {
       try {
-        await appendFile(options.filePath, line + "\n");
+        await appendFile(options.filePath, line + "\n", { mode: 0o640 });
       } catch (err) {
         // The log directory can disappear under a running process (the
         // shared volume re-seeded by another service, storage wiped).
@@ -306,7 +306,7 @@ export function createAppLogger(options: AppLoggerOptions): AppLogger {
         // failure — degrade visibly through the drain error path.
         if ((err as NodeJS.ErrnoException)?.code !== "ENOENT") throw err;
         await mkdir(dirname(options.filePath), { recursive: true });
-        await appendFile(options.filePath, line + "\n");
+        await appendFile(options.filePath, line + "\n", { mode: 0o640 });
       }
       currentBytes += line.length + 1;
       if (currentBytes >= ROTATE_MAX_BYTES) {
@@ -329,6 +329,31 @@ export function createAppLogger(options: AppLoggerOptions): AppLogger {
       }
     });
 
+  // Contract event "logging.state_changed": emitted through the same
+  // queue/redaction pipeline (a broken pipeline can still mark itself).
+  const transitionState = (
+    next: "healthy" | "buffering" | "degraded",
+  ): void => {
+    if (state === next) return;
+    const envelope = JSON.stringify({
+      schemaVersion: 1,
+      timestamp: new Date().toISOString(),
+      level: next === "healthy" ? "info" : "warn",
+      service: options.service,
+      appVersion: options.appVersion,
+      installationId: options.installationId,
+      environment: options.environment,
+      event: "logging.state_changed",
+      message: `logging state: ${state} -> ${next}`,
+      details: { from: state, to: next },
+    });
+    state = next;
+    if (queue.length < QUEUE_MAX_EVENTS) {
+      queue.push(envelope);
+      queuedBytes += Buffer.byteLength(envelope, "utf8");
+    }
+  };
+
   const drain = (): void => {
     if (writing || queue.length === 0) return;
     writing = true;
@@ -338,9 +363,9 @@ export function createAppLogger(options: AppLoggerOptions): AppLogger {
       try {
         for (const line of batch) await sink(line);
         lastSuccessAt = new Date().toISOString();
-        if (state === "degraded") state = "healthy";
+        if (state === "degraded") transitionState("healthy");
       } catch {
-        state = "degraded";
+        transitionState("degraded");
         // The batch is already dropped from the queue: count it.
         droppedEvents += batch.length;
       } finally {
@@ -418,7 +443,7 @@ export function createAppLogger(options: AppLoggerOptions): AppLogger {
           3 as number,
         );
         droppedEvents += 1;
-        state = state === "healthy" ? "buffering" : state;
+        if (state === "healthy") transitionState("buffering");
         if (LEVEL_ORDER[event.level] <= minQueued) return; // drop incoming
         const victim = queue.findIndex(
           (l) =>
@@ -435,7 +460,7 @@ export function createAppLogger(options: AppLoggerOptions): AppLogger {
       try {
         drain();
       } catch {
-        state = "degraded";
+        transitionState("degraded");
         droppedEvents += 1;
       }
     },

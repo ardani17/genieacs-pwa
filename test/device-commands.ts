@@ -527,6 +527,103 @@ void test("executor: guards, idempotency, outcomes, cleanup, legacy parity", asy
     );
 
     await t.test(
+      "hostname CRURL resolves through the server resolver",
+      async () => {
+        // CRURL uses a DNS name the stub resolver maps to the WAN IP —
+        // a critical SPV on that WAN must be refused. Without the
+        // resolution the guard sees no match and the write goes out.
+        const dnsDevice = deviceDoc(
+          "TEST-DNS-1",
+          "http://acs.example.invalid:7547/",
+          "192.0.2.60",
+        );
+        await collections.devices.insertOne(dnsDevice as never);
+        const okDeps = stubDeps();
+        try {
+          await assert.rejects(
+            executeAuthorizedTasks(
+              base,
+              "TEST-DNS-1",
+              [
+                {
+                  name: "setParameterValues",
+                  parameterValues: [
+                    [`${WAN_IP_1}.ConnectionType`, "IP_Bridged", "xsd:string"],
+                  ],
+                },
+              ],
+              {
+                deps: {
+                  ...okDeps.deps,
+                  async resolveHosts(host) {
+                    return host === "acs.example.invalid" ? ["192.0.2.60"] : [];
+                  },
+                },
+              },
+            ),
+            (err: CommandExecutionError) => err.status === 400,
+          );
+          // A failed resolution keeps the identity unknowable — the
+          // strengthened guard blocks the destructive delete.
+          await assert.rejects(
+            executeAuthorizedTasks(
+              base,
+              "TEST-DNS-1",
+              [{ name: "deleteObject", objectName: WAN_IP_1 }],
+              {
+                deps: {
+                  ...okDeps.deps,
+                  async resolveHosts() {
+                    throw new Error("resolver down");
+                  },
+                },
+              },
+            ),
+            (err: CommandExecutionError) => err.status === 400,
+          );
+        } finally {
+          await collections.devices.deleteOne({ _id: "TEST-DNS-1" });
+        }
+      },
+    );
+
+    await t.test(
+      "client task internals are stripped and expiry is clamped",
+      async () => {
+        const capture = stubDeps();
+        const seen: unknown[] = [];
+        const deps = {
+          ...capture.deps,
+          async insertTasks(tasks) {
+            seen.push(...tasks);
+            return capture.deps.insertTasks(tasks);
+          },
+        };
+        const result = await executeAuthorizedTasks(
+          base,
+          "TEST-CMD-1",
+          [
+            {
+              name: "reboot",
+              expiry: -5,
+              timestamp: "2099-01-01T00:00:00Z",
+              uniqueKey: "evil",
+              _id: "client-id",
+            } as never,
+          ],
+          { deps },
+        );
+        assert.equal(result.state, "succeeded");
+        const task = seen[0] as Record<string, unknown>;
+        assert.equal(task["device"], "TEST-CMD-1");
+        assert.equal(task["expiry"], 1); // clamped, not negative
+        assert.equal(task["timestamp"], undefined);
+        assert.equal(task["uniqueKey"], undefined);
+        assert.equal(task["_id"], undefined);
+      },
+    );
+
+    await t.test(
       "app commands endpoint end-to-end with idempotency",
       async () => {
         const body = JSON.stringify({

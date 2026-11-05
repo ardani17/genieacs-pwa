@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { DataView, type DataViewProps } from "@/components/ui/data-view";
 import { Button } from "@/components/ui/button";
 import { FilterBar } from "./filter-bar";
+import { runBulk, BULK_MAX_TARGETS } from "../tasks/bulk";
 
 import { ArrowLeft, ArrowRight, ArrowUpRight, Download } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -34,6 +35,109 @@ function lastInformText(device: FlatDevice): string {
     : date.toLocaleString("id-ID");
 }
 
+function BulkBar({
+  selected,
+  onClear,
+  reload,
+}: {
+  selected: string[];
+  onClear: () => void;
+  reload: () => void;
+}) {
+  const [tag, setTag] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [results, setResults] = useState<
+    { deviceId: string; state: string }[] | null
+  >(null);
+  const controllerRef = useRef<AbortController | null>(null);
+
+  const runTags = async (on: boolean): Promise<void> => {
+    setBusy(true);
+    setResults(null);
+    try {
+      await runBulkTags(on);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const runBulkTags = async (on: boolean): Promise<void> => {
+    const handle = await runBulk(
+      selected.map((deviceId) => ({ deviceId })),
+      {
+        async submit({ deviceId }) {
+          const res = await fetch(
+            `/api/app/devices/${encodeURIComponent(deviceId)}/tags`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-App-Request": "1",
+              },
+              body: JSON.stringify({ [tag]: on }),
+              cache: "no-store",
+            },
+          );
+          const state = res.ok ? "succeeded" : "failed";
+          return { deviceId, state: state as "succeeded" | "failed" };
+        },
+      },
+      controllerRef.current?.signal,
+    );
+    setResults(handle.outcomes);
+    onClear();
+    reload();
+  };
+
+  return (
+    <div className="space-y-2 rounded-xl border bg-card p-3">
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <span className="font-medium">{selected.length} dipilih</span>
+        <input
+          aria-label="Tag untuk bulk"
+          value={tag}
+          placeholder="nama-tag"
+          className="min-h-11 rounded-md border px-3"
+          onChange={(e) => setTag(e.target.value)}
+        />
+        <Button
+          size="sm"
+          disabled={busy || !tag.trim()}
+          onClick={() => void runTags(true)}
+        >
+          Tambah tag
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={busy || !tag.trim()}
+          onClick={() => void runTags(false)}
+        >
+          Hapus tag
+        </Button>
+        {busy ? (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => controllerRef.current?.abort()}
+          >
+            Batalkan sisanya
+          </Button>
+        ) : null}
+      </div>
+      {results ? (
+        <ul className="text-xs text-muted-foreground" aria-live="polite">
+          {results.map((r) => (
+            <li key={r.deviceId}>
+              {r.deviceId}: {r.state}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
 export function DeviceList() {
   const params = useSearchParams();
   const [state, setState] =
@@ -42,6 +146,16 @@ export function DeviceList() {
   const [requestId, setRequestId] = useState<string | undefined>();
   const abortRef = useRef<AbortController | null>(null);
   const [reload, setReload] = useState(0);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const toggle = (id: string): void => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else if (next.size < BULK_MAX_TARGETS) next.add(id);
+      return next;
+    });
+  };
+  const reloadList = (): void => setReload((n) => n + 1);
 
   const queryText = useMemo(() => params.toString(), [params]);
 
@@ -143,6 +257,13 @@ export function DeviceList() {
           }}
           renderReady={(items) => (
             <>
+              {selected.size ? (
+                <BulkBar
+                  selected={[...selected]}
+                  onClear={() => setSelected(new Set())}
+                  reload={reloadList}
+                />
+              ) : null}
               <div
                 className="hidden min-w-0 md:block"
                 role="region"
@@ -151,6 +272,9 @@ export function DeviceList() {
                 <Table>
                   <TableHeader className="bg-muted/60">
                     <TableRow>
+                      <TableHead scope="col" className="w-10 px-2">
+                        <span className="sr-only">Pilih</span>
+                      </TableHead>
                       {["ID", "Model", "Firmware", "Terakhir inform", "IP"].map(
                         (label) => (
                           <TableHead scope="col" key={label} className="px-6">
@@ -165,6 +289,15 @@ export function DeviceList() {
                       const id = value(device, "DeviceID.ID");
                       return (
                         <TableRow key={id}>
+                          <TableCell className="px-2">
+                            <input
+                              type="checkbox"
+                              aria-label={`Pilih ${id}`}
+                              checked={selected.has(id)}
+                              onChange={() => toggle(id)}
+                              className="size-5"
+                            />
+                          </TableCell>
                           <TableCell className="px-6">
                             <a
                               className="inline-flex min-h-11 items-center gap-2 font-medium text-primary hover:underline"

@@ -33,7 +33,7 @@ void test("seed: idempotent, no overwrite, preview writes nothing", async () => 
   try {
     // Clean slate for the seed keys.
     for (const item of planSeed(seed))
-      await db.collection(item.kind).deleteOne({ _id: item.key });
+      await db.collection(item.kind).deleteOne({ _id: item.key } as never);
 
     // Preview: no writes at all.
     const preview = await seedConfig({ mode: "preview", seed, client });
@@ -55,8 +55,8 @@ void test("seed: idempotent, no overwrite, preview writes nothing", async () => 
     await db
       .collection("config")
       .updateOne(
-        { _id: "cwmp.connectionRequestTimeout" },
-        { $set: { value: "9999", t: "xsd:unsignedInt" } },
+        { _id: "cwmp.connectionRequestTimeout" } as never,
+        { $set: { value: "9999", t: "xsd:unsignedInt" } } as never,
       );
     const third = await seedConfig({ mode: "bootstrap", seed, client });
     assert.equal(
@@ -65,7 +65,7 @@ void test("seed: idempotent, no overwrite, preview writes nothing", async () => 
     );
     const doc = await db
       .collection("config")
-      .findOne({ _id: "cwmp.connectionRequestTimeout" });
+      .findOne({ _id: "cwmp.connectionRequestTimeout" } as never);
     assert.equal(doc?.value, "9999");
   } finally {
     await client.close();

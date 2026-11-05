@@ -5,6 +5,8 @@
 // the panel commits staged entries one operationId at a time and never
 // retries automatically. Offline state disables every mutation.
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Status } from "@/components/ui/status";
@@ -18,6 +20,13 @@ import {
 } from "@/components/ui/dialog";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { ApiError, ApiResult } from "@contracts/api.ts";
 import type { TaskInput } from "../../../../../packages/app-contracts/src/commands.ts";
 import {
@@ -103,6 +112,41 @@ export function StagingPanel() {
   const [results, setResults] = useState<
     { id: string; outcome?: WanOutcome; error?: string }[]
   >([]);
+  // /tasks?operation=<id>: look a stored outcome up by id (the link the
+  // OperationResult surface renders) — no resubmission, ever.
+  const queryOperation = useSearchParams().get("operation");
+  const [lookedUp, setLookedUp] = useState<{
+    outcome?: WanOutcome;
+    error?: string;
+  } | null>(null);
+  useEffect(() => {
+    if (!queryOperation) return undefined;
+    let cancelled = false;
+    const t = window.setTimeout(() => {
+      void fetch(`/api/app/operations/${encodeURIComponent(queryOperation)}`, {
+        cache: "no-store",
+      })
+        .then(async (res) => {
+          if (cancelled) return;
+          if (!res.ok) {
+            setLookedUp({ error: "Hasil operasi tidak tersedia." });
+            return;
+          }
+          const body = (await res.json()) as ApiResult<WanOutcome>;
+          if (cancelled) return;
+          if (body.ok !== true) setLookedUp({ error: body.error.message });
+          else setLookedUp({ outcome: body.data });
+        })
+        .catch(() => {
+          if (!cancelled)
+            setLookedUp({ error: "Hasil operasi tidak tersedia." });
+        });
+    }, 0);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t);
+    };
+  }, [queryOperation]);
 
   useEffect(() => {
     const sync = (): void => setOffline(!navigator.onLine);
@@ -153,6 +197,29 @@ export function StagingPanel() {
     setResults(outcomes);
     setBusy(false);
   };
+
+  if (queryOperation) {
+    return (
+      <Card>
+        <CardContent className="space-y-3">
+          <h3 className="text-sm font-semibold">Hasil operasi</h3>
+          {lookedUp?.outcome ? (
+            <OperationResult outcome={lookedUp.outcome} />
+          ) : lookedUp?.error ? (
+            <Status tone="warning">{lookedUp.error}</Status>
+          ) : (
+            <Status tone="muted">Memuat hasil operasi…</Status>
+          )}
+          <Link
+            href="/tasks"
+            className="inline-flex min-h-11 items-center text-sm text-primary hover:underline"
+          >
+            Kembali ke staging
+          </Link>
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (!entries.length && !results.length)
     return (
@@ -225,9 +292,18 @@ export function StagingPanel() {
 // Destructive device actions with literal-id confirmation. "Jalankan"
 // executes immediately (single operation, no retry); "Tahankan" adds
 // the action to the staging review flow.
+interface FirmwareRow {
+  _id: string;
+  metadata?: { fileType?: string; version?: string };
+}
+
 export function DeviceActions({ deviceId }: { deviceId: string }) {
   const { stage } = useStaging();
-  const [dialog, setDialog] = useState<null | "reboot" | "factoryReset">(null);
+  const [dialog, setDialog] = useState<
+    null | "reboot" | "factoryReset" | "download"
+  >(null);
+  const [firmware, setFirmware] = useState<FirmwareRow[]>([]);
+  const [selectedFile, setSelectedFile] = useState("");
   const [confirmId, setConfirmId] = useState("");
   const [busy, setBusy] = useState(false);
   const [offline, setOffline] = useState(false);
@@ -251,9 +327,22 @@ export function DeviceActions({ deviceId }: { deviceId: string }) {
   const taskFor = (): TaskInput[] =>
     dialog === "factoryReset"
       ? [{ name: "factoryReset" }]
-      : [{ name: "reboot" }];
+      : dialog === "download"
+        ? [
+            {
+              name: "download",
+              fileType: "1 Firmware Upgrade Image",
+              fileName: selectedFile,
+              file: selectedFile,
+            },
+          ]
+        : [{ name: "reboot" }];
 
   const run = async () => {
+    if (dialog === "download" && !selectedFile) {
+      setError("Pilih file firmware terlebih dahulu.");
+      return;
+    }
     setBusy(true);
     setError(null);
     const opId = operationIdRef.current ?? crypto.randomUUID();
@@ -271,13 +360,42 @@ export function DeviceActions({ deviceId }: { deviceId: string }) {
     }
   };
 
+  const openDialog = async (which: "reboot" | "factoryReset" | "download") => {
+    setDialog(which);
+    setConfirmId("");
+    setSelectedFile("");
+    operationIdRef.current = null;
+    setError(null);
+    if (which === "download" && !firmware.length) {
+      try {
+        const res = await fetch(
+          "/api/app/resources/files?page=1&pageSize=100",
+          { cache: "no-store" },
+        );
+        if (res.ok) {
+          const body = (await res.json()) as ApiResult<{
+            items: FirmwareRow[];
+          }>;
+          if (body.ok === true) setFirmware(body.data.items);
+        }
+      } catch {
+        // list stays empty — picker shows the empty hint
+      }
+    }
+  };
+
   const stageAction = () => {
     if (!dialog) return;
     stage({
       deviceId,
       kind: "command",
       summary: {
-        action: dialog === "factoryReset" ? "Factory reset" : "Reboot",
+        action:
+          dialog === "factoryReset"
+            ? "Factory reset"
+            : dialog === "download"
+              ? `Firmware ${selectedFile}`
+              : "Reboot",
         detail: "menunggu review",
       },
       tasks: taskFor(),
@@ -298,12 +416,7 @@ export function DeviceActions({ deviceId }: { deviceId: string }) {
           variant="outline"
           size="sm"
           disabled={disabled}
-          onClick={() => {
-            setDialog("reboot");
-            setConfirmId("");
-            operationIdRef.current = null;
-            setError(null);
-          }}
+          onClick={() => void openDialog("reboot")}
         >
           Reboot
         </Button>
@@ -311,14 +424,17 @@ export function DeviceActions({ deviceId }: { deviceId: string }) {
           variant="destructive"
           size="sm"
           disabled={disabled}
-          onClick={() => {
-            setDialog("factoryReset");
-            setConfirmId("");
-            operationIdRef.current = null;
-            setError(null);
-          }}
+          onClick={() => void openDialog("factoryReset")}
         >
           Factory reset
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={disabled}
+          onClick={() => void openDialog("download")}
+        >
+          Unduh firmware
         </Button>
       </div>
       {outcome ? <OperationResult outcome={outcome} /> : null}
@@ -340,6 +456,27 @@ export function DeviceActions({ deviceId }: { deviceId: string }) {
               perangkat untuk konfirmasi.
             </DialogDescription>
           </DialogHeader>
+          {dialog === "download" ? (
+            <Field label="File firmware" required>
+              {({ id }) => (
+                <Select value={selectedFile} onValueChange={setSelectedFile}>
+                  <SelectTrigger id={id} className="w-full">
+                    <SelectValue placeholder="Pilih file" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {firmware.map((row) => (
+                      <SelectItem key={row._id} value={row._id}>
+                        {row._id}
+                        {row.metadata?.version
+                          ? ` (v${row.metadata.version})`
+                          : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </Field>
+          ) : null}
           <Field
             label="Konfirmasi ID perangkat"
             required
@@ -358,13 +495,22 @@ export function DeviceActions({ deviceId }: { deviceId: string }) {
             )}
           </Field>
           <DialogFooter>
-            <Button variant="outline" onClick={stageAction} disabled={busy}>
+            <Button
+              variant="outline"
+              onClick={stageAction}
+              disabled={
+                busy || (dialog === "factoryReset" && confirmId !== deviceId)
+              }
+            >
               Tahankan
             </Button>
             <Button
-              onClick={run}
+              onClick={() => void run()}
               busy={busy}
-              disabled={confirmId !== deviceId || offline}
+              disabled={
+                offline ||
+                (dialog === "download" ? !selectedFile : confirmId !== deviceId)
+              }
             >
               Jalankan
             </Button>

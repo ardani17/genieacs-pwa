@@ -88,18 +88,73 @@ export function readWifi(device: FlatDevice): WifiRadio[] {
     // exists on the same instance.
     const tr181 = key.match(/^(Device\.WiFi\.SSID\.\d+)\.SSID$/);
     if (tr181) {
+      // Join SSID -> AccessPoint through the actual references
+      // (SSIDReference or HigherLayer): Enable reads from the AP and the
+      // key resolves via the AP's Security parameters — without the
+      // join every TR-181 SSID read as disabled with no key path.
+      const ssidNode = tr181[1];
+      const apPath = findAccessPointFor(device, ssidNode);
+      const enablePath = apPath ? `${apPath}.Enable` : null;
+      const enabled = enablePath
+        ? [true, 1, "1", "true"].includes(
+            v(device, enablePath) as string | number | boolean,
+          )
+        : false;
+      const keyPath = apPath
+        ? [
+            `${apPath}.Security.PreSharedKey.1.PreSharedKey`,
+            `${apPath}.Security.KeyPassphrase`,
+          ].find(
+            (p) =>
+              (device[p] as { writable?: boolean } | undefined)?.writable ===
+              true,
+          )
+        : undefined;
       radios.push({
-        id: tr181[1],
+        id: ssidNode,
         ssidPath: key,
         ssid: String(v(device, key) ?? ""),
-        enabled: false,
+        enabled,
         writable:
           (device[key] as { writable?: boolean } | undefined)?.writable ===
-          true,
+            true ||
+          (enablePath
+            ? (device[enablePath] as { writable?: boolean } | undefined)
+                ?.writable === true
+            : false),
+        keyPath,
       });
     }
   }
   return radios.sort((a, b) => a.id.localeCompare(b.id));
+}
+
+// Resolve Device.WiFi.AccessPoint.X for an SSID node through the
+// actual references (either direction); null when no unique join
+// exists.
+function findAccessPointFor(
+  device: FlatDevice,
+  ssidNode: string,
+): string | null {
+  const matches = new Set<string>();
+  for (const key of Object.keys(device)) {
+    const apMatch = key.match(
+      /^(Device\.WiFi\.AccessPoint\.\d+)\.SSIDReference$/,
+    );
+    if (apMatch) {
+      const ref = v(device, key);
+      if (typeof ref === "string" && ref.replace(/\.$/, "") === ssidNode)
+        matches.add(apMatch[1]);
+    }
+  }
+  if (!matches.size) {
+    const higher = v(device, `${ssidNode}.HigherLayer`);
+    if (typeof higher === "string") {
+      const apMatch = higher.match(/^(Device\.WiFi\.AccessPoint\.\d+)/);
+      if (apMatch) matches.add(apMatch[1]);
+    }
+  }
+  return matches.size === 1 ? [...matches][0] : null;
 }
 
 function securityAcceptsPsk(device: FlatDevice, base: string): boolean {
@@ -163,10 +218,17 @@ export function buildWifiTask(
   }
 
   if (settings.passwordAction === "replace") {
-    const keyPath = KEY_PARAMS.map((k) => `${base}.${k}`).find(
+    // Multiple writable key candidates on one instance = ambiguous
+    // mapping: refuse rather than write the first match (spec).
+    const keyCandidates = KEY_PARAMS.map((k) => `${base}.${k}`).filter(
       (p) =>
         (device[p] as { writable?: boolean } | undefined)?.writable === true,
     );
+    if (keyCandidates.length > 1)
+      throw new Error(
+        "Mapping key WiFi ambigu (beberapa kunci writable) — tulis kunci tidak didukung.",
+      );
+    const keyPath = keyCandidates[0];
     if (!keyPath)
       throw new Error(
         "Mapping key WiFi tidak unik/tidak dapat ditulis pada perangkat ini.",
