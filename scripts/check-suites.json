@@ -721,17 +721,6 @@
       "command": "node",
       "args": [
         "scripts/test-ts.mjs",
-        "test/integration/scoped-users.ts"
-      ],
-      "artifacts": [
-        "artifacts/tests/test/integration/scoped-users.test.cjs"
-      ]
-    },
-    {
-      "cwd": ".",
-      "command": "node",
-      "args": [
-        "scripts/test-ts.mjs",
         "test/seed-config.ts"
       ],
       "artifacts": [
@@ -763,6 +752,19 @@
       ],
       "artifacts": [
         "apps/web/.next/BUILD_ID"
+      ]
+    }
+  ],
+  "M06-C2": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": [
+        "scripts/test-ts.mjs",
+        "test/integration/scoped-users.ts"
+      ],
+      "artifacts": [
+        "artifacts/tests/test/integration/scoped-users.test.cjs"
       ]
     }
   ]

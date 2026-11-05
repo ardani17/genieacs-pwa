@@ -6,14 +6,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { startApp } from "../helpers/app.ts";
-import { connect, disconnect, collections } from "../../lib/db/db.ts";
+import { collections } from "../../lib/db/db.ts";
 import { generateSalt, hashPassword } from "../../lib/auth.ts";
 
 const PASSWORD = "Fixture-Only-2026!";
 
 void test("scoped user mutations: filter scope, validator, last admin", async (t) => {
   const app = await startApp();
-  await connect();
   try {
     await collections.users.deleteMany({ _id: /^managed-/ });
     await collections.permissions.deleteMany({
@@ -71,8 +70,9 @@ void test("scoped user mutations: filter scope, validator, last admin", async (t
         {
           $set: {
             password: await hashPassword(PASSWORD, await generateSalt(16)),
-            salt: (await collections.users.findOne({ _id: "managed-delegate" }))
-              ?.salt ?? "",
+            salt:
+              (await collections.users.findOne({ _id: "managed-delegate" }))
+                ?.salt ?? "",
             roles: "scopedAdmin",
           },
         },
@@ -83,30 +83,33 @@ void test("scoped user mutations: filter scope, validator, last admin", async (t
     };
     void loginScoped;
 
-    await t.test("in-scope password reset succeeds; out-of-scope 404s", async () => {
-      // admin (fixtureAdmin, no filter) resets managed-target: fine.
-      const inScope = await app.appRequest(
-        "/api/app/admin/users/managed-target/password",
-        {
-          method: "PUT",
-          body: JSON.stringify({ newPassword: "Fixture-Only-2027!" }),
-        },
-        "admin",
-      );
-      assert.equal(inScope.status, 200);
+    await t.test(
+      "in-scope password reset succeeds; out-of-scope 404s",
+      async () => {
+        // admin (fixtureAdmin, no filter) resets managed-target: fine.
+        const inScope = await app.appRequest(
+          "/api/app/admin/users/managed-target/password",
+          {
+            method: "PUT",
+            body: JSON.stringify({ newPassword: "Fixture-Only-2027!" }),
+          },
+          "admin",
+        );
+        assert.equal(inScope.status, 200);
 
-      // The scoped delegate resets its in-scope peer: allowed.
-      const scoped = await app.appRequest(
-        "/api/app/admin/users/managed-target/password",
-        {
-          method: "PUT",
-          body: JSON.stringify({ newPassword: "Fixture-Only-2028!" }),
-        },
-        "admin",
-      );
-      assert.equal(scoped.status, 200);
-      void loginScoped;
-    });
+        // The scoped delegate resets its in-scope peer: allowed.
+        const scoped = await app.appRequest(
+          "/api/app/admin/users/managed-target/password",
+          {
+            method: "PUT",
+            body: JSON.stringify({ newPassword: "Fixture-Only-2028!" }),
+          },
+          "admin",
+        );
+        assert.equal(scoped.status, 200);
+        void loginScoped;
+      },
+    );
 
     await t.test("restricted identity cannot DELETE users at all", async () => {
       const denied = await app.appRequest(
@@ -143,7 +146,8 @@ void test("scoped user mutations: filter scope, validator, last admin", async (t
     await collections.permissions.deleteMany({
       _id: { $regex: /^scopedAdmin:/ },
     });
+    // app.stop() already stops the listener AND disconnects the Mongo
+    // client — a second disconnect() hangs the node:test child forever.
     await app.stop();
-    await disconnect();
   }
 });
