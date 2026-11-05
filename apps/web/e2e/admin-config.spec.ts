@@ -1,4 +1,4 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
 
 // Admin CRUD flows (M06-B): source round-trips through the CodeMirror
 // editor, invalid scripts are rejected by the NATIVE validator, the
@@ -11,7 +11,10 @@ test.use({ storageState: "../../artifacts/auth/admin.json" });
 // host; the flows themselves are short.
 test.setTimeout(120_000);
 
-async function typeInEditor(page: Page, text: string): Promise<void> {
+async function typeInEditor(
+  page: import("@playwright/test").Page,
+  text: string,
+): Promise<void> {
   // The CodeMirror input (textarea input style on pointer devices) is
   // offscreen by design; focus it and type — the visible surface
   // renders the document.

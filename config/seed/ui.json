@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "note": "Public seed defaults: GENERIC UI configuration only. No credentials, no customer values, no literal secrets. Existing values are never overwritten (see scripts/seed-config.mjs).",
+  "config": {
+    "cwmp.deviceOnlineThreshold": { "value": "5000", "t": "xsd:unsignedInt" },
+    "cwmp.connectionRequestTimeout": {
+      "value": "2000",
+      "t": "xsd:unsignedInt"
+    },
+    "ui.defaultPageSize": { "value": "25", "t": "xsd:unsignedInt" }
+  }
+}
