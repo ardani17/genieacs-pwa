@@ -21,8 +21,50 @@ import {
 // `??=`), so the value the handlers see is server-derived. With
 // TRUSTED_PROXY_HOPS>0 the edge proxy's XFF chain is trusted as-is and
 // left untouched.
+//
+// CSRF choke point (contracts.md "Identitas dan otorisasi" #6): every
+// non-GET /api/app request must carry Origin == PUBLIC_ORIGIN and
+// X-App-Request: 1, else it is rejected here — fail-closed on a missing
+// Origin. SameSite cookies do NOT protect against same-site sibling
+// origins, so this server-side check is the real boundary. Route
+// handlers repeat the same check as defense in depth.
 export default function proxy(request: NextRequest) {
   const requestId = crypto.randomUUID();
+
+  // Safe read methods stay open; every state-changing method is gated.
+  if (
+    request.method !== "GET" &&
+    request.method !== "HEAD" &&
+    request.method !== "OPTIONS"
+  ) {
+    const publicOrigin = process.env.PUBLIC_ORIGIN ?? "http://localhost:3000";
+    const origin = request.headers.get("origin");
+    let originOk = false;
+    if (origin) {
+      try {
+        originOk = new URL(origin).origin === new URL(publicOrigin).origin;
+      } catch {
+        originOk = false;
+      }
+    }
+    if (!originOk || request.headers.get("x-app-request") !== "1") {
+      const response = new NextResponse(
+        JSON.stringify({
+          ok: false,
+          error: {
+            code: "FORBIDDEN",
+            message: "Permintaan ditolak (same-origin)",
+            retryable: false,
+          },
+          requestId,
+        }),
+        { status: 403, headers: { "Content-Type": "application/json" } },
+      );
+      response.headers.set(REQUEST_ID_HEADER, requestId);
+      return response;
+    }
+  }
+
   const inbound = request.headers.get(REQUEST_ID_HEADER);
 
   const headers = new Headers(request.headers);

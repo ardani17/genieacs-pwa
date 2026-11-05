@@ -1,10 +1,16 @@
 import { NextResponse } from "next/server";
-import { nativeCookieFrom, engineFetch } from "@/server/genieacs-client";
+import {
+  nativeCookieFrom,
+  engineFetch,
+  requireSameOrigin,
+} from "@/server/genieacs-client";
 import {
   correlationHeaders,
   requestContextFrom,
 } from "@/server/request-context";
 import { buildLogQuery, LogQueryError } from "@contracts/log-query";
+
+const PUBLIC_ORIGIN = process.env.PUBLIC_ORIGIN ?? "http://localhost:3000";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +18,24 @@ export const dynamic = "force-dynamic";
 // bounded query; the BFF never builds VictoriaLogs URLs from raw input.
 export async function POST(request: Request): Promise<NextResponse> {
   const ctx = requestContextFrom(request);
+
+  // Contracts.md mutation rules: same-origin + X-App-Request on every
+  // state-changing route, checked BEFORE the body is read or the
+  // upstream is contacted.
+  const sameOrigin = requireSameOrigin(request, PUBLIC_ORIGIN);
+  if (!sameOrigin.ok)
+    return NextResponse.json(
+      {
+        ok: false,
+        error: {
+          code: "FORBIDDEN",
+          message: "Permintaan ditolak (same-origin)",
+          retryable: false,
+        },
+        requestId: ctx.requestId,
+      },
+      { status: 403, headers: correlationHeaders(ctx) },
+    );
   const cookie = nativeCookieFrom(request.headers.get("cookie"));
   if (!cookie)
     return NextResponse.json(
