@@ -3,17 +3,12 @@
     {
       "cwd": ".",
       "command": "node",
-      "args": [
-        "--test",
-        "scripts/security/inventory.test.mjs"
-      ]
+      "args": ["--test", "scripts/security/inventory.test.mjs"]
     },
     {
       "cwd": ".",
       "command": "node",
-      "args": [
-        "scripts/security/inventory.mjs"
-      ],
+      "args": ["scripts/security/inventory.mjs"],
       "artifacts": [
         "artifacts/security/root-inventory.json",
         "artifacts/security/web-inventory.json",
@@ -26,11 +21,7 @@
     {
       "cwd": ".",
       "command": "node",
-      "args": [
-        "scripts/test-ts.mjs",
-        "test/db.ts",
-        "test/security-compat.ts"
-      ],
+      "args": ["scripts/test-ts.mjs", "test/db.ts", "test/security-compat.ts"],
       "artifacts": [
         "artifacts/tests/test/db.test.cjs",
         "artifacts/tests/test/security-compat.test.cjs"
@@ -41,36 +32,19 @@
     {
       "cwd": ".",
       "command": "npm",
-      "args": [
-        "--prefix",
-        "apps/web",
-        "run",
-        "typecheck"
-      ]
+      "args": ["--prefix", "apps/web", "run", "typecheck"]
     },
     {
       "cwd": ".",
       "command": "npm",
-      "args": [
-        "--prefix",
-        "apps/web",
-        "run",
-        "test"
-      ],
+      "args": ["--prefix", "apps/web", "run", "test"],
       "artifacts": []
     },
     {
       "cwd": ".",
       "command": "npm",
-      "args": [
-        "--prefix",
-        "apps/web",
-        "run",
-        "build"
-      ],
-      "artifacts": [
-        "apps/web/.next/BUILD_ID"
-      ]
+      "args": ["--prefix", "apps/web", "run", "build"],
+      "artifacts": ["apps/web/.next/BUILD_ID"]
     }
   ],
   "M01-D": [
@@ -88,32 +62,19 @@
     {
       "cwd": ".",
       "command": "node",
-      "args": [
-        "scripts/test-ts.mjs",
-        "test/app-logger.ts"
-      ],
-      "artifacts": [
-        "artifacts/tests/test/app-logger.test.cjs"
-      ]
+      "args": ["scripts/test-ts.mjs", "test/app-logger.ts"],
+      "artifacts": ["artifacts/tests/test/app-logger.test.cjs"]
     },
     {
       "cwd": ".",
       "command": "node",
-      "args": [
-        "scripts/test-ts.mjs",
-        "test/engine-app-logger.ts"
-      ],
-      "artifacts": [
-        "artifacts/tests/test/engine-app-logger.test.cjs"
-      ]
+      "args": ["scripts/test-ts.mjs", "test/engine-app-logger.ts"],
+      "artifacts": ["artifacts/tests/test/engine-app-logger.test.cjs"]
     },
     {
       "cwd": ".",
       "command": "node",
-      "args": [
-        "scripts/test-ts.mjs",
-        "test/engine-app-logger-broken-dir.ts"
-      ],
+      "args": ["scripts/test-ts.mjs", "test/engine-app-logger-broken-dir.ts"],
       "artifacts": [
         "artifacts/tests/test/engine-app-logger-broken-dir.test.cjs"
       ]
@@ -123,20 +84,13 @@
     {
       "cwd": ".",
       "command": "node",
-      "args": [
-        "scripts/test-ts.mjs",
-        "test/integration/log-pipeline.ts"
-      ],
-      "artifacts": [
-        "artifacts/tests/test/integration/log-pipeline.test.cjs"
-      ]
+      "args": ["scripts/test-ts.mjs", "test/integration/log-pipeline.ts"],
+      "artifacts": ["artifacts/tests/test/integration/log-pipeline.test.cjs"]
     },
     {
       "cwd": ".",
       "command": "node",
-      "args": [
-        "scripts/log-smoke.mjs"
-      ]
+      "args": ["scripts/log-smoke.mjs"]
     }
   ],
   "M01-S1": [
@@ -203,39 +157,24 @@
     {
       "cwd": ".",
       "command": "node",
-      "args": [
-        "scripts/test-ts.mjs",
-        "test/security/cwmp-cookie.ts"
-      ],
-      "artifacts": [
-        "artifacts/tests/test/security/cwmp-cookie.test.cjs"
-      ]
+      "args": ["scripts/test-ts.mjs", "test/security/cwmp-cookie.ts"],
+      "artifacts": ["artifacts/tests/test/security/cwmp-cookie.test.cjs"]
     }
   ],
   "M01-S6": [
     {
       "cwd": ".",
       "command": "node",
-      "args": [
-        "scripts/test-ts.mjs",
-        "test/security/http-digest.ts"
-      ],
-      "artifacts": [
-        "artifacts/tests/test/security/http-digest.test.cjs"
-      ]
+      "args": ["scripts/test-ts.mjs", "test/security/http-digest.ts"],
+      "artifacts": ["artifacts/tests/test/security/http-digest.test.cjs"]
     }
   ],
   "M01-S7": [
     {
       "cwd": ".",
       "command": "node",
-      "args": [
-        "scripts/test-ts.mjs",
-        "test/security/udp-cr-auth.ts"
-      ],
-      "artifacts": [
-        "artifacts/tests/test/security/udp-cr-auth.test.cjs"
-      ]
+      "args": ["scripts/test-ts.mjs", "test/security/udp-cr-auth.ts"],
+      "artifacts": ["artifacts/tests/test/security/udp-cr-auth.test.cjs"]
     }
   ],
   "M01-S8": [
@@ -269,34 +208,21 @@
     {
       "cwd": ".",
       "command": "node",
-      "args": [
-        "scripts/test-ts.mjs",
-        "test/session.ts"
-      ],
-      "artifacts": [
-        "artifacts/tests/test/session.test.cjs"
-      ]
+      "args": ["scripts/test-ts.mjs", "test/session.ts"],
+      "artifacts": ["artifacts/tests/test/session.test.cjs"]
     }
   ],
   "M02-B": [
     {
       "cwd": "apps/web",
       "command": "npm",
-      "args": [
-        "run",
-        "test"
-      ]
+      "args": ["run", "test"]
     },
     {
       "cwd": ".",
       "command": "node",
-      "args": [
-        "scripts/test-ts.mjs",
-        "test/integration/resource-access.ts"
-      ],
-      "artifacts": [
-        "artifacts/tests/test/integration/resource-access.test.cjs"
-      ]
+      "args": ["scripts/test-ts.mjs", "test/integration/resource-access.ts"],
+      "artifacts": ["artifacts/tests/test/integration/resource-access.test.cjs"]
     }
   ],
   "M02-C": [
@@ -318,46 +244,31 @@
     {
       "cwd": "apps/web",
       "command": "npm",
-      "args": [
-        "run",
-        "test"
-      ]
+      "args": ["run", "test"]
     }
   ],
   "M03-B": [
     {
       "cwd": "apps/web",
       "command": "npm",
-      "args": [
-        "run",
-        "typecheck"
-      ]
+      "args": ["run", "typecheck"]
     },
     {
       "cwd": "apps/web",
       "command": "npm",
-      "args": [
-        "run",
-        "test"
-      ]
+      "args": ["run", "test"]
     }
   ],
   "M03-C": [
     {
       "cwd": "apps/web",
       "command": "npm",
-      "args": [
-        "run",
-        "test"
-      ]
+      "args": ["run", "test"]
     },
     {
       "cwd": "apps/web",
       "command": "npm",
-      "args": [
-        "run",
-        "typecheck"
-      ]
+      "args": ["run", "typecheck"]
     }
   ],
   "M04-A": [
@@ -377,90 +288,55 @@
     {
       "cwd": ".",
       "command": "node",
-      "args": [
-        "--test",
-        "scripts/fixtures/seed.test.mjs"
-      ]
+      "args": ["--test", "scripts/fixtures/seed.test.mjs"]
     }
   ],
   "M04-B": [
     {
       "cwd": ".",
       "command": "node",
-      "args": [
-        "scripts/test-ts.mjs",
-        "test/integration/list-query.ts"
-      ],
-      "artifacts": [
-        "artifacts/tests/test/integration/list-query.test.cjs"
-      ]
+      "args": ["scripts/test-ts.mjs", "test/integration/list-query.ts"],
+      "artifacts": ["artifacts/tests/test/integration/list-query.test.cjs"]
     },
     {
       "cwd": "apps/web",
       "command": "npm",
-      "args": [
-        "run",
-        "typecheck"
-      ]
+      "args": ["run", "typecheck"]
     },
     {
       "cwd": "apps/web",
       "command": "npm",
-      "args": [
-        "run",
-        "test"
-      ]
+      "args": ["run", "test"]
     },
     {
       "cwd": ".",
       "command": "node",
-      "args": [
-        "scripts/test-ts.mjs",
-        "test/integration/overview-config.ts"
-      ],
-      "artifacts": [
-        "artifacts/tests/test/integration/overview-config.test.cjs"
-      ]
+      "args": ["scripts/test-ts.mjs", "test/integration/overview-config.ts"],
+      "artifacts": ["artifacts/tests/test/integration/overview-config.test.cjs"]
     }
   ],
   "M04-C": [
     {
       "cwd": ".",
       "command": "node",
-      "args": [
-        "scripts/test-ts.mjs",
-        "test/device-diagnostics.ts"
-      ],
-      "artifacts": [
-        "artifacts/tests/test/device-diagnostics.test.cjs"
-      ]
+      "args": ["scripts/test-ts.mjs", "test/device-diagnostics.ts"],
+      "artifacts": ["artifacts/tests/test/device-diagnostics.test.cjs"]
     },
     {
       "cwd": ".",
       "command": "node",
-      "args": [
-        "scripts/test-ts.mjs",
-        "test/integration/app-diagnostics.ts"
-      ],
-      "artifacts": [
-        "artifacts/tests/test/integration/app-diagnostics.test.cjs"
-      ]
+      "args": ["scripts/test-ts.mjs", "test/integration/app-diagnostics.ts"],
+      "artifacts": ["artifacts/tests/test/integration/app-diagnostics.test.cjs"]
     },
     {
       "cwd": "apps/web",
       "command": "npm",
-      "args": [
-        "run",
-        "typecheck"
-      ]
+      "args": ["run", "typecheck"]
     },
     {
       "cwd": "apps/web",
       "command": "npm",
-      "args": [
-        "run",
-        "test"
-      ]
+      "args": ["run", "test"]
     }
   ],
   "M05-A": [
@@ -480,21 +356,13 @@
     {
       "cwd": ".",
       "command": "node",
-      "args": [
-        "scripts/test-ts.mjs",
-        "test/integration/device-profile.ts"
-      ],
-      "artifacts": [
-        "artifacts/tests/test/integration/device-profile.test.cjs"
-      ]
+      "args": ["scripts/test-ts.mjs", "test/integration/device-profile.ts"],
+      "artifacts": ["artifacts/tests/test/integration/device-profile.test.cjs"]
     },
     {
       "cwd": "apps/web",
       "command": "npm",
-      "args": [
-        "run",
-        "typecheck"
-      ]
+      "args": ["run", "typecheck"]
     }
   ],
   "M05-B": [
@@ -514,97 +382,61 @@
     {
       "cwd": "apps/web",
       "command": "npm",
-      "args": [
-        "run",
-        "typecheck"
-      ]
+      "args": ["run", "typecheck"]
     }
   ],
   "REV-AUTH": [
     {
       "cwd": ".",
       "command": "node",
-      "args": [
-        "scripts/test-ts.mjs",
-        "test/session.ts"
-      ]
+      "args": ["scripts/test-ts.mjs", "test/session.ts"]
     },
     {
       "cwd": ".",
       "command": "node",
-      "args": [
-        "scripts/test-ts.mjs",
-        "test/app-permissions.ts"
-      ]
+      "args": ["scripts/test-ts.mjs", "test/app-permissions.ts"]
     },
     {
       "cwd": ".",
       "command": "node",
-      "args": [
-        "scripts/test-ts.mjs",
-        "test/integration/init-install.ts"
-      ]
+      "args": ["scripts/test-ts.mjs", "test/integration/init-install.ts"]
     },
     {
       "cwd": ".",
       "command": "node",
-      "args": [
-        "scripts/test-ts.mjs",
-        "test/integration/auth-log-events.ts"
-      ],
-      "artifacts": [
-        "artifacts/tests/test/integration/auth-log-events.test.cjs"
-      ]
+      "args": ["scripts/test-ts.mjs", "test/integration/auth-log-events.ts"],
+      "artifacts": ["artifacts/tests/test/integration/auth-log-events.test.cjs"]
     }
   ],
   "M05-C": [
     {
       "cwd": ".",
       "command": "node",
-      "args": [
-        "scripts/test-ts.mjs",
-        "test/wan-operations.ts"
-      ],
-      "artifacts": [
-        "artifacts/tests/test/wan-operations.test.cjs"
-      ]
+      "args": ["scripts/test-ts.mjs", "test/wan-operations.ts"],
+      "artifacts": ["artifacts/tests/test/wan-operations.test.cjs"]
     },
     {
       "cwd": "apps/web",
       "command": "npm",
-      "args": [
-        "run",
-        "typecheck"
-      ]
+      "args": ["run", "typecheck"]
     }
   ],
   "M05-D": [
     {
       "cwd": "apps/web",
       "command": "npm",
-      "args": [
-        "run",
-        "test"
-      ]
+      "args": ["run", "test"]
     },
     {
       "cwd": "apps/web",
       "command": "npm",
-      "args": [
-        "run",
-        "typecheck"
-      ]
+      "args": ["run", "typecheck"]
     },
     {
       "cwd": "apps/web",
       "command": "npm",
-      "args": [
-        "run",
-        "build"
-      ],
-      "artifacts": [
-        "apps/web/.next/BUILD_ID"
-      ]
+      "args": ["run", "build"],
+      "artifacts": ["apps/web/.next/BUILD_ID"]
     }
   ],
   "M05-E": [
@@ -622,150 +454,92 @@
     {
       "cwd": "apps/web",
       "command": "npm",
-      "args": [
-        "run",
-        "test"
-      ]
+      "args": ["run", "test"]
     },
     {
       "cwd": "apps/web",
       "command": "npm",
-      "args": [
-        "run",
-        "typecheck"
-      ]
+      "args": ["run", "typecheck"]
     },
     {
       "cwd": "apps/web",
       "command": "npm",
-      "args": [
-        "run",
-        "build"
-      ],
-      "artifacts": [
-        "apps/web/.next/BUILD_ID"
-      ]
+      "args": ["run", "build"],
+      "artifacts": ["apps/web/.next/BUILD_ID"]
     }
   ],
   "M06-A": [
     {
       "cwd": "apps/web",
       "command": "npm",
-      "args": [
-        "run",
-        "test"
-      ]
+      "args": ["run", "test"]
     },
     {
       "cwd": "apps/web",
       "command": "npm",
-      "args": [
-        "run",
-        "typecheck"
-      ]
+      "args": ["run", "typecheck"]
     },
     {
       "cwd": "apps/web",
       "command": "npm",
-      "args": [
-        "run",
-        "build"
-      ],
-      "artifacts": [
-        "apps/web/.next/BUILD_ID"
-      ]
+      "args": ["run", "build"],
+      "artifacts": ["apps/web/.next/BUILD_ID"]
     },
     {
       "cwd": ".",
       "command": "node",
-      "args": [
-        "scripts/parity/config-coverage.mjs"
-      ],
-      "artifacts": [
-        "artifacts/parity/config-coverage.json"
-      ]
+      "args": ["scripts/parity/config-coverage.mjs"],
+      "artifacts": ["artifacts/parity/config-coverage.json"]
     }
   ],
   "M06-B": [
     {
       "cwd": "apps/web",
       "command": "npm",
-      "args": [
-        "run",
-        "test"
-      ]
+      "args": ["run", "test"]
     },
     {
       "cwd": "apps/web",
       "command": "npm",
-      "args": [
-        "run",
-        "typecheck"
-      ]
+      "args": ["run", "typecheck"]
     },
     {
       "cwd": "apps/web",
       "command": "npm",
-      "args": [
-        "run",
-        "build"
-      ],
-      "artifacts": [
-        "apps/web/.next/BUILD_ID"
-      ]
+      "args": ["run", "build"],
+      "artifacts": ["apps/web/.next/BUILD_ID"]
     }
   ],
   "M06-C": [
     {
       "cwd": ".",
       "command": "node",
-      "args": [
-        "scripts/test-ts.mjs",
-        "test/seed-config.ts"
-      ],
-      "artifacts": [
-        "artifacts/tests/test/seed-config.test.cjs"
-      ]
+      "args": ["scripts/test-ts.mjs", "test/seed-config.ts"],
+      "artifacts": ["artifacts/tests/test/seed-config.test.cjs"]
     },
     {
       "cwd": "apps/web",
       "command": "npm",
-      "args": [
-        "run",
-        "test"
-      ]
+      "args": ["run", "test"]
     },
     {
       "cwd": "apps/web",
       "command": "npm",
-      "args": [
-        "run",
-        "typecheck"
-      ]
+      "args": ["run", "typecheck"]
     },
     {
       "cwd": "apps/web",
       "command": "npm",
-      "args": [
-        "run",
-        "build"
-      ],
-      "artifacts": [
-        "apps/web/.next/BUILD_ID"
-      ]
+      "args": ["run", "build"],
+      "artifacts": ["apps/web/.next/BUILD_ID"]
     }
   ],
   "M06-C2": [
     {
       "cwd": ".",
       "command": "node",
-      "args": [
-        "scripts/test-ts.mjs",
-        "test/integration/scoped-users.ts"
-      ],
-      "artifacts": [
-        "artifacts/tests/test/integration/scoped-users.test.cjs"
-      ]
+      "args": ["scripts/test-ts.mjs", "test/integration/scoped-users.ts"],
+      "artifacts": ["artifacts/tests/test/integration/scoped-users.test.cjs"]
     }
   ]
 }

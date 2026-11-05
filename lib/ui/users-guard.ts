@@ -83,9 +83,12 @@ export async function withLastAdminGuard(
 ): Promise<void> {
   const token = await acquireLock(USERS_GUARD_LOCK, 10000, 15000);
   if (!token)
-    throw Object.assign(new Error("Mutasi pengguna sedang berlangsung; coba lagi."), {
-      status: 503,
-    });
+    throw Object.assign(
+      new Error("Mutasi pengguna sedang berlangsung; coba lagi."),
+      {
+        status: 503,
+      },
+    );
   try {
     // Current admin count for the invariant check happens inside the
     // callback (it knows the proposed change).
@@ -112,8 +115,7 @@ export async function countAdminsAfter(
   let count = 0;
   for (const user of all) {
     if (removed.has(user._id)) continue;
-    const effective =
-      overrideRoles?.get(user._id) ?? String(user.roles ?? "");
+    const effective = overrideRoles?.get(user._id) ?? String(user.roles ?? "");
     if (rolesGrantAdmin(effective, adminRoles)) count += 1;
   }
   return count;

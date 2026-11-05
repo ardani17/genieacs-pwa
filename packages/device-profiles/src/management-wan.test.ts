@@ -155,12 +155,91 @@ test("native non-WAN tasks are never blocked by the guard", () => {
   );
 });
 
-test("no CRURL means no protected path and edits are allowed", () => {
+test("no CRURL: SPV is allowed but WAN deletes demand diagnosis first", () => {
   const d = makeZteWan({});
+  // SPV without any CRURL: the write cannot be mapped to a management
+  // path, so it stays allowed (same as the reference form guard).
   assert.doesNotThrow(() =>
     assertManagementWanSafe(d, [
       spv(WAN_IP_INSTANCE, "ConnectionType", "IP_Bridged"),
-      { name: "deleteObject", objectName: WAN_IP_INSTANCE },
+    ]),
+  );
+  // The strengthened server guard: WAN deletes with an unknowable
+  // management identity are refused — see the follow-up tests below.
+});
+
+// --- review follow-ups: bypass vectors must not reach the device ---
+
+test("wildcard SPV and trailing-dot deletes cannot bypass the guard", () => {
+  const d = managementFixture();
+  const collection = WAN_IP;
+  // Wildcard write covering the management instance.
+  assert.throws(
+    () =>
+      assertManagementWanSafe(d, [
+        {
+          name: "setParameterValues",
+          parameterValues: [[collection + ".*.Enable", false, "xsd:boolean"]],
+        },
+      ]),
+    ManagementWanGuardError,
+  );
+  // Trailing-dot delete of the management instance.
+  assert.throws(
+    () =>
+      assertManagementWanSafe(d, [
+        { name: "deleteObject", objectName: WAN_IP_INSTANCE + "." },
+      ]),
+    ManagementWanGuardError,
+  );
+  // Trailing-dot delete of the whole collection.
+  assert.throws(
+    () =>
+      assertManagementWanSafe(d, [
+        { name: "deleteObject", objectName: collection + "." },
+      ]),
+    ManagementWanGuardError,
+  );
+});
+
+test("provisions writing management-critical leaves are rejected", () => {
+  const d = managementFixture();
+  assert.throws(
+    () =>
+      assertManagementWanSafe(d, [
+        {
+          name: "provisions",
+          provisions: [["value", WAN_IP_INSTANCE + ".Enable", false]],
+        },
+      ]),
+    ManagementWanGuardError,
+  );
+  // A provision touching a different WAN stays allowed.
+  assert.doesNotThrow(() =>
+    assertManagementWanSafe(d, [
+      {
+        name: "provisions",
+        provisions: [["value", WAN_PPP_INSTANCE + ".Enable", false]],
+      },
+    ]),
+  );
+});
+
+test("deleting WAN objects without any CRURL is refused with a diagnosis hint", () => {
+  const d = makeZteWan({});
+  // No ConnectionRequestURL: identity unknowable — destructive WAN
+  // mutations must not pass silently.
+  assert.throws(
+    () =>
+      assertManagementWanSafe(d, [
+        { name: "deleteObject", objectName: WAN_IP_INSTANCE },
+      ]),
+    ManagementWanGuardError,
+  );
+  // Non-WAN deletes stay allowed without a CRURL.
+  assert.doesNotThrow(() =>
+    assertManagementWanSafe(d, [
+      { name: "deleteObject", objectName: "InternetGatewayDevice.LANDevice.1" },
     ]),
   );
 });

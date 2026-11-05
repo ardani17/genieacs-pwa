@@ -646,7 +646,10 @@ router.post("/app/admin/users", async (ctx) => {
   const hash = await hashPassword(password, salt);
   try {
     await withLastAdminGuard(async () => {
-      const remaining = await countAdminsAfter([], new Map([[username, roles.join(",")]]));
+      const remaining = await countAdminsAfter(
+        [],
+        new Map([[username, roles.join(",")]]),
+      );
       await collections.users.insertOne({
         _id: username,
         password: hash,

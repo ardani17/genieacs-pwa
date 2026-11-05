@@ -19,10 +19,7 @@ import { stringify as yamlStringify } from "../common/yaml.ts";
 import { ResourceLockedError } from "../common/errors.ts";
 import { quoteCsvCell, sendSafeLegacyError } from "./safe-error.ts";
 import { collections } from "../db/db.ts";
-import {
-  countAdminsAfter,
-  withLastAdminGuard,
-} from "./users-guard.ts";
+import { countAdminsAfter, withLastAdminGuard } from "./users-guard.ts";
 import {
   CommandExecutionError,
   executeAuthorizedTasks,
