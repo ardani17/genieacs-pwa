@@ -63,6 +63,11 @@ export interface ExecutorContext {
 // Resolve the CRURL hostname (when it is not an IP literal) with a
 // bounded timeout; failures simply yield no addresses — the guard then
 // treats the path as unidentified and blocks destructive mutations.
+const defaultResolve = (host: string): Promise<string[]> =>
+  lookup(host, { all: true })
+    .then((addrs) => addrs.map((a) => a.address))
+    .catch(() => []);
+
 export async function resolveCrurlHosts(
   device: WanDevice,
   resolver?: (host: string) => Promise<string[]>,
@@ -87,11 +92,6 @@ export async function resolveCrurlHosts(
     return [];
   }
 }
-
-const defaultResolve = (host: string): Promise<string[]> =>
-  lookup(host, { all: true })
-    .then((addrs) => addrs.map((a) => a.address))
-    .catch(() => []);
 
 function value2(
   device: WanDevice,

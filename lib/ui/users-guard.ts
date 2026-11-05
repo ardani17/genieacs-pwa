@@ -132,6 +132,6 @@ export async function countAdmins(): Promise<number> {
     .length;
 }
 
-export async function adminRoles(): Promise<Set<string>> {
+export async function currentAdminRoleNames(): Promise<Set<string>> {
   return adminRoleSet();
 }

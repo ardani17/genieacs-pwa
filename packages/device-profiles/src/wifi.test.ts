@@ -143,3 +143,36 @@ test("read-only parameters are never written", () => {
     { message: /Enable tidak dapat ditulis/ },
   );
 });
+
+test("TR-181 SSID joins its AccessPoint for Enable and key", () => {
+  const d = wifiFixture();
+  const ssidNode = "Device.WiFi.SSID.1";
+  const apNode = "Device.WiFi.AccessPoint.1";
+  d[`${ssidNode}.SSID`] = { value: ["Home181", "xsd:string"], writable: true };
+  d[`${apNode}.SSIDReference`] = { value: [ssidNode, "xsd:string"] };
+  d[`${apNode}.Enable`] = { value: [true, "xsd:boolean"], writable: true };
+  d[`${apNode}.Security.PreSharedKey.1.PreSharedKey`] = {
+    value: ["", "xsd:string"],
+    writable: true,
+  };
+  const radios = readWifi(d);
+  const radio = radios.find((r) => r.id === ssidNode);
+  assert.equal(radio?.enabled, true);
+  assert.equal(
+    radio?.keyPath,
+    `${apNode}.Security.PreSharedKey.1.PreSharedKey`,
+  );
+});
+
+test("ambiguous writable keys refuse replacement instead of first match", () => {
+  const d = wifiFixture();
+  d[`${WLAN2}.WPAPreSharedKey`] = { value: ["", "xsd:string"], writable: true };
+  assert.throws(
+    () =>
+      buildWifiTask(d, `${WLAN2}.SSID`, {
+        passwordAction: "replace",
+        password: "valid-length-passphrase",
+      }),
+    { message: /ambigu/ },
+  );
+});
