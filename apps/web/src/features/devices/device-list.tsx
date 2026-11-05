@@ -54,6 +54,14 @@ function BulkBar({
   const runTags = async (on: boolean): Promise<void> => {
     setBusy(true);
     setResults(null);
+    try {
+      await runBulkTags(on);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const runBulkTags = async (on: boolean): Promise<void> => {
     const handle = await runBulk(
       selected.map((deviceId) => ({ deviceId })),
       {
@@ -77,7 +85,6 @@ function BulkBar({
       controllerRef.current?.signal,
     );
     setResults(handle.outcomes);
-    setBusy(false);
     onClear();
     reload();
   };

@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { PageHeader } from "@/components/page-header";
 import { StagingPanel } from "@/features/tasks/staging-panel";
 
@@ -10,7 +11,9 @@ export default function TasksPage() {
         title="Task"
         description="Tinjau task yang ditahan sebelum dikirim — satu operasi sekali kirim, tanpa antrean ulang otomatis."
       />
-      <StagingPanel />
+      <Suspense fallback={<p>Memuat task…</p>}>
+        <StagingPanel />
+      </Suspense>
     </>
   );
 }

@@ -83,10 +83,11 @@ export async function runBulk(
     }
   }
   // Stable per-target ordering regardless of completion order.
+  const position = new Map(
+    bounded.map((t, index) => [t.deviceId, index] as const),
+  );
   outcomes.sort(
-    (a, b) =>
-      bounded.findIndex((t) => t.deviceId === a.deviceId) -
-      bounded.findIndex((t) => t.deviceId === b.deviceId),
+    (a, b) => (position.get(a.deviceId) ?? 0) - (position.get(b.deviceId) ?? 0),
   );
   return { outcomes, cancelled };
 }

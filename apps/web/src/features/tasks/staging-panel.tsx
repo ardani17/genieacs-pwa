@@ -5,6 +5,7 @@
 // the panel commits staged entries one operationId at a time and never
 // retries automatically. Offline state disables every mutation.
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -209,12 +210,12 @@ export function StagingPanel() {
           ) : (
             <Status tone="muted">Memuat hasil operasi…</Status>
           )}
-          <a
+          <Link
             href="/tasks"
             className="inline-flex min-h-11 items-center text-sm text-primary hover:underline"
           >
             Kembali ke staging
-          </a>
+          </Link>
         </CardContent>
       </Card>
     );
@@ -375,13 +376,7 @@ export function DeviceActions({ deviceId }: { deviceId: string }) {
           const body = (await res.json()) as ApiResult<{
             items: FirmwareRow[];
           }>;
-          if (body.ok === true)
-            setFirmware(
-              body.data.items.filter(
-                (row) =>
-                  (row.metadata?.fileType ?? "").includes("Firmware") || true,
-              ),
-            );
+          if (body.ok === true) setFirmware(body.data.items);
         }
       } catch {
         // list stays empty — picker shows the empty hint
