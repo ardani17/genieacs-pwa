@@ -176,6 +176,31 @@ export async function executeWanOperation(
 
   const warnings: string[] = [];
   const phases: CommandPhase[] = [];
+  const phase = (
+    name: string,
+    state: OperationState,
+    taskIds: string[],
+  ): CommandPhase => {
+    const entry: CommandPhase = { name, state, taskIds };
+    phases.push(entry);
+    log.emit({
+      event: "device.wan.phase",
+      level: state === "failed" ? "warn" : "info",
+      message: `wan phase ${name}: ${state}`,
+      operationId,
+      deviceId,
+      outcome:
+        state === "succeeded"
+          ? "success"
+          : state === "failed"
+            ? "failure"
+            : state === "partial"
+              ? "partial"
+              : "unknown",
+      details: { phase: name, taskIds },
+    });
+    return entry;
+  };
 
   // One WAN operation per device+collection at a time.
   const wanLock = `wan_${deviceId}_${collection}`;
@@ -233,14 +258,13 @@ export async function executeWanOperation(
 
     // --- phase: write (exactly once) ---
     const write = await run(ctx.authorizer, [task]);
-    phases.push({
-      name: "write",
-      state: write.state,
-      taskIds: write.statuses.map((t) => t._id),
-      ...(write.statuses.find((t) => t.faultCode)
-        ? { faultCode: write.statuses.find((t) => t.faultCode)?.faultCode }
-        : {}),
-    });
+    phase(
+      "write",
+      write.state,
+      write.statuses.map((t) => t._id),
+    );
+    const writeFault = write.statuses.find((t) => t.faultCode)?.faultCode;
+    if (writeFault) phases[phases.length - 1].faultCode = writeFault;
     if (write.state === "failed" || write.state === "unknown") {
       return await finish(operationId, deviceId, write.state, phases, warnings);
     }
@@ -259,11 +283,11 @@ export async function executeWanOperation(
       { name: "refreshObject", objectName: collection },
     ]);
     const freshDevice = await fetchAuthorizedDevice(reauth, deviceId);
-    phases.push({
-      name: "refresh",
-      state: refresh.state,
-      taskIds: refresh.statuses.map((t) => t._id),
-    });
+    phase(
+      "refresh",
+      refresh.state,
+      refresh.statuses.map((t) => t._id),
+    );
     if (refresh.state !== "succeeded") {
       // Write applied, confirmation missing: partial, no follow-up.
       return await finish(operationId, deviceId, "partial", phases, warnings);
@@ -339,11 +363,11 @@ export async function executeWanOperation(
             ],
           },
         ]);
-        phases.push({
-          name: "reapply_binding",
-          state: reapply.state,
-          taskIds: reapply.statuses.map((t) => t._id),
-        });
+        phase(
+          "reapply_binding",
+          reapply.state,
+          reapply.statuses.map((t) => t._id),
+        );
         if (reapply.state !== "succeeded") {
           return await finish(
             operationId,
@@ -375,11 +399,7 @@ export async function executeWanOperation(
             .map((x) => x.trim())
             .filter(Boolean)
             .join(","));
-    phases.push({
-      name: "verify",
-      state: verified ? "succeeded" : "failed",
-      taskIds: [],
-    });
+    phase("verify", verified ? "succeeded" : "failed", []);
     if (!verified) {
       warnings.push(
         "Nilai hasil tulis belum terbaca sama pada verifikasi; periksa manual.",

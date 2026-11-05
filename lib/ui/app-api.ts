@@ -1,6 +1,7 @@
 // App API sub-router (/api/...): session introspection and self password
 // change used by the BFF. Safe DTOs only — no user snapshot export.
 
+import { randomUUID as cryptoRandomUUID } from "node:crypto";
 import Router from "@koa/router";
 import { and } from "../common/expression/util.ts";
 import { getUiConfig, getUsers } from "./local-cache.ts";
@@ -26,19 +27,31 @@ import {
 } from "./operation-store.ts";
 import { executeWanOperation } from "./wan-operations.ts";
 import { validateWanOperationRequest } from "../../packages/app-contracts/src/wan.ts";
-import { emitPermissionDenied } from "../engine-app-logger.ts";
+import {
+  emitPermissionDenied,
+  getEngineAppLogger,
+} from "../engine-app-logger.ts";
 import { generateSalt, hashPassword } from "../auth.ts";
 import { collections } from "../db/db.ts";
 import { del as cacheDel } from "../cache.ts";
 import * as db from "./db.ts";
 import { buildLogQuery } from "./log-query.ts";
 
-// Minimal structural type for the Koa context pieces appError touches.
 interface ErrorCtx {
   status: number;
   type: string;
   set: (field: string, value: string) => void;
   body: unknown;
+  get?: (field: string) => string | undefined;
+  state?: { requestId?: string };
+}
+
+function errorRequestId(ctx: ErrorCtx): string {
+  // The BFF proxy mints a UUID per request; accept it when valid,
+  // otherwise mint one (contracts.md ApiResult requestId).
+  const inbound = ctx.get?.("x-request-id");
+  if (inbound && /^[0-9a-f-]{36}$/i.test(inbound)) return inbound;
+  return cryptoRandomUUID();
 }
 
 function appError(
@@ -50,10 +63,11 @@ function appError(
 ): void {
   ctx.status = status;
   ctx.type = "application/json";
-  ctx.set("Cache-Control", "no-store");
+  ctx.set("Cache-Control", "private, no-store");
   ctx.body = JSON.stringify({
     ok: false,
     error: { code, message, retryable },
+    requestId: errorRequestId(ctx),
   });
 }
 
@@ -70,7 +84,7 @@ router.get("/session", async (ctx) => {
   const revision = ctx.state.configSnapshot as string;
 
   ctx.type = "application/json";
-  ctx.set("Cache-Control", "no-store");
+  ctx.set("Cache-Control", "private, no-store");
   ctx.body = JSON.stringify(
     toSafeSession({
       username: ctx.state.user.username,
@@ -118,7 +132,7 @@ router.post("/password", async (ctx) => {
   }
 
   ctx.status = 204;
-  ctx.set("Cache-Control", "no-store");
+  ctx.set("Cache-Control", "private, no-store");
 });
 
 // POST /api/app/logs — permission logs:3 + bounded query executed
@@ -135,11 +149,13 @@ router.post("/app/logs", async (ctx) => {
   const filters = ctx.request.body as Record<string, unknown>;
   let q;
   try {
-    q = buildLogQuery(filters as never);
+    q = buildLogQuery(
+      filters as import("../../packages/app-contracts/src/log-query.ts").LogFilters,
+    );
   } catch (err) {
     ctx.status = 400;
     ctx.type = "application/json";
-    ctx.set("Cache-Control", "no-store");
+    ctx.set("Cache-Control", "private, no-store");
     ctx.body = JSON.stringify({
       ok: false,
       error: {
@@ -147,7 +163,7 @@ router.post("/app/logs", async (ctx) => {
         message: (err as Error).message,
         retryable: false,
       },
-      requestId: "app-logs",
+      requestId: errorRequestId(ctx),
     });
     return;
   }
@@ -156,7 +172,7 @@ router.post("/app/logs", async (ctx) => {
   if (!logUrl) {
     ctx.status = 503;
     ctx.type = "application/json";
-    ctx.set("Cache-Control", "no-store");
+    ctx.set("Cache-Control", "private, no-store");
     ctx.body = JSON.stringify({
       ok: false,
       error: {
@@ -164,7 +180,7 @@ router.post("/app/logs", async (ctx) => {
         message: "Log store unavailable",
         retryable: true,
       },
-      requestId: "app-logs",
+      requestId: errorRequestId(ctx),
     });
     return;
   }
@@ -186,7 +202,7 @@ router.post("/app/logs", async (ctx) => {
   } catch {
     ctx.status = 503;
     ctx.type = "application/json";
-    ctx.set("Cache-Control", "no-store");
+    ctx.set("Cache-Control", "private, no-store");
     ctx.body = JSON.stringify({
       ok: false,
       error: {
@@ -194,7 +210,7 @@ router.post("/app/logs", async (ctx) => {
         message: "Log store unavailable",
         retryable: true,
       },
-      requestId: "app-logs",
+      requestId: errorRequestId(ctx),
     });
     return;
   }
@@ -202,7 +218,7 @@ router.post("/app/logs", async (ctx) => {
   if (!response.ok) {
     ctx.status = 503;
     ctx.type = "application/json";
-    ctx.set("Cache-Control", "no-store");
+    ctx.set("Cache-Control", "private, no-store");
     ctx.body = JSON.stringify({
       ok: false,
       error: {
@@ -210,15 +226,106 @@ router.post("/app/logs", async (ctx) => {
         message: "Log store unavailable",
         retryable: true,
       },
-      requestId: "app-logs",
+      requestId: errorRequestId(ctx),
     });
     return;
   }
 
   ctx.status = 200;
   ctx.type = "application/x-ndjson";
-  ctx.set("Cache-Control", "no-store");
+  ctx.set("Cache-Control", "private, no-store");
   ctx.body = await response.text();
+  // Audit: filter FIELD NAMES only (never values/results) per contract.
+  getEngineAppLogger().emit({
+    event: "logs.query",
+    level: "info",
+    message: "log search executed",
+    ...(ctx.get?.("x-request-id") ? { requestId: errorRequestId(ctx) } : {}),
+    actorId: ctx.state.user.username,
+    details: { fields: Object.keys(filters).sort() },
+  });
+});
+
+// POST /api/app/logs/export — bounded export (≤10.000 rows, 30s
+// budget) through the same checked-field query the search uses. The
+// BFF pre-builds the query; this side only validates bounds and
+// executes. Emits the contract audit event logs.export (filter field
+// names + row count, never contents).
+router.post("/app/logs/export", async (ctx) => {
+  if (!ctx.state.user?.username) return void (ctx.status = 401);
+  try {
+    authorizeAppResource(ctx.state.authorizer, "logs", 3);
+  } catch {
+    return void (ctx.status = 403);
+  }
+
+  const q = ctx.request.body as {
+    query?: unknown;
+    start?: unknown;
+    end?: unknown;
+    limit?: unknown;
+    offset?: unknown;
+  };
+  const LIMIT_MAX = 10_000;
+  const OFFSET_MAX = 5_000;
+  if (typeof q.query !== "string" || !q.query) {
+    appError(ctx, 400, "VALIDATION", "Query export tidak valid", false);
+    return;
+  }
+  const limit = Math.min(
+    LIMIT_MAX,
+    Math.max(1, Number(q.limit ?? LIMIT_MAX) || LIMIT_MAX),
+  );
+  const offset = Math.min(OFFSET_MAX, Math.max(0, Number(q.offset ?? 0) || 0));
+  if (typeof q.start !== "string" || typeof q.end !== "string") {
+    appError(ctx, 400, "VALIDATION", "Rentang waktu export wajib", false);
+    return;
+  }
+
+  const logUrl = process.env["LOG_URL"];
+  if (!logUrl) {
+    appError(ctx, 503, "BACKEND_UNAVAILABLE", "Log store unavailable", true);
+    return;
+  }
+
+  let response: Response;
+  try {
+    const params = new URLSearchParams({
+      query: q.query,
+      limit: String(limit),
+      offset: String(offset),
+      start: String(Math.floor(Date.parse(q.start) / 1000)) + "s",
+      end: String(Math.floor(Date.parse(q.end) / 1000)) + "s",
+    });
+    response = await fetch(logUrl + "/select/logsql/query", {
+      method: "POST",
+      body: params,
+      signal: AbortSignal.timeout(30_000),
+    });
+  } catch {
+    appError(ctx, 503, "BACKEND_UNAVAILABLE", "Log store unavailable", true);
+    return;
+  }
+  if (!response.ok) {
+    appError(ctx, 503, "BACKEND_UNAVAILABLE", "Log store unavailable", true);
+    return;
+  }
+
+  const body = await response.text();
+  const rows = body ? body.split("\n").filter(Boolean).length : 0;
+  getEngineAppLogger().emit({
+    event: "logs.export",
+    level: "info",
+    message: "log export executed",
+    requestId: errorRequestId(ctx),
+    actorId: ctx.state.user.username,
+    details: { rows, limit, offset },
+  });
+
+  ctx.status = 200;
+  ctx.type = "application/x-ndjson";
+  ctx.set("Cache-Control", "private, no-store");
+  ctx.body = body;
 });
 
 // GET /api/app/vpn/status — vpn:1 to read, honest unconfigured/unavailable
@@ -233,7 +340,7 @@ router.get("/app/vpn/status", async (ctx) => {
 
   ctx.status = 200;
   ctx.type = "application/json";
-  ctx.set("Cache-Control", "no-store");
+  ctx.set("Cache-Control", "private, no-store");
   ctx.body = JSON.stringify({
     state: "unconfigured",
     reason: "vpn controller management not deployed yet",
@@ -274,7 +381,7 @@ router.post("/app/devices/:id/diagnostics", async (ctx) => {
 
   ctx.status = 200;
   ctx.type = "application/json";
-  ctx.set("Cache-Control", "no-store");
+  ctx.set("Cache-Control", "private, no-store");
   ctx.body = JSON.stringify(result);
 });
 
@@ -303,7 +410,7 @@ router.get("/app/devices/:id/profile", async (ctx) => {
 
   ctx.status = 200;
   ctx.type = "application/json";
-  ctx.set("Cache-Control", "no-store");
+  ctx.set("Cache-Control", "private, no-store");
   ctx.body = JSON.stringify({ profile });
 });
 
@@ -360,7 +467,7 @@ router.post("/app/devices/:id/commands", async (ctx) => {
     );
     ctx.status = 200;
     ctx.type = "application/json";
-    ctx.set("Cache-Control", "no-store");
+    ctx.set("Cache-Control", "private, no-store");
     ctx.body = JSON.stringify({
       ok: true,
       data: result.outcome ?? {
@@ -410,7 +517,7 @@ router.get("/app/operations/:operationId", async (ctx) => {
 
   ctx.status = 200;
   ctx.type = "application/json";
-  ctx.set("Cache-Control", "no-store");
+  ctx.set("Cache-Control", "private, no-store");
   ctx.body = JSON.stringify({ ok: true, data: operationOutcome(operation) });
 });
 
@@ -443,7 +550,7 @@ router.post("/app/devices/:id/wan", async (ctx) => {
     );
     ctx.status = 200;
     ctx.type = "application/json";
-    ctx.set("Cache-Control", "no-store");
+    ctx.set("Cache-Control", "private, no-store");
     ctx.body = JSON.stringify({ ok: true, data: outcome });
   } catch (err) {
     if (err instanceof CommandExecutionError) {
@@ -534,7 +641,7 @@ router.post("/app/admin/users", async (ctx) => {
   await cacheDel("ui-local-cache-hash");
   ctx.status = 200;
   ctx.type = "application/json";
-  ctx.set("Cache-Control", "no-store");
+  ctx.set("Cache-Control", "private, no-store");
   ctx.body = JSON.stringify({
     ok: true,
     data: { username, roles },
@@ -573,7 +680,7 @@ router.put("/app/admin/users/:id/roles", async (ctx) => {
   await cacheDel("ui-local-cache-hash");
   ctx.status = 200;
   ctx.type = "application/json";
-  ctx.set("Cache-Control", "no-store");
+  ctx.set("Cache-Control", "private, no-store");
   ctx.body = JSON.stringify({ ok: true, data: { username: ctx.params.id } });
 });
 
@@ -610,7 +717,7 @@ router.put("/app/admin/users/:id/password", async (ctx) => {
   await cacheDel("ui-local-cache-hash");
   ctx.status = 200;
   ctx.type = "application/json";
-  ctx.set("Cache-Control", "no-store");
+  ctx.set("Cache-Control", "private, no-store");
   ctx.body = JSON.stringify({ ok: true, data: { username: ctx.params.id } });
 });
 
