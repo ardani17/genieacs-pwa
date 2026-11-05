@@ -50,7 +50,7 @@ jobs:
       # security-compat) against the same throwaway fixture Mongo the
       # compose stack uses — same dummy credentials, never published.
       mongo:
-        image: mongo:8.0.34@sha256:b9924c330a8bbc5800fe9c69f04a84e221eca7b28fd049a0354147d9908fa142
+        image: mongo:9.0.4@sha256:ce91889f87a369d312e50ecbc6c0b7f960e915bc4b69c4f6662402fa7011d242
         env:
           MONGO_INITDB_ROOT_USERNAME: check_fixture
           MONGO_INITDB_ROOT_PASSWORD: check-fixture-only
