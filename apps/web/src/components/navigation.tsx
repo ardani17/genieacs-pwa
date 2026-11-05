@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Activity,
+  Settings,
   Cable,
   CircleUserRound,
   LayoutDashboard,
@@ -43,6 +44,10 @@ export const FEATURE_AVAILABILITY: Record<string, boolean> = {
   "/faults": true,
   "/diagnostics/logs": false,
   "/account/password": true,
+  "/admin/presets": true,
+  "/admin/provisions": true,
+  "/admin/virtual-parameters": true,
+  "/admin/config": true,
 };
 
 export const NAV_ITEMS: NavItem[] = [
@@ -55,6 +60,12 @@ export const NAV_ITEMS: NavItem[] = [
     label: "Log global",
     requiredResource: "logs",
     minAccess: 3,
+  },
+  {
+    href: "/admin/config",
+    label: "Admin",
+    requiredResource: "config",
+    minAccess: 1,
   },
   { href: "/account/password", label: "Akun" },
 ];
@@ -83,6 +94,7 @@ const icons = {
   "/faults": Activity,
   "/diagnostics/logs": ScrollText,
   "/account/password": CircleUserRound,
+  "/admin/config": Settings,
 };
 export function Navigation() {
   const { state } = useSession();
