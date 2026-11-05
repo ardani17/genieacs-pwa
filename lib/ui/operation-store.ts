@@ -53,6 +53,21 @@ function ensureSwept(): Promise<void> {
   return ensured;
 }
 
+// Canonical JSON: object keys sorted recursively, array order
+// preserved — the same logical request from any serializer produces
+// the same fingerprint (raw JSON.stringify inherits key order, so a
+// reordered-but-equal replay used to 409).
+function canonicalize(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const key of Object.keys(value as Record<string, unknown>).sort())
+      out[key] = canonicalize((value as Record<string, unknown>)[key]);
+    return out;
+  }
+  return value;
+}
+
 // One-way fingerprint of the canonical request body. Secret task values
 // (e.g. PPP passwords inside SPV tuples) never reach storage — only the
 // HMAC does — and the canonical body itself is never logged.
@@ -60,7 +75,9 @@ export function requestFingerprint(body: unknown): string {
   const key =
     (process.env["GENIEACS_UI_JWT_SECRET"] as string | undefined) ??
     "app-operations-fingerprint";
-  return createHmac("sha256", key).update(JSON.stringify(body)).digest("hex");
+  return createHmac("sha256", key)
+    .update(JSON.stringify(canonicalize(body)))
+    .digest("hex");
 }
 
 export type ClaimResult =

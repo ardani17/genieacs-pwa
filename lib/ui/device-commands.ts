@@ -206,6 +206,42 @@ function deviceOnlineThreshold(
   ) as number;
 }
 
+// Whitelisted fields per task name (contracts.md TaskInput): the
+// server rebuilds each task from validated input — client _id,
+// timestamp and uniqueKey never reach insertTasks, and expiry is
+// clamped into the native 1..86400 second band. NaN/negative values
+// silently became "already expired" tasks the CPE skips while the UI
+// reported success (STD-03).
+const TASK_FIELDS: Record<string, Set<string>> = {
+  getParameterValues: new Set(["name", "parameterNames"]),
+  setParameterValues: new Set(["name", "parameterValues"]),
+  refreshObject: new Set(["name", "objectName"]),
+  addObject: new Set(["name", "objectName", "parameterValues"]),
+  deleteObject: new Set(["name", "objectName"]),
+  download: new Set(["name", "fileType", "fileName", "file", "targetFileName"]),
+  provisions: new Set(["name", "provisions"]),
+  reboot: new Set(["name"]),
+  factoryReset: new Set(["name"]),
+};
+
+function rebuildTask(input: TaskInput, deviceId: string): Task {
+  const allowed = TASK_FIELDS[input.name];
+  if (!allowed) throw new Error(`Invalid task name: ${input.name}`);
+  const task: Record<string, unknown> = {};
+  const source = input as unknown as Record<string, unknown>;
+  for (const field of allowed)
+    if (source[field] !== undefined) task[field] = source[field];
+  // Bound expiry into a sane band; absent stays absent (native default).
+  const expiry = (input as { expiry?: number }).expiry;
+  if (expiry !== undefined) {
+    if (typeof expiry !== "number" || !Number.isFinite(expiry))
+      throw new Error("expiry harus number (detik).");
+    task["expiry"] = Math.min(86400, Math.max(1, Math.round(expiry)));
+  }
+  task["device"] = deviceId;
+  return task as unknown as Task;
+}
+
 export async function executeAuthorizedTasks(
   ctx: ExecutorContext,
   deviceId: string,
@@ -330,12 +366,9 @@ export async function executeAuthorizedTasks(
       throw err;
     }
 
-    const prepared = (tasks as Task[]).map((t) => {
-      const task = { ...t };
-      delete task._id;
-      task["device"] = deviceId;
-      return task;
-    });
+    const prepared = (tasks as TaskInput[]).map((t) =>
+      rebuildTask(t, deviceId),
+    );
 
     const inserted = await deps.insertTasks(prepared);
     statuses = inserted.map((t) => ({ _id: t._id, status: "pending" }));

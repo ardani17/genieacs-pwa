@@ -588,6 +588,42 @@ void test("executor: guards, idempotency, outcomes, cleanup, legacy parity", asy
     );
 
     await t.test(
+      "client task internals are stripped and expiry is clamped",
+      async () => {
+        const capture = stubDeps();
+        const seen: unknown[] = [];
+        const deps = {
+          ...capture.deps,
+          async insertTasks(tasks) {
+            seen.push(...tasks);
+            return capture.deps.insertTasks(tasks);
+          },
+        };
+        const result = await executeAuthorizedTasks(
+          base,
+          "TEST-CMD-1",
+          [
+            {
+              name: "reboot",
+              expiry: -5,
+              timestamp: "2099-01-01T00:00:00Z",
+              uniqueKey: "evil",
+              _id: "client-id",
+            } as never,
+          ],
+          { deps },
+        );
+        assert.equal(result.state, "succeeded");
+        const task = seen[0] as Record<string, unknown>;
+        assert.equal(task["device"], "TEST-CMD-1");
+        assert.equal(task["expiry"], 1); // clamped, not negative
+        assert.equal(task["timestamp"], undefined);
+        assert.equal(task["uniqueKey"], undefined);
+        assert.equal(task["_id"], undefined);
+      },
+    );
+
+    await t.test(
       "app commands endpoint end-to-end with idempotency",
       async () => {
         const body = JSON.stringify({

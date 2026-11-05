@@ -90,3 +90,27 @@ void test("operation store: claim, idempotency, conflict, TTL, sweep", async () 
     await disconnect();
   }
 });
+
+void test("canonical fingerprint: key order does not change identity", () => {
+  const a = requestFingerprint({
+    deviceId: "D",
+    tasks: [{ name: "reboot", expiry: 10 }],
+    instance: null,
+  });
+  const b = requestFingerprint({
+    instance: null,
+    tasks: [{ expiry: 10, name: "reboot" }],
+    deviceId: "D",
+  });
+  assert.equal(a, b);
+  // Array order is semantics — reordering tasks is a DIFFERENT request.
+  const c = requestFingerprint({
+    deviceId: "D",
+    tasks: [{ name: "reboot", expiry: 10 }, { name: "factoryReset" }],
+  });
+  const d = requestFingerprint({
+    deviceId: "D",
+    tasks: [{ name: "factoryReset" }, { name: "reboot", expiry: 10 }],
+  });
+  assert.notEqual(c, d);
+});
