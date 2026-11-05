@@ -60,22 +60,30 @@ export function DeviceList() {
 
       fetch(url, { signal: controller.signal, cache: "no-store" })
         .then(async (res) => {
-          const body = (await res.json()) as ApiResult<Page<FlatDevice>>;
-          if (controller.signal.aborted) return;
-          if (body.ok === false) {
-            setPage(null);
-            setRequestId(body.requestId);
-            setState(
-              body.error.code === "FORBIDDEN"
-                ? "permission-denied"
-                : body.error.code === "BACKEND_UNAVAILABLE"
-                  ? "unavailable"
-                  : "error",
-            );
+          const applyResult = (result: ApiResult<Page<FlatDevice>>): void => {
+            if (controller.signal.aborted) return;
+            if (result.ok === false) {
+              setPage(null);
+              setRequestId(result.requestId);
+              setState(
+                result.error.code === "FORBIDDEN"
+                  ? "permission-denied"
+                  : result.error.code === "BACKEND_UNAVAILABLE"
+                    ? "unavailable"
+                    : "error",
+              );
+              return;
+            }
+            setPage(result.data);
+            setState(result.data.items.length === 0 ? "empty" : "ready");
+          };
+          if (!res.ok) {
+            // Non-2xx still carries the typed envelope; unparseable
+            // bodies fall through to the catch below (same as before).
+            applyResult((await res.json()) as ApiResult<Page<FlatDevice>>);
             return;
           }
-          setPage(body.data);
-          setState(body.data.items.length === 0 ? "empty" : "ready");
+          applyResult((await res.json()) as ApiResult<Page<FlatDevice>>);
         })
         .catch((err) => {
           if (err instanceof DOMException && err.name === "AbortError") return;

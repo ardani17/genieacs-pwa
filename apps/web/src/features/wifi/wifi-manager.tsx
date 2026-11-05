@@ -62,6 +62,12 @@ export function WifiManager({ deviceId }: { deviceId: string }) {
           cache: "no-store",
         },
       );
+      if (!res.ok) {
+        // Non-2xx carries the typed error envelope; the error state
+        // matches an ok:false body below.
+        setState("error");
+        return;
+      }
       const body = (await res.json()) as ApiResult<FlatDevice>;
       if (body.ok !== true) {
         setState("error");
@@ -141,9 +147,17 @@ export function WifiManager({ deviceId }: { deviceId: string }) {
           cache: "no-store",
         },
       );
-      const body = (await res.json()) as ApiResult<WanOutcome>;
-      if (body.ok !== true) setError(body.error.message);
-      else setOutcome(body.data);
+      if (!res.ok) {
+        // Non-2xx still carries the typed envelope; unparseable bodies
+        // fall through to the catch below (same as before).
+        const errBody = (await res.json()) as ApiResult<WanOutcome>;
+        if (errBody.ok !== true) setError(errBody.error.message);
+        else setOutcome(errBody.data);
+      } else {
+        const body = (await res.json()) as ApiResult<WanOutcome>;
+        if (body.ok !== true) setError(body.error.message);
+        else setOutcome(body.data);
+      }
     } catch {
       setError("Hasil belum terkonfirmasi — koneksi terputus.");
     }

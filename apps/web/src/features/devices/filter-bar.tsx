@@ -6,6 +6,7 @@
 // list (AbortController keyed by serialized query).
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import type { KeyboardEvent } from "react";
 import { Search, SlidersHorizontal } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -23,6 +24,7 @@ export function FilterBar() {
   const router = useRouter();
   const params = useSearchParams();
   const urlSearch = params.get("search") ?? "";
+  const expressionRef = useRef<HTMLInputElement | null>(null);
   const [search, setSearch] = useState(urlSearch);
   const [previousSearch, setPreviousSearch] = useState(urlSearch);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -70,6 +72,16 @@ export function FilterBar() {
   }
 
   const currentExpression = params.get("filter") ?? "";
+
+  // The advanced filter is applied by button or by pressing Enter in
+  // the field — no <form> submit is involved.
+  function applyExpressionFromField(): void {
+    onApplyExpression(expressionRef.current?.value ?? "");
+  }
+
+  function onExpressionKeyDown(e: KeyboardEvent<HTMLInputElement>): void {
+    if (e.key === "Enter") applyExpressionFromField();
+  }
 
   return (
     <Card>
@@ -146,18 +158,7 @@ export function FilterBar() {
             </Select>
           </div>
         </div>
-        <form
-          className="flex flex-wrap items-end gap-3 border-t pt-4"
-          onSubmit={(e) => {
-            e.preventDefault();
-            const value = (
-              e.currentTarget.elements.namedItem(
-                "expression",
-              ) as HTMLInputElement
-            ).value;
-            onApplyExpression(value);
-          }}
-        >
+        <div className="flex flex-wrap items-end gap-3 border-t pt-4">
           <div className="min-w-0 flex-1 basis-56 space-y-2">
             <Label htmlFor="native-filter">Filter lanjutan</Label>
             <Input
@@ -168,9 +169,11 @@ export function FilterBar() {
               placeholder={'Contoh: DeviceID.ProductClass = "F670"'}
               aria-label="Ekspresi filter native"
               className="font-mono text-xs md:text-xs"
+              ref={expressionRef}
+              onKeyDown={onExpressionKeyDown}
             />
           </div>
-          <Button type="submit" variant="secondary">
+          <Button variant="secondary" onClick={applyExpressionFromField}>
             <SlidersHorizontal aria-hidden="true" />
             Terapkan
           </Button>
@@ -190,7 +193,7 @@ export function FilterBar() {
               Hapus filter
             </Button>
           ) : null}
-        </form>
+        </div>
       </CardContent>
     </Card>
   );

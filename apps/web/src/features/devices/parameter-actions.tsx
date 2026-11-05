@@ -70,6 +70,15 @@ export function ParameterActions({
     setBusy(true);
     setError(null);
     if (!operationId.current) operationId.current = crypto.randomUUID();
+    const apply = (result: ApiResult<WanOutcome>): void => {
+      if (result.ok !== true) setError(result.error.message);
+      else {
+        setOutcome(result.data);
+        operationId.current = null;
+        setValue("");
+        onApplied?.();
+      }
+    };
     try {
       const res = await fetch(
         `/api/app/devices/${encodeURIComponent(deviceId)}/commands`,
@@ -84,14 +93,13 @@ export function ParameterActions({
           cache: "no-store",
         },
       );
-      const body = (await res.json()) as ApiResult<WanOutcome>;
-      if (body.ok !== true) setError(body.error.message);
-      else {
-        setOutcome(body.data);
-        operationId.current = null;
-        setValue("");
-        onApplied?.();
+      if (!res.ok) {
+        // Non-2xx still carries the typed envelope; unparseable bodies
+        // fall through to the catch below (same as before).
+        apply((await res.json()) as ApiResult<WanOutcome>);
+        return;
       }
+      apply((await res.json()) as ApiResult<WanOutcome>);
     } catch {
       setError("Hasil belum terkonfirmasi — koneksi terputus.");
     }

@@ -24,6 +24,12 @@ const PAGE_SIZE = 100;
 const SECRET_PATTERN =
   /(PreSharedKey|Password|KeyPassphrase|Secret|UsernamePassword)$/;
 
+// Locale formatting lives outside the render path (id-ID output is
+// identical to the previous inline call).
+function formatValueTimestamp(timestamp: number): string {
+  return new Date(timestamp).toLocaleString("id-ID");
+}
+
 interface Row {
   path: string;
   value: string;
@@ -50,8 +56,7 @@ export function ParameterBrowser({
     for (const [path, entry] of Object.entries(device)) {
       if (path.startsWith("_")) continue;
       const attr = entry as
-        | { value?: [unknown, string]; valueTimestamp?: number }
-        | undefined;
+        { value?: [unknown, string]; valueTimestamp?: number } | undefined;
       const masked = SECRET_PATTERN.test(path);
       all.push({
         path,
@@ -62,7 +67,7 @@ export function ParameterBrowser({
             : "—",
         type: attr?.value ? String(attr.value[1] ?? "") : "",
         timestamp: attr?.valueTimestamp
-          ? new Date(attr.valueTimestamp).toLocaleString("id-ID")
+          ? formatValueTimestamp(attr.valueTimestamp)
           : null,
         masked,
       });

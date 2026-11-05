@@ -4,7 +4,7 @@
 // through review: destructive actions require the literal device id;
 // the panel commits staged entries one operationId at a time and never
 // retries automatically. Offline state disables every mutation.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Status } from "@/components/ui/status";
@@ -64,6 +64,24 @@ async function postJson<T>(path: string, body: unknown): Promise<ApiResult<T>> {
       body: JSON.stringify(body),
       cache: "no-store",
     });
+    if (!res.ok) {
+      // Non-2xx responses still carry the typed envelope; anything
+      // unparseable degrades to the same offline result as a throw.
+      const errBody = (await res
+        .json()
+        .catch(() => null)) as ApiResult<T> | null;
+      return errBody && typeof errBody === "object" && "ok" in errBody
+        ? errBody
+        : {
+            ok: false,
+            error: {
+              code: "RESULT_UNKNOWN",
+              message: "Network error",
+              retryable: false,
+            },
+            requestId: "unknown",
+          };
+    }
     return (await res.json()) as ApiResult<T>;
   } catch {
     return {
@@ -215,8 +233,9 @@ export function DeviceActions({ deviceId }: { deviceId: string }) {
   const [offline, setOffline] = useState(false);
   const [outcome, setOutcome] = useState<WanOutcome | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // The operationId is minted once per dialog submission attempt.
-  const [operationId, setOperationId] = useState<string | null>(null);
+  // The operationId is minted once per dialog submission attempt and is
+  // only read inside handlers — a ref keeps it out of the render state.
+  const operationIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     const sync = () => setOffline(!navigator.onLine);
@@ -237,8 +256,8 @@ export function DeviceActions({ deviceId }: { deviceId: string }) {
   const run = async () => {
     setBusy(true);
     setError(null);
-    const opId = operationId ?? crypto.randomUUID();
-    setOperationId(opId);
+    const opId = operationIdRef.current ?? crypto.randomUUID();
+    operationIdRef.current = opId;
     const result = await postJson<WanOutcome>(
       `/api/app/devices/${encodeURIComponent(deviceId)}/commands`,
       { operationId: opId, deviceId, tasks: taskFor() },
@@ -282,7 +301,7 @@ export function DeviceActions({ deviceId }: { deviceId: string }) {
           onClick={() => {
             setDialog("reboot");
             setConfirmId("");
-            setOperationId(null);
+            operationIdRef.current = null;
             setError(null);
           }}
         >
@@ -295,7 +314,7 @@ export function DeviceActions({ deviceId }: { deviceId: string }) {
           onClick={() => {
             setDialog("factoryReset");
             setConfirmId("");
-            setOperationId(null);
+            operationIdRef.current = null;
             setError(null);
           }}
         >

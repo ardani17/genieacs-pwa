@@ -29,7 +29,8 @@ import {
 import { useSession } from "@/components/session-provider";
 import { readOverviewConfig, type OverviewChart } from "./overview-config";
 import { ConfigRenderer } from "../config-ui/renderer";
-import type { ConfigNode } from "../config-ui/components";
+import { configChildKey } from "../config-ui/config-node";
+import type { ConfigNode } from "../config-ui/config-node";
 
 export function Overview() {
   const router = useRouter();
@@ -176,7 +177,7 @@ export function Overview() {
         <div className="grid min-w-0 grid-cols-1 gap-6 xl:grid-cols-2">
           {customConfig.map((child, i) => (
             <ConfigRenderer
-              key={i}
+              key={configChildKey(child, i)}
               node={child}
               context={{ device: {}, now: observedAtMs }}
             />

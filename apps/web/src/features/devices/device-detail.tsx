@@ -4,6 +4,7 @@
 // Unavailable values show "Belum tersedia"; parameter timestamps are
 // visible; read pages never send tasks automatically.
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { DataView, type DataViewProps } from "@/components/ui/data-view";
 import { ArrowLeft, Router } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
@@ -17,7 +18,8 @@ import { WifiManager } from "../wifi/wifi-manager";
 import { TagEditor } from "./tag-editor";
 import { ParameterActions } from "./parameter-actions";
 import { ConfigRenderer } from "../config-ui/renderer";
-import type { ConfigNode } from "../config-ui/components";
+import { configChildKey } from "../config-ui/config-node";
+import type { ConfigNode } from "../config-ui/config-node";
 import { useSession } from "@/components/session-provider";
 import type { ApiResult } from "@contracts/api.ts";
 
@@ -54,34 +56,55 @@ export function DeviceDetail({ deviceId }: { deviceId: string }) {
 
   useEffect(() => {
     const controller = new AbortController();
+    let cancelled = false;
+    const applyError = (result: ApiResult<FlatDevice>): void => {
+      if (result.ok !== false) {
+        setState("error");
+        return;
+      }
+      if (cancelled || controller.signal.aborted) return;
+      setRequestId(result.requestId);
+      setState(
+        result.error.code === "NOT_FOUND"
+          ? "empty"
+          : result.error.code === "FORBIDDEN"
+            ? "permission-denied"
+            : result.error.code === "BACKEND_UNAVAILABLE"
+              ? "unavailable"
+              : "error",
+      );
+    };
+    const applyResult = (result: ApiResult<FlatDevice>): void => {
+      if (result.ok !== true) {
+        applyError(result);
+        return;
+      }
+      if (cancelled || controller.signal.aborted) return;
+      setDevice(result.data);
+      setState("ready");
+    };
     fetch(`/api/app/devices/${encodeURIComponent(deviceId)}`, {
       signal: controller.signal,
       cache: "no-store",
     })
       .then(async (res) => {
-        const body = (await res.json()) as ApiResult<FlatDevice>;
-        if (controller.signal.aborted) return;
-        if (body.ok !== true) {
-          setRequestId(body.requestId);
-          setState(
-            body.ok === false && body.error.code === "NOT_FOUND"
-              ? "empty"
-              : body.error.code === "FORBIDDEN"
-                ? "permission-denied"
-                : body.error.code === "BACKEND_UNAVAILABLE"
-                  ? "unavailable"
-                  : "error",
-          );
+        if (!res.ok) {
+          // Non-2xx still carries the typed envelope; unparseable
+          // bodies fall through to the catch below (same as before).
+          applyResult((await res.json()) as ApiResult<FlatDevice>);
           return;
         }
-        setDevice(body.data);
-        setState("ready");
+        applyResult((await res.json()) as ApiResult<FlatDevice>);
       })
       .catch((err) => {
+        if (cancelled) return;
         if (err instanceof DOMException && err.name === "AbortError") return;
         setState("error");
       });
-    return () => controller.abort();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
   }, [deviceId, reload]);
 
   const lastInform = val(device, "Events.Inform");
@@ -130,13 +153,13 @@ export function DeviceDetail({ deviceId }: { deviceId: string }) {
   };
   return (
     <div className="min-w-0 space-y-6">
-      <a
+      <Link
         href="/devices"
         className="inline-flex min-h-11 items-center gap-2 text-sm font-medium text-primary hover:underline"
       >
         <ArrowLeft className="size-4" aria-hidden="true" />
         Kembali ke perangkat
-      </a>
+      </Link>
       <Card>
         <CardContent className="flex items-center gap-4">
           <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-accent text-primary">
@@ -242,7 +265,7 @@ export function DeviceDetail({ deviceId }: { deviceId: string }) {
                         </h4>
                         {customConfig.map((child, i) => (
                           <ConfigRenderer
-                            key={i}
+                            key={configChildKey(child, i)}
                             node={child}
                             context={{
                               device: device as never,

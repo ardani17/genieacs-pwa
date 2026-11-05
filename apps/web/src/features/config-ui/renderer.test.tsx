@@ -6,7 +6,8 @@
 // included).
 import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { ConfigRenderer, normalizeConfigTree } from "./renderer";
+import { ConfigRenderer } from "./renderer";
+import { normalizeConfigTree } from "./config-tree";
 import { evaluateUiExpression } from "./expression";
 
 const device = {
@@ -185,9 +186,9 @@ describe("config round-trip", () => {
     };
     // A save/load cycle through the editor must not drop anything it
     // does not understand.
-    const roundTripped = JSON.parse(
-      JSON.stringify(normalizeConfigTree(original)),
-    );
+    const roundTripped = structuredClone(
+      normalizeConfigTree(original),
+    ) as typeof original;
     expect(roundTripped).toEqual(original);
     roundTripped.label = "Root diubah";
     expect(roundTripped.components[1]).toEqual(original.components[1]);

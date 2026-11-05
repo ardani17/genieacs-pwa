@@ -47,6 +47,14 @@ export function Diagnostics({ deviceId }: { deviceId: string }) {
           headers: { "X-App-Request": "1", Origin: window.location.origin },
         },
       );
+      if (!res.ok) {
+        // Non-2xx still carries the typed envelope; unparseable bodies
+        // fall through to the catch below (same as before).
+        const errBody = (await res.json()) as ApiResult<{ checks: Check[] }>;
+        if (errBody.ok) setChecks(errBody.data.checks);
+        else setFailed(errBody.ok === false ? errBody.error.message : "gagal");
+        return;
+      }
       const body = (await res.json()) as ApiResult<{ checks: Check[] }>;
       if (body.ok) setChecks(body.data.checks);
       else setFailed(body.ok === false ? body.error.message : "gagal");

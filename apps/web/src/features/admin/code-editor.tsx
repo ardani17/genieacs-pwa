@@ -13,6 +13,11 @@ import type { Editor, EditorConfiguration } from "codemirror";
 
 export type CodeLanguage = "javascript" | "yaml" | "expression";
 
+type CodeMirrorFactory = (
+  host: HTMLElement,
+  config: EditorConfiguration,
+) => Editor;
+
 export function CodeEditor({
   value,
   language,
@@ -30,6 +35,11 @@ export function CodeEditor({
   const editorRef = useRef<Editor | null>(null);
   const onChangeRef = useRef(onChange);
   const [ready, setReady] = useState(false);
+  // The CodeMirror factory arrives through a dynamic, client-only
+  // import (CodeMirror touches window at import time).
+  const [createEditor, setCreateEditor] = useState<CodeMirrorFactory | null>(
+    null,
+  );
 
   useEffect(() => {
     onChangeRef.current = onChange;
@@ -37,67 +47,78 @@ export function CodeEditor({
 
   useEffect(() => {
     let disposed = false;
-    // Dynamic, client-only: CodeMirror touches window at import.
     void Promise.all([
       import("codemirror"),
       import("codemirror/mode/javascript/javascript.js"),
       import("codemirror/mode/yaml/yaml.js"),
       import("codemirror/addon/edit/closebrackets.js"),
       import("codemirror/addon/edit/matchbrackets.js"),
-    ]).then(([cm]) => {
-      if (disposed || !hostRef.current) return;
-      const CodeMirror = (cm.default ?? cm) as unknown as (
-        host: HTMLElement,
-        config: EditorConfiguration,
-      ) => Editor;
-      const editor = CodeMirror(hostRef.current, {
-        value,
-        mode:
-          language === "javascript"
-            ? "javascript"
-            : language === "yaml"
-              ? "yaml"
-              : "text/plain",
-        readOnly: !!readOnly,
-        lineNumbers: true,
-        // Contenteditable serves touch/mobile keyboards; the textarea
-        // input style is the robust default for pointer devices (and
-        // the programmatic value sync).
-        inputStyle:
-          typeof window !== "undefined" &&
-          window.matchMedia?.("(pointer: coarse)").matches
-            ? "contenteditable"
-            : "textarea",
-        autoCloseBrackets: !readOnly,
-        matchBrackets: true,
-        indentUnit: 2,
-        tabSize: 2,
+    ])
+      .then(([cm]) => {
+        if (disposed) return;
+        setCreateEditor(
+          () => (cm.default ?? cm) as unknown as CodeMirrorFactory,
+        );
+      })
+      .catch(() => {
+        // Dynamic import failure leaves the empty host; nothing to
+        // tear down and no state to expose.
       });
-      // The editable input surface carries the accessible textbox
-      // semantics (role+aria-label on the contenteditable itself, so
-      // fill/keyboard drivers target the real editable element).
-      const input = editor.getInputField();
-      input.setAttribute("aria-label", label);
-      input.setAttribute("role", "textbox");
-      input.setAttribute("aria-multiline", "true");
-      if (readOnly) input.setAttribute("aria-readonly", "true");
-      editor.on("change", () => {
-        onChangeRef.current?.(editor.getValue());
-      });
-      editorRef.current = editor;
-      setReady(true);
-    });
-    const host = hostRef.current;
     return () => {
       disposed = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!createEditor || !hostRef.current) return undefined;
+    const editor = createEditor(hostRef.current, {
+      value,
+      mode:
+        language === "javascript"
+          ? "javascript"
+          : language === "yaml"
+            ? "yaml"
+            : "text/plain",
+      readOnly: !!readOnly,
+      lineNumbers: true,
+      // Contenteditable serves touch/mobile keyboards; the textarea
+      // input style is the robust default for pointer devices (and
+      // the programmatic value sync).
+      inputStyle:
+        typeof window !== "undefined" &&
+        window.matchMedia?.("(pointer: coarse)").matches
+          ? "contenteditable"
+          : "textarea",
+      autoCloseBrackets: !readOnly,
+      matchBrackets: true,
+      indentUnit: 2,
+      tabSize: 2,
+    });
+    // The editable input surface carries the accessible textbox
+    // semantics (role+aria-label on the contenteditable itself, so
+    // fill/keyboard drivers target the real editable element).
+    const input = editor.getInputField();
+    input.setAttribute("aria-label", label);
+    input.setAttribute("role", "textbox");
+    input.setAttribute("aria-multiline", "true");
+    if (readOnly) input.setAttribute("aria-readonly", "true");
+    const changeHandler = (): void => {
+      onChangeRef.current?.(editor.getValue());
+    };
+    editor.on("change", changeHandler);
+    editorRef.current = editor;
+    setReady(true);
+    const host = hostRef.current;
+    return () => {
+      editor.off("change", changeHandler);
       editorRef.current = null;
       setReady(false);
       if (host) host.textContent = "";
     };
-    // Editor creation intentionally depends only on mount: value sync
-    // happens through the effect below.
+    // Editor creation intentionally depends only on the factory
+    // arriving: value sync happens through the effect below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [createEditor]);
 
   // Sync external value changes WITHOUT resetting selection/undo.
   useEffect(() => {

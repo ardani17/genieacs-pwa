@@ -2,7 +2,7 @@
 
 // Faults page (M05-E): list/filter/paginate/delete through the BFF
 // faults resource — permission enforced server-side per action.
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -28,6 +28,19 @@ interface FaultRow {
 }
 
 const PAGE_SIZE = 25;
+
+// Locale formatting is computed off the direct render path (id-ID
+// output is identical to the previous inline call).
+function formatFaultTimestamp(timestamp: number): string {
+  return new Date(timestamp).toLocaleString("id-ID");
+}
+
+function FaultTimestampCell({ timestamp }: { timestamp: number }) {
+  const text = useMemo(() => formatFaultTimestamp(timestamp), [timestamp]);
+  return (
+    <TableCell className="text-xs text-muted-foreground">{text}</TableCell>
+  );
+}
 
 export default function FaultsPage() {
   const [rows, setRows] = useState<FaultRow[]>([]);
@@ -167,9 +180,7 @@ export default function FaultsPage() {
                       <TableCell className="max-w-64 break-all text-xs">
                         {row.message}
                       </TableCell>
-                      <TableCell className="text-xs text-muted-foreground">
-                        {new Date(row.timestamp).toLocaleString("id-ID")}
-                      </TableCell>
+                      <FaultTimestampCell timestamp={row.timestamp} />
                       <TableCell>
                         <Button
                           variant="outline"
