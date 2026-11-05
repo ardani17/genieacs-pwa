@@ -45,6 +45,25 @@ jobs:
   verify:
     needs: branch-policy
     runs-on: ubuntu-latest
+    services:
+      # npm test runs the DB-dependent suites (session, db,
+      # security-compat) against the same throwaway fixture Mongo the
+      # compose stack uses — same dummy credentials, never published.
+      mongo:
+        image: mongo:8.0.34@sha256:b9924c330a8bbc5800fe9c69f04a84e221eca7b28fd049a0354147d9908fa142
+        env:
+          MONGO_INITDB_ROOT_USERNAME: check_fixture
+          MONGO_INITDB_ROOT_PASSWORD: check-fixture-only
+          MONGO_INITDB_DATABASE: genieacs_plan_test
+        ports:
+          - 27017:27017
+        options: >-
+          --health-cmd "mongosh --quiet --eval 'db.adminCommand({ping: 1})'"
+          --health-interval 5s --health-timeout 5s --health-retries 24
+    env:
+      MONGO_URL: mongodb://check_fixture:check-fixture-only@localhost:27017/genieacs_plan_test?authSource=admin
+      GENIEACS_MONGODB_CONNECTION_URL: mongodb://check_fixture:check-fixture-only@localhost:27017/genieacs_plan_test?authSource=admin
+      GENIEACS_UI_JWT_SECRET: check-fixture-jwt-secret
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
@@ -99,10 +118,24 @@ jobs:
         run:
           docker compose -f compose.test.yaml build verify victorialogs vector
           web
-      - name: Start the isolated fixture stack
-        run:
-          docker compose -f compose.test.yaml up -d mongo victorialogs vector
-          web
+      - name: Start the fixture mongo and wait for it
+        run: |
+          docker compose -f compose.test.yaml up -d mongo
+          for i in $(seq 1 60); do
+            status="$(docker inspect -f '{{.State.Health.Status}}' "$(docker compose -f compose.test.yaml ps -q mongo)")"
+            if [ "$status" = "healthy" ]; then echo "mongo healthy"; exit 0; fi
+            if [ "$status" != "starting" ]; then
+              echo "::error::mongo health status: $status"
+              docker compose -f compose.test.yaml logs mongo || true
+              exit 1
+            fi
+            sleep 3
+          done
+          echo "::error::mongo never became healthy"
+          docker compose -f compose.test.yaml logs mongo || true
+          exit 1
+      - name: Start the rest of the fixture stack
+        run: docker compose -f compose.test.yaml up -d victorialogs vector web
       - name: Prime the web workspace dependencies
         run: >
           docker compose -f compose.test.yaml run --rm verify npm ci --prefix
@@ -124,10 +157,30 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - name: Build the engine-backed stack images
+        run: >
+          docker compose -f compose.test.yaml -f compose.e2e.yaml build mongo
+          victorialogs vector ui seed web browser-tests
+      - name: Start the fixture mongo and wait for it
+        run: |
+          docker compose -f compose.test.yaml -f compose.e2e.yaml up -d mongo
+          for i in $(seq 1 60); do
+            status="$(docker inspect -f '{{.State.Health.Status}}' "$(docker compose -f compose.test.yaml ps -q mongo)")"
+            if [ "$status" = "healthy" ]; then echo "mongo healthy"; exit 0; fi
+            if [ "$status" != "starting" ]; then
+              echo "::error::mongo health status: $status"
+              docker compose -f compose.test.yaml logs mongo || true
+              exit 1
+            fi
+            sleep 3
+          done
+          echo "::error::mongo never became healthy"
+          docker compose -f compose.test.yaml logs mongo || true
+          exit 1
       - name: Browser tests against the engine-backed stack
         run: >
-          docker compose -f compose.test.yaml -f compose.e2e.yaml up --build -d
-          mongo victorialogs vector ui seed web && docker compose -f
+          docker compose -f compose.test.yaml -f compose.e2e.yaml up -d
+          victorialogs vector ui seed web browser-tests && docker compose -f
           compose.test.yaml -f compose.e2e.yaml up --abort-on-container-exit
           --exit-code-from browser-tests browser-tests
       - name: Engine structured-log acceptance on the same stack
