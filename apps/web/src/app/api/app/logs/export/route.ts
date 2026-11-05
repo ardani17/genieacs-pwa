@@ -62,6 +62,9 @@ export async function POST(request: Request): Promise<NextResponse> {
     // Validate through the closed builder (its own max is 500); the
     // engine export endpoint applies the 10k export budget itself.
     const q = buildLogQuery(body as never);
+    // The search builder caps at 500 (its own max); export rides the
+    // engine's 10k budget — raise the limit AFTER validation.
+    q.limit = 10000;
     const upstream = await engineFetch("/api/app/logs/export", {
       method: "POST",
       cookie,

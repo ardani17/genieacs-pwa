@@ -7,6 +7,7 @@ import { useEffect, useState } from "react";
 import { Status } from "@/components/ui/status";
 import { DataView, type DataViewProps } from "@/components/ui/data-view";
 import type { ApiResult } from "@contracts/api.ts";
+import { stringify } from "../../../../../lib/common/expression/parser.ts";
 
 interface FaultRow {
   _id: string;
@@ -26,7 +27,7 @@ export function DeviceTaskFault({ deviceId }: { deviceId: string }) {
     const t = window.setTimeout(() => {
       void fetch(
         `/api/app/resources/faults?page=1&pageSize=25&filter=${encodeURIComponent(
-          `DeviceID.ID = "${deviceId}"`,
+          stringify(["=", ["PARAM", "DeviceID.ID"], deviceId]),
         )}`,
         { cache: "no-store", signal: controller.signal },
       )

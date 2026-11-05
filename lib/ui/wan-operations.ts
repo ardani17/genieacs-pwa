@@ -22,6 +22,7 @@ import {
   claimOperation,
   completeOperation,
   getOperation,
+  legacyRequestFingerprint,
   operationOutcome,
   recordPhases,
   requestFingerprint,
@@ -162,6 +163,13 @@ export async function executeWanOperation(
     deviceId,
     "wan",
     fingerprint,
+    // TTL-window compat with pre-canonical HMAC records — only when
+    // the caller's fingerprint matches the actual body's canonical
+    // form (route-behaving callers).
+    fingerprint ===
+      requestFingerprint({ deviceId, collection, instance, settings })
+      ? [legacyRequestFingerprint({ deviceId, collection, instance, settings })]
+      : [],
   );
   if (claim.claim === "conflict")
     throw new CommandExecutionError(
@@ -184,7 +192,7 @@ export async function executeWanOperation(
       throw new CommandExecutionError(404, "NOT_FOUND", "no such device");
     return {
       ...operationOutcome(claim.operation),
-      warnings: (claim.operation as { warnings?: string[] }).warnings ?? [],
+      warnings: claim.operation.warnings ?? [],
     };
   }
 
@@ -222,6 +230,18 @@ export async function executeWanOperation(
   // second operation could start mid-flight once the lock expired.
   // Hold 300s and renew at each phase boundary; ownership is reverified
   // before every mutation.
+  // Post-claim failures must not leave in_progress records (plan:
+  // finalize every error after the claim).
+  const finalizeOnPostClaimError = async (err: unknown): Promise<never> => {
+    try {
+      await completeOperation(operationId, "unknown", [
+        { name: "write", state: "unknown", taskIds: [] },
+      ]);
+    } catch {
+      // best-effort finalization only
+    }
+    throw err;
+  };
   const wanLock = `wan_${deviceId}_${collection}`;
   const LOCK_TTL_MS = 300_000;
   let lockToken = await acquireLock(wanLock, LOCK_TTL_MS, 30_000);
@@ -314,6 +334,7 @@ export async function executeWanOperation(
       return await finish(operationId, deviceId, "partial", phases, warnings);
     }
 
+    if (!(await renewLease())) ensureLease();
     // --- phase: refresh the WAN tree and match reality ---
     const refresh = await run(reauth, [
       { name: "refreshObject", objectName: collection },
@@ -454,7 +475,9 @@ export async function executeWanOperation(
     }
 
     // --- superseded 9003 fault cleanup (scoped, permission-gated) ---
-    await cleanupSupersededFaults(ctx, deviceId, phases, warnings, log);
+    // Fault cleanup re-checks permission with the REHYDRATED
+    // authorizer (permission may have changed mid-operation).
+    await cleanupSupersededFaults(reauth, deviceId, phases, warnings, log);
 
     return await finish(
       operationId,
@@ -464,6 +487,8 @@ export async function executeWanOperation(
       warnings,
       observedInstance,
     );
+  } catch (err) {
+    throw await finalizeOnPostClaimError(err);
   } finally {
     if (lockToken) await releaseLock(wanLock, lockToken);
   }
@@ -474,7 +499,7 @@ export async function executeWanOperation(
 // with faults:3 + the native validator. Otherwise they are retained
 // with a visible warning.
 async function cleanupSupersededFaults(
-  ctx: ExecutorContext,
+  ctx: Authorizer | ExecutorContext,
   deviceId: string,
   phases: CommandPhase[],
   warnings: string[],
@@ -483,7 +508,9 @@ async function cleanupSupersededFaults(
   const taskIds = phases.flatMap((p) => p.taskIds);
   if (!taskIds.length) return;
   try {
-    if (!ctx.authorizer.hasAccess("faults", 3)) {
+    const authorizer =
+      "authorizer" in ctx ? ctx.authorizer : (ctx as unknown as Authorizer);
+    if (!authorizer.hasAccess("faults", 3)) {
       warnings.push(
         "Fault 9003 tersisa tidak dibersihkan (butuh izin faults:3).",
       );
@@ -499,7 +526,7 @@ async function cleanupSupersededFaults(
     // it refuses stays visible.
     const deletable: string[] = [];
     for (const fault of candidates) {
-      const validate = ctx.authorizer.getValidator("faults", fault);
+      const validate = authorizer.getValidator("faults", fault);
       if (validate("delete")) deletable.push(fault._id);
     }
     if (deletable.length) {
@@ -532,7 +559,10 @@ async function finish(
   warnings: string[],
   observedInstance?: string,
 ): Promise<WanOperationOutcome> {
-  await completeOperation(operationId, state, phases);
+  await completeOperation(operationId, state, phases, {
+    warnings,
+    ...(observedInstance ? { observedInstance } : {}),
+  });
   const stored = await getOperation(operationId);
   const outcome = stored
     ? operationOutcome(stored)

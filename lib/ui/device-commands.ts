@@ -34,7 +34,9 @@ import {
   claimOperation,
   completeOperation,
   getOperation,
+  legacyRequestFingerprint,
   operationOutcome,
+  requestFingerprint,
 } from "./operation-store.ts";
 import type { AppOperationDoc } from "../db/db.ts";
 import { Expression, Task } from "../types.ts";
@@ -275,6 +277,13 @@ export async function executeAuthorizedTasks(
       deviceId,
       options.operation.kind,
       options.operation.fingerprint,
+      // TTL-window compat with pre-canonical HMAC records — ONLY
+      // when the caller's fingerprint is the canonical form of the
+      // ACTUAL body (a route-behaving caller). A fingerprint that
+      // disagrees with the body is exactly the conflict case.
+      options.operation.fingerprint === requestFingerprint({ deviceId, tasks })
+        ? [legacyRequestFingerprint({ deviceId, tasks })]
+        : [],
     );
     if (claim.claim === "conflict")
       throw new CommandExecutionError(
@@ -306,6 +315,21 @@ export async function executeAuthorizedTasks(
   }
 
   const operationId = options.operation?.operationId;
+  // Post-claim failures must not leave a phantom in_progress record
+  // (plan: finalize every error after the claim) — the catch marks
+  // the operation unknown and rethrows.
+  const finalizeOnPostClaimError = async (err: unknown): Promise<never> => {
+    if (operationId) {
+      try {
+        await completeOperation(operationId, "unknown", [
+          { name: "execute", state: "unknown", taskIds: [] },
+        ]);
+      } catch {
+        // best-effort finalization only
+      }
+    }
+    throw err;
+  };
   const startedAt = Date.now();
   log.emit({
     event: "device.command.started",
@@ -372,6 +396,8 @@ export async function executeAuthorizedTasks(
 
     const inserted = await deps.insertTasks(prepared);
     statuses = inserted.map((t) => ({ _id: t._id, status: "pending" }));
+  } catch (err) {
+    throw await finalizeOnPostClaimError(err);
   } finally {
     await releaseLock(`cwmp_session_${deviceId}`, token);
   }

@@ -38,6 +38,10 @@ export interface AppOperationDoc {
     faultCode?: string;
     errorCode?: string;
   }[];
+  // Safe, non-secret follow-up notes and the instance AddObject left
+  // observable — identical across POST, replay and GET.
+  warnings?: string[];
+  observedInstance?: string;
   createdAt: Date;
   updatedAt: Date;
   expiresAt: Date;

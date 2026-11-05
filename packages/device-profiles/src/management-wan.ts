@@ -38,8 +38,10 @@ const CRITICAL_PARAMETERS = new Set([
   "AddressingType",
 ]);
 
-const CRURL_PATH =
-  "InternetGatewayDevice.ManagementServer.ConnectionRequestURL";
+const CRURL_PATHS = [
+  "InternetGatewayDevice.ManagementServer.ConnectionRequestURL",
+  "Device.ManagementServer.ConnectionRequestURL",
+];
 
 export interface ManagementWanIdentity {
   // WAN instance paths whose ExternalIPAddress matches the connection
@@ -54,7 +56,9 @@ export function managementWanInstances(
   device: WanDevice,
   resolvedHosts: string[] = [],
 ): ManagementWanIdentity {
-  const requestUrl = value(device, CRURL_PATH);
+  const requestUrl = CRURL_PATHS.map((p) => value(device, p)).find(
+    (v): v is string => typeof v === "string" && !!v,
+  );
   let host: string | null = null;
   if (typeof requestUrl === "string" && requestUrl) {
     try {
@@ -194,8 +198,10 @@ export function assertManagementWanSafe(
 }
 
 function crurlHost(device: WanDevice): string | null {
-  const requestUrl = value(device, CRURL_PATH);
-  if (typeof requestUrl !== "string" || !requestUrl) return null;
+  const requestUrl = CRURL_PATHS.map((p) => value(device, p)).find(
+    (v): v is string => typeof v === "string" && !!v,
+  );
+  if (!requestUrl) return null;
   try {
     return new URL(requestUrl).hostname;
   } catch {

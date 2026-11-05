@@ -18,7 +18,12 @@ import { decodeTag } from "../util.ts";
 import { stringify as yamlStringify } from "../common/yaml.ts";
 import { ResourceLockedError } from "../common/errors.ts";
 import { quoteCsvCell, sendSafeLegacyError } from "./safe-error.ts";
-import { countAdminsAfter, withLastAdminGuard } from "./users-guard.ts";
+import {
+  LastAdminError,
+  countAdminsAfter,
+  fetchScopedUser,
+  withLastAdminGuard,
+} from "./users-guard.ts";
 import {
   CommandExecutionError,
   executeAuthorizedTasks,
@@ -413,14 +418,18 @@ for (const [resource, flags] of Object.entries(resources)) {
 
       // Last-admin guard: deleting the final account whose roles grant
       // users:3 would lock every installation administrator out (the
-      // runbook recovery requires direct database access). The check
-      // and the delete run under the shared user-guard lock so two
-      // parallel deletes cannot both pass the invariant.
+      // runbook recovery requires direct database access). The count
+      // AND the delete run inside the shared user-guard lock —
+      // releasing before the delete let two parallel deletes of the
+      // last two admins both pass the invariant.
       if (resource === "users") {
         try {
-          await withLastAdminGuard(async () => ({
-            remainingAdmins: await countAdminsAfter([ctx.params.id]),
-          }));
+          await withLastAdminGuard(async () => {
+            const remaining = await countAdminsAfter([ctx.params.id]);
+            if (remaining < 1) throw new LastAdminError();
+            await apiFunctions.deleteResource(resource, ctx.params.id);
+            return { remainingAdmins: remaining };
+          });
         } catch (err) {
           log.message += " refused (last admin)";
           logger.accessWarn(log);
@@ -432,6 +441,22 @@ for (const [resource, flags] of Object.entries(resources)) {
           );
           return;
         }
+
+        logger.accessInfo(log);
+        // Audit: resource + id + config revision only (never the body).
+        getEngineAppLogger().emit({
+          event: "admin.resource.updated",
+          level: "info",
+          message: `deleted ${resource}/${ctx.params.id}`,
+          actorId: ctx.state.user?.username,
+          details: {
+            resource,
+            id: ctx.params.id,
+            revision: ctx.state.configSnapshot,
+          },
+        });
+        ctx.body = "";
+        return;
       }
 
       try {
@@ -491,6 +516,35 @@ for (const [resource, flags] of Object.entries(resources)) {
       if (!validate("put")) {
         logUnauthorizedWarning(log);
         return void (ctx.status = 403);
+      }
+
+      // Users writes resolve the target THROUGH the caller's filter
+      // (out-of-scope = 404) and role changes cannot demote the last
+      // admin-capable account (same invariant as the app endpoints).
+      if (resource === "users") {
+        const scoped = await fetchScopedUser(authorizer, id);
+        if (!scoped) return void (ctx.status = 404);
+        const nextRoles = String(
+          (obj as { roles?: unknown }).roles ?? scoped.roles,
+        );
+        try {
+          await withLastAdminGuard(async () => ({
+            remainingAdmins: await countAdminsAfter(
+              [],
+              new Map([[id, nextRoles]]),
+            ),
+          }));
+        } catch (err) {
+          log.message += " refused (last admin)";
+          logger.accessWarn(log);
+          sendSafeLegacyError(
+            ctx,
+            (err as { status?: number }).status ?? 409,
+            "last_admin_refused",
+            "Mengubah admin terakhir ditolak. Pulihkan lewat runbook reset admin.",
+          );
+          return;
+        }
       }
 
       try {

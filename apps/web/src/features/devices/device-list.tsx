@@ -54,6 +54,9 @@ function BulkBar({
   const runTags = async (on: boolean): Promise<void> => {
     setBusy(true);
     setResults(null);
+    // A fresh controller per run: the cancel button aborts it and
+    // runBulk skips every target not yet submitted.
+    controllerRef.current = new AbortController();
     try {
       await runBulkTags(on);
     } finally {

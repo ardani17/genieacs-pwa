@@ -14,6 +14,7 @@ import { ParameterBrowser } from "../devices/parameter-browser";
 import { OperationResult, type WanOutcome } from "../tasks/operation-result";
 import { useEffect, useRef, useState } from "react";
 import type { ApiResult } from "@contracts/api.ts";
+import { stringify } from "../../../../../lib/common/expression/parser.ts";
 
 function deviceIdOf(ctx: RenderContext): string {
   return String(
@@ -154,7 +155,7 @@ export function ConfigDeviceFaultsView({
       }
       void fetch(
         `/api/app/resources/faults?page=1&pageSize=10&filter=${encodeURIComponent(
-          `DeviceID.ID = "${deviceId}"`,
+          stringify(["=", ["PARAM", "DeviceID.ID"], deviceId]),
         )}`,
         { cache: "no-store", signal: controller.signal },
       )

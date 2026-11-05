@@ -132,7 +132,9 @@ export function WifiManager({ deviceId }: { deviceId: string }) {
       passwordAction,
       ...(passwordAction === "replace" ? { password } : {}),
     });
-    if (!operationId.current) operationId.current = crypto.randomUUID();
+    // A NEW id per submit attempt: reusing the old one with a changed
+    // payload gets a 409 from the operation store.
+    operationId.current = crypto.randomUUID();
     try {
       const res = await fetch(
         `/api/app/devices/${encodeURIComponent(deviceId)}/commands`,

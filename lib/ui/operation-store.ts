@@ -80,6 +80,15 @@ export function requestFingerprint(body: unknown): string {
     .digest("hex");
 }
 
+// Pre-canonicalization fingerprint (raw JSON key order) — callers
+// pass it alongside the canonical one for TTL-window compat.
+export function legacyRequestFingerprint(body: unknown): string {
+  const key =
+    (process.env["GENIEACS_UI_JWT_SECRET"] as string | undefined) ??
+    "app-operations-fingerprint";
+  return createHmac("sha256", key).update(JSON.stringify(body)).digest("hex");
+}
+
 export type ClaimResult =
   | { claim: "new"; operation: AppOperationDoc }
   | { claim: "existing"; operation: AppOperationDoc }
@@ -91,6 +100,7 @@ export async function claimOperation(
   device: string,
   kind: string,
   fingerprint: string,
+  legacyFingerprints: string[] = [],
 ): Promise<ClaimResult> {
   await ensureSwept();
   const now = new Date();
@@ -118,7 +128,13 @@ export async function claimOperation(
   const inserted = res.lastErrorObject?.upserted != null;
   const operation = res.value as AppOperationDoc;
   if (inserted) return { claim: "new", operation };
-  if (operation.fingerprint === fingerprint)
+  // Canonical fingerprints replaced the raw-JSON order on 2026-11-06;
+  // records claimed before that carry the legacy HMAC — accept both
+  // until the 24h TTL retires them (plan: compat until TTL).
+  if (
+    operation.fingerprint === fingerprint ||
+    legacyFingerprints.includes(operation.fingerprint)
+  )
     return { claim: "existing", operation };
   return { claim: "conflict", operation };
 }
@@ -147,10 +163,21 @@ export async function completeOperation(
   operationId: string,
   state: OperationState,
   phases: CommandPhase[],
+  extras: { warnings?: string[]; observedInstance?: string } = {},
 ): Promise<void> {
   await collections.appOperations.updateOne(
     { _id: operationId },
-    { $set: { state, phases, updatedAt: new Date() } },
+    {
+      $set: {
+        state,
+        phases,
+        updatedAt: new Date(),
+        ...(extras.warnings ? { warnings: extras.warnings } : {}),
+        ...(extras.observedInstance
+          ? { observedInstance: extras.observedInstance }
+          : {}),
+      },
+    },
   );
 }
 
@@ -162,5 +189,11 @@ export function operationOutcome(
     deviceId: operation.device,
     state: operation.state,
     phases: operation.phases as CommandPhase[],
+    // Persisted follow-up notes travel WITH the record so POST, replay
+    // and GET all return identical evidence.
+    ...(operation.warnings?.length ? { warnings: operation.warnings } : {}),
+    ...(operation.observedInstance
+      ? { observedInstance: operation.observedInstance }
+      : {}),
   };
 }

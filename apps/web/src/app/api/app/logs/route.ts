@@ -70,12 +70,15 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
 
   try {
-    const q = buildLogQuery(body as never);
+    // Validate locally, forward the RAW filters: the engine rebuilds
+    // from its own closed builder (the authority — no prebuilt query
+    // travels the wire).
+    buildLogQuery(body as never);
     const upstream = await engineFetch("/api/app/logs", {
       method: "POST",
       cookie,
       requestId: ctx.requestId,
-      body: JSON.stringify(q),
+      body: JSON.stringify(body),
       timeoutMs: 6000,
     });
     if (upstream.status === 403)
