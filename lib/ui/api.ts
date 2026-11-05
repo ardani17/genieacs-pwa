@@ -20,6 +20,10 @@ import { ResourceLockedError } from "../common/errors.ts";
 import { quoteCsvCell, sendSafeLegacyError } from "./safe-error.ts";
 import { collections } from "../db/db.ts";
 import {
+  countAdminsAfter,
+  withLastAdminGuard,
+} from "./users-guard.ts";
+import {
   CommandExecutionError,
   executeAuthorizedTasks,
 } from "./device-commands.ts";
@@ -413,29 +417,20 @@ for (const [resource, flags] of Object.entries(resources)) {
 
       // Last-admin guard: deleting the final account whose roles grant
       // users:3 would lock every installation administrator out (the
-      // runbook recovery requires direct database access).
+      // runbook recovery requires direct database access). The check
+      // and the delete run under the shared user-guard lock so two
+      // parallel deletes cannot both pass the invariant.
       if (resource === "users") {
-        const all = await collections.users
-          .find({}, { projection: { _id: 1, roles: 1 } })
-          .toArray();
-        const adminRoles = new Set(
-          (
-            await collections.permissions
-              .find({ resource: "users", access: 3 })
-              .toArray()
-          ).map((p) => p.role),
-        );
-        const admins = all.filter((u) =>
-          String(u.roles)
-            .split(",")
-            .some((r) => adminRoles.has(r)),
-        );
-        if (admins.length === 1 && admins[0]._id === ctx.params.id) {
+        try {
+          await withLastAdminGuard(async () => ({
+            remainingAdmins: await countAdminsAfter([ctx.params.id]),
+          }));
+        } catch (err) {
           log.message += " refused (last admin)";
           logger.accessWarn(log);
           sendSafeLegacyError(
             ctx,
-            409,
+            (err as { status?: number }).status ?? 409,
             "last_admin_refused",
             "Menghapus admin terakhir ditolak. Pulihkan lewat runbook reset admin.",
           );

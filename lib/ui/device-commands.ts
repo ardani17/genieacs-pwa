@@ -204,6 +204,17 @@ export async function executeAuthorizedTasks(
         "operationId sudah dipakai untuk request berbeda",
       );
     if (claim.claim === "existing") {
+      // Replay re-authorization: the stored outcome is only visible to
+      // the owner (or a logs:2 admin) who can STILL see the target
+      // device under their CURRENT permission filter — a revoked or
+      // out-of-scope caller gets a 404, never the result.
+      const stillAuthorized = await authorizeOperationRead(
+        ctx.authorizer,
+        claim.operation,
+        ctx.username ?? "",
+      );
+      if (!stillAuthorized)
+        throw new CommandExecutionError(404, "NOT_FOUND", "no such device");
       return {
         state: claim.operation.state,
         phases: claim.operation.phases as CommandPhase[],

@@ -168,11 +168,24 @@ export async function executeWanOperation(
       "CONFLICT",
       "operationId sudah dipakai untuk request berbeda",
     );
-  if (claim.claim === "existing")
+  if (claim.claim === "existing") {
+    // Replay re-authorization: same rule as the commands executor —
+    // only the owner (or logs:2 admin) who can STILL see the device
+    // receives the stored outcome; warnings observed during the run
+    // travel WITH the record from now on.
+    const { authorizeOperationRead } = await import("./device-commands.ts");
+    const stillAuthorized = await authorizeOperationRead(
+      ctx.authorizer,
+      claim.operation,
+      ctx.username ?? "",
+    );
+    if (!stillAuthorized)
+      throw new CommandExecutionError(404, "NOT_FOUND", "no such device");
     return {
       ...operationOutcome(claim.operation),
-      warnings: [],
+      warnings: (claim.operation as { warnings?: string[] }).warnings ?? [],
     };
+  }
 
   const warnings: string[] = [];
   const phases: CommandPhase[] = [];

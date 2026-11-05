@@ -33,6 +33,13 @@ import {
 } from "../engine-app-logger.ts";
 import { generateSalt, hashPassword } from "../auth.ts";
 import { collections } from "../db/db.ts";
+import {
+  countAdminsAfter,
+  fetchScopedUser,
+  userPassesFilter,
+  withLastAdminGuard,
+  LastAdminError,
+} from "./users-guard.ts";
 import { del as cacheDel } from "../cache.ts";
 import * as db from "./db.ts";
 import { buildLogQuery } from "./log-query.ts";
@@ -616,6 +623,11 @@ router.post("/app/admin/users", async (ctx) => {
     appError(ctx, 400, "VALIDATION", "Minimal satu role", false);
     return;
   }
+  if (!userPassesFilter(ctx.state.authorizer, username)) {
+    // Out-of-scope identities are indistinguishable from missing ones.
+    appError(ctx, 404, "NOT_FOUND", "Pengguna tidak ditemukan", false);
+    return;
+  }
   const existing = await collections.users.findOne({ _id: username });
   if (existing) {
     appError(ctx, 409, "CONFLICT", "Pengguna sudah ada", false);
@@ -632,12 +644,28 @@ router.post("/app/admin/users", async (ctx) => {
   }
   const salt = await generateSalt(64);
   const hash = await hashPassword(password, salt);
-  await collections.users.insertOne({
-    _id: username,
-    password: hash,
-    salt,
-    roles: roles.join(","),
-  });
+  try {
+    await withLastAdminGuard(async () => {
+      const remaining = await countAdminsAfter([], new Map([[username, roles.join(",")]]));
+      await collections.users.insertOne({
+        _id: username,
+        password: hash,
+        salt,
+        roles: roles.join(","),
+      });
+      return { remainingAdmins: remaining };
+    });
+  } catch (err) {
+    if (err instanceof LastAdminError) {
+      appError(ctx, 409, "CONFLICT", err.message, false);
+      return;
+    }
+    if ((err as { status?: number }).status === 503) {
+      appError(ctx, 503, "CONFLICT", (err as Error).message, true);
+      return;
+    }
+    throw err;
+  }
   await cacheDel("ui-local-cache-hash");
   ctx.status = 200;
   ctx.type = "application/json";
@@ -659,7 +687,8 @@ router.put("/app/admin/users/:id/roles", async (ctx) => {
     appError(ctx, 400, "VALIDATION", "Minimal satu role", false);
     return;
   }
-  const user = await collections.users.findOne({ _id: ctx.params.id });
+  // Scoped fetch: an out-of-scope target is a 404, not a 403 leak.
+  const user = await fetchScopedUser(ctx.state.authorizer, ctx.params.id);
   if (!user) {
     appError(ctx, 404, "NOT_FOUND", "Pengguna tidak ditemukan", false);
     return;
@@ -673,10 +702,30 @@ router.put("/app/admin/users/:id/roles", async (ctx) => {
     appError(ctx, 403, "FORBIDDEN", "Validator menolak perubahan ini", false);
     return;
   }
-  await collections.users.updateOne(
-    { _id: ctx.params.id },
-    { $set: { roles: roles.join(",") } },
-  );
+  try {
+    await withLastAdminGuard(async () => {
+      const remaining = await countAdminsAfter(
+        [],
+        new Map([[ctx.params.id, roles.join(",")]]),
+      );
+      if (remaining < 1) throw new LastAdminError();
+      await collections.users.updateOne(
+        { _id: ctx.params.id },
+        { $set: { roles: roles.join(",") } },
+      );
+      return { remainingAdmins: remaining };
+    });
+  } catch (err) {
+    if (err instanceof LastAdminError) {
+      appError(ctx, 409, "CONFLICT", err.message, false);
+      return;
+    }
+    if ((err as { status?: number }).status === 503) {
+      appError(ctx, 503, "CONFLICT", (err as Error).message, true);
+      return;
+    }
+    throw err;
+  }
   await cacheDel("ui-local-cache-hash");
   ctx.status = 200;
   ctx.type = "application/json";
@@ -697,7 +746,9 @@ router.put("/app/admin/users/:id/password", async (ctx) => {
     appError(ctx, 400, "VALIDATION", "Password minimal 8 karakter", false);
     return;
   }
-  const user = await collections.users.findOne({ _id: ctx.params.id });
+  // Scoped fetch: out-of-scope targets 404 (a password reset outside
+  // the caller's user filter must not exist to them).
+  const user = await fetchScopedUser(ctx.state.authorizer, ctx.params.id);
   if (!user) {
     appError(ctx, 404, "NOT_FOUND", "Pengguna tidak ditemukan", false);
     return;
