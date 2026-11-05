@@ -140,15 +140,23 @@ test("deleted user sessions die within the snapshot window", async ({
   await expect(page.getByText(username)).toBeVisible();
 
   const victim = await browser.newContext();
-  const login = await victim.request.post("/api/app/login", {
-    headers: {
-      Origin: "http://localhost:3000",
-      "X-App-Request": "1",
-      "Content-Type": "application/json",
-    },
-    data: { username, password: "Fixture-Only-2026!" },
-  });
-  expect(login.ok()).toBe(true);
+  // The engine snapshot refreshes on its 5s window — a brand-new user
+  // may not be login-visible for a few seconds (longer under suite
+  // load). Bounded retries, well under the login rate limit.
+  let login: Awaited<ReturnType<typeof victim.request.post>> | null = null;
+  for (let attempt = 0; attempt < 12; ++attempt) {
+    login = await victim.request.post("/api/app/login", {
+      headers: {
+        Origin: "http://localhost:3000",
+        "X-App-Request": "1",
+        "Content-Type": "application/json",
+      },
+      data: { username, password: "Fixture-Only-2026!" },
+    });
+    if (login.ok()) break;
+    await page.waitForTimeout(2500);
+  }
+  expect(login?.ok()).toBe(true);
   const victimPage = await victim.newPage();
   await victimPage.goto("/overview");
   await expect(
