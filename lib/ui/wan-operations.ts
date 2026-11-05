@@ -23,6 +23,7 @@ import {
   completeOperation,
   getOperation,
   operationOutcome,
+  recordPhases,
   requestFingerprint,
 } from "./operation-store.ts";
 import {
@@ -216,14 +217,35 @@ export async function executeWanOperation(
   };
 
   // One WAN operation per device+collection at a time.
+  // Whole-operation lease (STD-04): a WAN mutation spans write → CR →
+  // awaitSessionEnd (120s) → verify — far beyond the old 5s lease, so a
+  // second operation could start mid-flight once the lock expired.
+  // Hold 300s and renew at each phase boundary; ownership is reverified
+  // before every mutation.
   const wanLock = `wan_${deviceId}_${collection}`;
-  const lockToken = await acquireLock(wanLock, 5000, 30000);
+  const LOCK_TTL_MS = 300_000;
+  let lockToken = await acquireLock(wanLock, LOCK_TTL_MS, 30_000);
   if (!lockToken)
     throw new CommandExecutionError(
       409,
       "CONFLICT",
       "Operasi WAN lain sedang berjalan pada target ini",
     );
+  const renewLease = async (): Promise<boolean> => {
+    const renewed = await acquireLock(wanLock, LOCK_TTL_MS, 0, lockToken);
+    if (renewed === lockToken) return true;
+    // Lost ownership — a renewing competitor took the lock.
+    lockToken = null;
+    return false;
+  };
+  const ensureLease = (): void => {
+    if (!lockToken)
+      throw new CommandExecutionError(
+        409,
+        "CONFLICT",
+        "Lease operasi WAN hilang; operasi dihentikan",
+      );
+  };
 
   const run = async (
     authorizer: Authorizer,
@@ -270,6 +292,7 @@ export async function executeWanOperation(
     );
 
     // --- phase: write (exactly once) ---
+    if (!(await renewLease())) ensureLease();
     const write = await run(ctx.authorizer, [task]);
     phase(
       "write",
@@ -301,6 +324,7 @@ export async function executeWanOperation(
       refresh.state,
       refresh.statuses.map((t) => t._id),
     );
+    await recordPhases(operationId, phases);
     if (refresh.state !== "succeeded") {
       // Write applied, confirmation missing: partial, no follow-up.
       return await finish(operationId, deviceId, "partial", phases, warnings);
@@ -364,6 +388,7 @@ export async function executeWanOperation(
           "",
       );
       if (desiredBind && currentBind !== desiredBind) {
+        if (!(await renewLease())) ensureLease();
         const reapply = await run(reauth, [
           {
             name: "setParameterValues",
@@ -381,6 +406,7 @@ export async function executeWanOperation(
           reapply.state,
           reapply.statuses.map((t) => t._id),
         );
+        await recordPhases(operationId, phases);
         if (reapply.state !== "succeeded") {
           return await finish(
             operationId,
@@ -439,7 +465,7 @@ export async function executeWanOperation(
       observedInstance,
     );
   } finally {
-    await releaseLock(wanLock, lockToken);
+    if (lockToken) await releaseLock(wanLock, lockToken);
   }
 }
 

@@ -130,6 +130,9 @@ export async function getOperation(
   return collections.appOperations.findOne({ _id: operationId });
 }
 
+// Record phase progress atomically (STD-04): $set phases only — the
+// operation state stays whatever completeOperation last wrote, and a
+// concurrent lookup sees coherent per-phase progress without replay.
 export async function recordPhases(
   operationId: string,
   phases: CommandPhase[],
