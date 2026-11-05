@@ -16,9 +16,8 @@ import {
   ParameterListView,
   ParameterTableView,
   ParameterView,
-  type ConfigNode,
-  type RenderContext,
 } from "./components";
+import type { ConfigNode, RenderContext } from "./config-node";
 
 export const REGISTRY_TYPES = [
   "parameter",

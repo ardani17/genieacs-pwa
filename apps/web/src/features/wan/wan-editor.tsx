@@ -93,6 +93,12 @@ export function WanEditor({
           cache: "no-store",
         }),
       ]);
+      if (!deviceRes.ok || !profileRes.ok) {
+        // Non-2xx carries the typed error envelope; the shared error
+        // state covers it exactly like an ok:false body below.
+        setState("error");
+        return;
+      }
       const deviceBody = (await deviceRes.json()) as ApiResult<FlatDevice>;
       const profileBody = (await profileRes.json()) as ApiResult<{
         profile: DeviceProfile;
@@ -160,6 +166,17 @@ export function WanEditor({
     setBusy(true);
     setError(null);
     if (!operationId.current) operationId.current = crypto.randomUUID();
+    const apply = (result: ApiResult<WanOutcome>): void => {
+      if (result.ok !== true) {
+        if (result.error.code === "RESULT_UNKNOWN")
+          setError("Hasil belum terkonfirmasi — koneksi terputus.");
+        else setError(result.error.message);
+      } else {
+        setOutcome(result.data);
+        // The submitted password leaves memory immediately.
+        setSettings({ ...settings, password: "" });
+      }
+    };
     try {
       const res = await fetch(
         `/api/app/devices/${encodeURIComponent(deviceId)}/wan`,
@@ -176,16 +193,13 @@ export function WanEditor({
           cache: "no-store",
         },
       );
-      const body = (await res.json()) as ApiResult<WanOutcome>;
-      if (body.ok !== true) {
-        if (body.error.code === "RESULT_UNKNOWN")
-          setError("Hasil belum terkonfirmasi — koneksi terputus.");
-        else setError(body.error.message);
-      } else {
-        setOutcome(body.data);
-        // The submitted password leaves memory immediately.
-        setSettings({ ...settings, password: "" });
+      if (!res.ok) {
+        // Non-2xx still carries the typed envelope; unparseable bodies
+        // fall through to the catch below (same as before).
+        apply((await res.json()) as ApiResult<WanOutcome>);
+        return;
       }
+      apply((await res.json()) as ApiResult<WanOutcome>);
     } catch {
       setError("Hasil belum terkonfirmasi — koneksi terputus.");
     }

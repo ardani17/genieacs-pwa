@@ -26,52 +26,11 @@ import {
 } from "./ui/sheet";
 import { cn } from "@/lib/utils";
 import { useSession } from "./session-provider";
-
-export interface NavItem {
-  href: string;
-  label: string;
-  requiredResource?: string;
-  minAccess?: 1 | 2 | 3;
-}
-
-// Route availability: modules not yet merged are hidden until they land
-// (feature availability map) — navigation never links to unbuilt pages.
-export const FEATURE_AVAILABILITY: Record<string, boolean> = {
-  "/overview": true,
-  "/devices": true,
-  "/devices/[id]": true,
-  "/tasks": true,
-  "/faults": true,
-  "/diagnostics/logs": false,
-  "/account/password": true,
-  "/admin/presets": true,
-  "/admin/provisions": true,
-  "/admin/virtual-parameters": true,
-  "/admin/config": true,
-  "/admin/users": true,
-  "/admin/permissions": true,
-  "/admin/files": true,
-};
-
-export const NAV_ITEMS: NavItem[] = [
-  { href: "/overview", label: "Ringkasan" },
-  { href: "/devices", label: "Perangkat" },
-  { href: "/tasks", label: "Task" },
-  { href: "/faults", label: "Diagnosis" },
-  {
-    href: "/diagnostics/logs",
-    label: "Log global",
-    requiredResource: "logs",
-    minAccess: 3,
-  },
-  {
-    href: "/admin/config",
-    label: "Admin",
-    requiredResource: "config",
-    minAccess: 1,
-  },
-  { href: "/account/password", label: "Akun" },
-];
+import {
+  FEATURE_AVAILABILITY,
+  NAV_ITEMS,
+  type NavItem,
+} from "./navigation-items";
 
 function hasResource(
   session: { permissionSets: Record<string, { access: number }>[] },
@@ -140,7 +99,7 @@ export function Navigation() {
     );
   };
   const brand = (
-    <a
+    <Link
       href="/overview"
       className="flex min-h-11 items-center gap-3 font-semibold tracking-tight"
     >
@@ -150,7 +109,7 @@ export function Navigation() {
       <span>
         GenieACS <span className="font-normal text-muted-foreground">PWA</span>
       </span>
-    </a>
+    </Link>
   );
   return (
     <>

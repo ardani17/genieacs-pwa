@@ -9,39 +9,12 @@ import type { ReactNode } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Status } from "@/components/ui/status";
 import { evaluateToText, evaluateUiExpression } from "./expression";
-import type { FlatDeviceLike } from "../../../../../packages/device-profiles/src/types.ts";
-
-export interface RenderContext {
-  device: FlatDeviceLike;
-  now: number;
-}
-
-export interface ConfigNode {
-  type: string;
-  label?: string;
-  parameter?: string;
-  expression?: unknown;
-  components?: ConfigNode[];
-  href?: unknown;
-  url?: unknown;
-  deviceId?: unknown;
-  chartType?: string;
-  /** Unknown keys survive untouched — the renderer never rewrites config. */
-  [key: string]: unknown;
-}
-
-const SAFE_HREF = /^(https?:\/\/|\/)/i;
-const STYLE_PROP = /^(a-zA-Z-)+$/;
-const ALLOWED_STYLE_PROPS = new Set([
-  "color",
-  "background-color",
-  "font-weight",
-  "text-align",
-  "width",
-  "flex-direction",
-  "gap",
-  "display",
-]);
+import {
+  SAFE_HREF,
+  configChildKey,
+  type ConfigNode,
+  type RenderContext,
+} from "./config-node";
 
 function nodeText(node: ConfigNode, ctx: RenderContext): string {
   if (node.parameter != null)
@@ -53,15 +26,6 @@ function nodeText(node: ConfigNode, ctx: RenderContext): string {
   if (node.expression != null)
     return evaluateToText(node.expression as never, ctx.device, ctx.now);
   return node.label ?? "";
-}
-
-function safeStyle(style: unknown): React.CSSProperties | undefined {
-  if (!style || typeof style !== "object") return undefined;
-  const out: Record<string, string> = {};
-  for (const [k, v] of Object.entries(style as Record<string, unknown>)) {
-    if (ALLOWED_STYLE_PROPS.has(k) && typeof v === "string") out[k] = v;
-  }
-  return Object.keys(out).length ? (out as React.CSSProperties) : undefined;
 }
 
 export function ParameterView({
@@ -99,7 +63,7 @@ export function ParameterListView({
       ) : null}
       <ul className="space-y-1">
         {list.map((child, i) => (
-          <li key={i} className="text-sm">
+          <li key={configChildKey(child, i)} className="text-sm">
             {nodeText(child, ctx)}
           </li>
         ))}
@@ -159,7 +123,7 @@ export function ContainerView({
           <h3 className="text-sm font-semibold">{node.label}</h3>
         ) : null}
         {(node.components ?? []).map((child, i) => (
-          <div key={i}>{renderChild(child, ctx)}</div>
+          <div key={configChildKey(child, i)}>{renderChild(child, ctx)}</div>
         ))}
       </CardContent>
     </Card>
@@ -185,7 +149,7 @@ export function AnchorView({
   // (javascript:, data:, …) is dropped entirely.
   if (!rawHref || !SAFE_HREF.test(rawHref)) return null;
   const children = (node.components ?? []).map((child, i) => (
-    <span key={i}>{renderChild(child, ctx)}</span>
+    <span key={configChildKey(child, i)}>{renderChild(child, ctx)}</span>
   ));
   return (
     <a
@@ -263,7 +227,7 @@ export function DeviceLinkView({
       className="inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline"
     >
       {(node.components ?? []).map((child, i) => (
-        <span key={i}>{renderChild(child, ctx)}</span>
+        <span key={configChildKey(child, i)}>{renderChild(child, ctx)}</span>
       )) ||
         node.label ||
         deviceId}
@@ -274,5 +238,3 @@ export function DeviceLinkView({
 export function LoadingView({ label }: { label?: string }): ReactNode {
   return <Status tone="muted">{label ?? "Memuat…"}</Status>;
 }
-
-export { SAFE_HREF, STYLE_PROP, safeStyle };

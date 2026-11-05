@@ -24,6 +24,7 @@ export function TagEditor({ deviceId }: { deviceId: string }) {
             `/api/app/devices/${encodeURIComponent(deviceId)}`,
             { cache: "no-store" },
           );
+          if (!res.ok) return; // tags stay empty on read failure
           const body = (await res.json()) as ApiResult<Record<string, unknown>>;
           if (body.ok !== true) return;
           deviceRef.current = body.data;
@@ -53,6 +54,13 @@ export function TagEditor({ deviceId }: { deviceId: string }) {
           cache: "no-store",
         },
       );
+      if (!res.ok) {
+        // Non-2xx still carries the typed envelope; unparseable bodies
+        // fall through to the catch below (same as before).
+        const errBody = (await res.json()) as ApiResult<unknown>;
+        if (errBody.ok !== true) setError(errBody.error.message);
+        return;
+      }
       const body = (await res.json()) as ApiResult<unknown>;
       if (body.ok !== true) {
         setError(body.error.message);

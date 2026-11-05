@@ -5,6 +5,7 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
 } from "react";
 import type { SessionDTO } from "@contracts/api.ts";
@@ -63,10 +64,13 @@ export function SessionProvider({
     };
   }, [initial.phase, refresh]);
 
+  const value = useMemo(
+    () => ({ state, refresh, clear }),
+    [state, refresh, clear],
+  );
+
   return (
-    <SessionContext.Provider value={{ state, refresh, clear }}>
-      {children}
-    </SessionContext.Provider>
+    <SessionContext.Provider value={value}>{children}</SessionContext.Provider>
   );
 }
 

@@ -1,4 +1,5 @@
 import { Network } from "lucide-react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { PageHeader } from "@/components/page-header";
@@ -13,7 +14,7 @@ export default function Home() {
             description="Pantau perangkat, telusuri parameter, dan periksa koneksi dalam satu ruang kerja."
           />
           <Button asChild>
-            <a href="/login">Masuk ke ruang kerja</a>
+            <Link href="/login">Masuk ke ruang kerja</Link>
           </Button>
         </CardContent>
       </Card>

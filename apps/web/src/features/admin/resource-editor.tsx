@@ -5,7 +5,14 @@
 // routes (no second config DB). Unsaved changes guard navigation;
 // saves re-fetch the resource and warn on concurrent modification
 // (native has no atomic CAS — reload or explicit overwrite only).
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Status } from "@/components/ui/status";
@@ -21,29 +28,161 @@ import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import type { ApiResult } from "@contracts/api.ts";
 import { CodeEditor, type CodeLanguage } from "./code-editor";
+import { maskValue, type ResourceEditorConfig } from "./resource-editor-shared";
 
-export interface ResourceEditorConfig {
+// Left pane: the resource entry list. Each entry is a faux link (same
+// page section) that opens the editor in place.
+function ResourceListPane({
+  resource,
+  items,
+  selectedId,
+  onOpen,
+}: {
   resource: string;
-  title: string;
-  language: CodeLanguage;
-  // Which document field holds the editable source; new documents are
-  // created with this field empty.
-  sourceField: string;
-  blankDocument: () => Record<string, unknown>;
-  // Optional storage transforms: presets (and similar structured
-  // resources) edit a serialized view but PUT the native object.
-  serialize?: (doc: Record<string, unknown>) => string;
-  deserialize?: (
-    source: string,
-    draft: Record<string, unknown>,
-  ) => Record<string, unknown>;
+  items: Record<string, unknown>[];
+  selectedId: unknown;
+  onOpen: (id: string | null) => void;
+}) {
+  return (
+    <Card>
+      <CardContent className="space-y-2">
+        <ul className="divide-y">
+          {items.map((item) => (
+            <li key={String(item["_id"])} className="py-1">
+              <a
+                href={`/admin/${resource === "virtualParameters" ? "virtual-parameters" : resource}`}
+                onClick={(e) => {
+                  e.preventDefault();
+                  onOpen(String(item["_id"]));
+                }}
+                className="flex min-h-11 items-center break-all text-sm text-primary hover:underline"
+                aria-current={selectedId === item["_id"] ? "true" : undefined}
+              >
+                {String(item["_id"])}
+              </a>
+            </li>
+          ))}
+          {!items.length ? (
+            <li className="py-2 text-xs text-muted-foreground">
+              Belum ada entri.
+            </li>
+          ) : null}
+        </ul>
+        <Button variant="outline" size="sm" onClick={() => onOpen(null)}>
+          Tambah
+        </Button>
+      </CardContent>
+    </Card>
+  );
 }
 
-const CREDENTIAL_LOOKING = /password|secret|token|key|credential/i;
+// Right pane: name field, (masked) source editor and actions.
+function ResourceEditorPane({
+  language,
+  draft,
+  hasExistingId,
+  masked,
+  maskedSource,
+  revealed,
+  canRevealSecrets,
+  error,
+  busy,
+  dirty,
+  onNameChange,
+  onToggleReveal,
+  onSourceChange,
+  onSave,
+  onDelete,
+}: {
+  language: CodeLanguage;
+  draft: Record<string, unknown>;
+  hasExistingId: boolean;
+  masked: boolean;
+  maskedSource: string;
+  revealed: boolean;
+  canRevealSecrets: boolean;
+  error: string | null;
+  busy: boolean;
+  dirty: boolean;
+  onNameChange: (value: string) => void;
+  onToggleReveal: () => void;
+  onSourceChange: (next: string) => void;
+  onSave: () => void;
+  onDelete: () => void;
+}) {
+  return (
+    <Card>
+      <CardContent className="space-y-3">
+        <Field label="Nama" required>
+          {({ id }) => (
+            <Input
+              id={id}
+              value={String(draft["_id"] ?? "")}
+              disabled={hasExistingId}
+              aria-label="Nama"
+              onChange={(e) => onNameChange(e.target.value)}
+            />
+          )}
+        </Field>
+        {masked ? (
+          <div className="space-y-1">
+            <Status tone="warning">
+              Nilai tampak seperti kredensial dan disembunyikan.
+            </Status>
+            {canRevealSecrets ? (
+              <Button variant="outline" size="sm" onClick={onToggleReveal}>
+                {revealed ? "Sembunyikan" : "Tampilkan nilai"}
+              </Button>
+            ) : null}
+          </div>
+        ) : null}
+        <CodeEditor
+          value={maskedSource}
+          language={language}
+          readOnly={!revealed && masked}
+          onChange={onSourceChange}
+        />
+        {error ? <Status tone="warning">{error}</Status> : null}
+        <div className="flex flex-wrap gap-2">
+          <Button onClick={onSave} busy={busy} disabled={!dirty}>
+            Simpan
+          </Button>
+          {hasExistingId ? (
+            <Button variant="destructive" onClick={onDelete} disabled={busy}>
+              Hapus
+            </Button>
+          ) : null}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
 
-export function maskValue(id: string, value: string): string {
-  if (CREDENTIAL_LOOKING.test(id)) return "••••••••";
-  return value;
+// Shared confirmation dialog shell for the conflict and delete flows.
+function EditorDialog({
+  open,
+  onOpenChange,
+  title,
+  description,
+  footer,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  title: string;
+  description: string;
+  footer: ReactNode;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          <DialogDescription>{description}</DialogDescription>
+        </DialogHeader>
+        <DialogFooter>{footer}</DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 export function ResourceEditor({
@@ -167,7 +306,6 @@ export function ResourceEditor({
             void put(true);
           };
           setConflictOpen(true);
-          setBusy(false);
           return;
         }
       }
@@ -177,7 +315,6 @@ export function ResourceEditor({
           doc = config.deserialize(source, draft);
         } catch (err) {
           setError(`Format tidak valid: ${(err as Error).message}`);
-          setBusy(false);
           return;
         }
       } else {
@@ -208,8 +345,9 @@ export function ResourceEditor({
       }
     } catch {
       setError("Resource tidak dapat disimpan — koneksi terputus.");
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
   };
 
   const remove = async (): Promise<void> => {
@@ -234,8 +372,9 @@ export function ResourceEditor({
       }
     } catch {
       setError("Resource tidak dapat dihapus — koneksi terputus.");
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
   };
 
   const maskedSource = useMemo(() => {
@@ -254,121 +393,52 @@ export function ResourceEditor({
 
   return (
     <div className="grid gap-6 lg:grid-cols-[240px_1fr]">
-      <Card>
-        <CardContent className="space-y-2">
-          <ul className="divide-y">
-            {items.map((item) => (
-              <li key={String(item["_id"])} className="py-1">
-                <a
-                  href={`/admin/${resource === "virtualParameters" ? "virtual-parameters" : resource}`}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    void open(String(item["_id"]));
-                  }}
-                  className="flex min-h-11 items-center break-all text-sm text-primary hover:underline"
-                  aria-current={
-                    selected?.["_id"] === item["_id"] ? "true" : undefined
-                  }
-                >
-                  {String(item["_id"])}
-                </a>
-              </li>
-            ))}
-            {!items.length ? (
-              <li className="py-2 text-xs text-muted-foreground">
-                Belum ada entri.
-              </li>
-            ) : null}
-          </ul>
-          <Button variant="outline" size="sm" onClick={() => void open(null)}>
-            Tambah
-          </Button>
-        </CardContent>
-      </Card>
-      <Card>
-        <CardContent className="space-y-3">
-          {draft ? (
-            <>
-              <Field label="Nama" required>
-                {({ id }) => (
-                  <Input
-                    id={id}
-                    value={String(draft["_id"] ?? "")}
-                    disabled={!!selected?.["_id"]}
-                    aria-label="Nama"
-                    onChange={(e) => {
-                      setDraft({ ...draft, _id: e.target.value });
-                      setDirty(true);
-                    }}
-                  />
-                )}
-              </Field>
-              {maskedSource !== source ? (
-                <div className="space-y-1">
-                  <Status tone="warning">
-                    Nilai tampak seperti kredensial dan disembunyikan.
-                  </Status>
-                  {canRevealSecrets ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setRevealed((r) => !r)}
-                    >
-                      {revealed ? "Sembunyikan" : "Tampilkan nilai"}
-                    </Button>
-                  ) : null}
-                </div>
-              ) : null}
-              <CodeEditor
-                value={maskedSource}
-                language={language}
-                readOnly={!revealed && maskedSource !== source}
-                onChange={(next) => {
-                  setSource(next);
-                  setDirty(true);
-                }}
-              />
-              {error ? <Status tone="warning">{error}</Status> : null}
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  onClick={() => void put(false)}
-                  busy={busy}
-                  disabled={!dirty}
-                >
-                  Simpan
-                </Button>
-                {selected?.["_id"] ? (
-                  <Button
-                    variant="destructive"
-                    onClick={() => setDeleteTarget(String(selected["_id"]))}
-                    disabled={busy}
-                  >
-                    Hapus
-                  </Button>
-                ) : null}
-              </div>
-            </>
-          ) : (
+      <ResourceListPane
+        resource={resource}
+        items={items}
+        selectedId={selected?.["_id"]}
+        onOpen={(id) => void open(id)}
+      />
+      {draft ? (
+        <ResourceEditorPane
+          language={language}
+          draft={draft}
+          hasExistingId={!!selected?.["_id"]}
+          masked={maskedSource !== source}
+          maskedSource={maskedSource}
+          revealed={revealed}
+          canRevealSecrets={canRevealSecrets}
+          error={error}
+          busy={busy}
+          dirty={dirty}
+          onNameChange={(value) => {
+            setDraft({ ...draft, _id: value });
+            setDirty(true);
+          }}
+          onToggleReveal={() => setRevealed((r) => !r)}
+          onSourceChange={(next) => {
+            setSource(next);
+            setDirty(true);
+          }}
+          onSave={() => void put(false)}
+          onDelete={() => setDeleteTarget(String(selected?.["_id"]))}
+        />
+      ) : (
+        <Card>
+          <CardContent className="space-y-3">
             <Status tone="muted">Pilih entri di kiri atau Tambah.</Status>
-          )}
-        </CardContent>
-      </Card>
-      <Dialog
+          </CardContent>
+        </Card>
+      )}
+      <EditorDialog
         open={conflictOpen}
         onOpenChange={(open) => {
           if (!open) setConflictOpen(false);
         }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Resource berubah sejak dimuat</DialogTitle>
-            <DialogDescription>
-              Entri ini dimodifikasi lain sejak Anda membukanya (native tidak
-              menyediakan CAS atomik). Muat ulang untuk melihat versi terbaru,
-              atau timpa secara eksplisit.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
+        title="Resource berubah sejak dimuat"
+        description="Entri ini dimodifikasi lain sejak Anda membukanya (native tidak menyediakan CAS atomik). Muat ulang untuk melihat versi terbaru, atau timpa secara eksplisit."
+        footer={
+          <>
             <Button
               variant="outline"
               onClick={() => {
@@ -379,33 +449,26 @@ export function ResourceEditor({
               Muat ulang
             </Button>
             <Button onClick={() => conflictRef.current?.()}>Timpa</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      <Dialog
+          </>
+        }
+      />
+      <EditorDialog
         open={deleteTarget !== null}
         onOpenChange={(open) => {
           if (!open) setDeleteTarget(null);
         }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Hapus {deleteTarget}?</DialogTitle>
-            <DialogDescription>
-              Tindakan ini permanen dan dijalankan lewat server.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button
-              variant="destructive"
-              onClick={() => void remove()}
-              busy={busy}
-            >
-              Hapus
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        title={`Hapus ${deleteTarget}?`}
+        description="Tindakan ini permanen dan dijalankan lewat server."
+        footer={
+          <Button
+            variant="destructive"
+            onClick={() => void remove()}
+            busy={busy}
+          >
+            Hapus
+          </Button>
+        }
+      />
     </div>
   );
 }

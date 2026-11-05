@@ -103,48 +103,54 @@ export function PermissionManager() {
   const add = async (): Promise<void> => {
     setBusy(true);
     setError(null);
-    const id = `${role}:${resource}:${access}`;
-    const doc: Record<string, unknown> = {
-      _id: id,
-      role,
-      resource,
-      access: Number(access),
-      validate: validate || undefined,
-      filter: filter || undefined,
-    };
-    const res = await fetch(
-      `/api/app/resources/permissions/${encodeURIComponent(id)}`,
-      {
-        method: "PUT",
-        headers: { "Content-Type": "application/json", "X-App-Request": "1" },
-        body: JSON.stringify(doc),
-        cache: "no-store",
-      },
-    );
-    if (!res.ok) setError("Permission tidak dapat disimpan.");
-    else {
-      setAdding(false);
-      setRole("");
-      setFilter("");
-      await load();
+    try {
+      const id = `${role}:${resource}:${access}`;
+      const doc: Record<string, unknown> = {
+        _id: id,
+        role,
+        resource,
+        access: Number(access),
+        validate: validate || undefined,
+        filter: filter || undefined,
+      };
+      const res = await fetch(
+        `/api/app/resources/permissions/${encodeURIComponent(id)}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", "X-App-Request": "1" },
+          body: JSON.stringify(doc),
+          cache: "no-store",
+        },
+      );
+      if (!res.ok) setError("Permission tidak dapat disimpan.");
+      else {
+        setAdding(false);
+        setRole("");
+        setFilter("");
+        await load();
+      }
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
   };
 
   const remove = async (id: string): Promise<void> => {
     setBusy(true);
     setError(null);
-    const res = await fetch(
-      `/api/app/resources/permissions/${encodeURIComponent(id)}`,
-      {
-        method: "DELETE",
-        headers: { "X-App-Request": "1" },
-        cache: "no-store",
-      },
-    );
-    if (!res.ok) setError("Permission tidak dapat dihapus.");
-    else await load();
-    setBusy(false);
+    try {
+      const res = await fetch(
+        `/api/app/resources/permissions/${encodeURIComponent(id)}`,
+        {
+          method: "DELETE",
+          headers: { "X-App-Request": "1" },
+          cache: "no-store",
+        },
+      );
+      if (!res.ok) setError("Permission tidak dapat dihapus.");
+      else await load();
+    } finally {
+      setBusy(false);
+    }
   };
 
   if (state === "forbidden")

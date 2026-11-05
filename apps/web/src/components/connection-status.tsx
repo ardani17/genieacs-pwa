@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { useConnection } from "./connection-provider";
 import { Status, type StatusTone } from "./ui/status";
 
@@ -18,8 +19,21 @@ const VPN_TEXT: Record<string, { tone: StatusTone; text: string }> = {
   unconfigured: { tone: "muted", text: "VPN belum dikonfigurasi" },
 };
 
+// Locale formatting lives outside the render path (id-ID output is
+// identical to the previous inline call).
+function formatSuccessTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString("id-ID");
+}
+
 export function ConnectionStatus() {
   const { app, vpn, lastSuccessAt } = useConnection();
+
+  // Locale formatting is computed off the direct render path (id-ID
+  // output is identical to the previous inline call).
+  const lastSuccessText = useMemo(
+    () => (lastSuccessAt ? formatSuccessTime(lastSuccessAt) : null),
+    [lastSuccessAt],
+  );
 
   const appView =
     app === "reachable"
@@ -40,10 +54,9 @@ export function ConnectionStatus() {
     >
       <Status tone={appView.tone}>{appView.text}</Status>
       <Status tone={vpnView.tone}>{vpnView.text}</Status>
-      {lastSuccessAt ? (
+      {lastSuccessText ? (
         <small className="text-xs text-muted-foreground">
-          Terakhir berhasil:{" "}
-          {new Date(lastSuccessAt).toLocaleTimeString("id-ID")}
+          Terakhir berhasil: {lastSuccessText}
         </small>
       ) : null}
     </div>

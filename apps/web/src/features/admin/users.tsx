@@ -37,6 +37,24 @@ async function call<T>(
       body: body === undefined ? undefined : JSON.stringify(body),
       cache: "no-store",
     });
+    if (!res.ok) {
+      // Non-2xx responses still carry the typed envelope; anything
+      // unparseable degrades to the same offline result as a throw.
+      const errBody = (await res
+        .json()
+        .catch(() => null)) as ApiResult<T> | null;
+      return errBody && typeof errBody === "object" && "ok" in errBody
+        ? errBody
+        : {
+            ok: false,
+            error: {
+              code: "RESULT_UNKNOWN",
+              message: "Koneksi terputus",
+              retryable: false,
+            },
+            requestId: "unknown",
+          };
+    }
     return (await res.json()) as ApiResult<T>;
   } catch {
     return {
@@ -112,52 +130,61 @@ export function UserManager() {
   const createUser = async (): Promise<void> => {
     setBusy(true);
     setError(null);
-    const result = await call("/api/app/admin/users", "POST", {
-      username: newName,
-      password: newPassword,
-      roles: newRoles,
-    });
-    if (result.ok !== true) setError(result.error.message);
-    else {
-      setCreating(false);
-      setNewName("");
+    try {
+      const result = await call("/api/app/admin/users", "POST", {
+        username: newName,
+        password: newPassword,
+        roles: newRoles,
+      });
+      if (result.ok !== true) setError(result.error.message);
+      else {
+        setCreating(false);
+        setNewName("");
+        setNewPassword("");
+        setNewRoles("");
+        await load();
+      }
       setNewPassword("");
-      setNewRoles("");
-      await load();
+    } finally {
+      setBusy(false);
     }
-    setNewPassword("");
-    setBusy(false);
   };
 
   const resetPwd = async (): Promise<void> => {
     if (!resetTarget) return;
     setBusy(true);
     setError(null);
-    const result = await call(
-      `/api/app/admin/users/${encodeURIComponent(resetTarget)}/password`,
-      "PUT",
-      { newPassword: resetPassword },
-    );
-    if (result.ok !== true) setError(result.error.message);
-    else setResetTarget(null);
-    setResetPassword("");
-    setBusy(false);
+    try {
+      const result = await call(
+        `/api/app/admin/users/${encodeURIComponent(resetTarget)}/password`,
+        "PUT",
+        { newPassword: resetPassword },
+      );
+      if (result.ok !== true) setError(result.error.message);
+      else setResetTarget(null);
+      setResetPassword("");
+    } finally {
+      setBusy(false);
+    }
   };
 
   const removeUser = async (): Promise<void> => {
     if (!deleteTarget) return;
     setBusy(true);
     setError(null);
-    const result = await call<{ locked?: boolean }>(
-      `/api/app/resources/users/${encodeURIComponent(deleteTarget)}`,
-      "DELETE",
-    );
-    if (result.ok !== true) setError(result.error.message);
-    else {
-      setDeleteTarget(null);
-      await load();
+    try {
+      const result = await call<{ locked?: boolean }>(
+        `/api/app/resources/users/${encodeURIComponent(deleteTarget)}`,
+        "DELETE",
+      );
+      if (result.ok !== true) setError(result.error.message);
+      else {
+        setDeleteTarget(null);
+        await load();
+      }
+    } finally {
+      setBusy(false);
     }
-    setBusy(false);
   };
 
   if (state === "forbidden")

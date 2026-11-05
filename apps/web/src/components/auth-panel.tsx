@@ -1,4 +1,5 @@
 import { Network } from "lucide-react";
+import Link from "next/link";
 import {
   Card,
   CardContent,
@@ -18,7 +19,7 @@ export function AuthPanel({
   return (
     <main className="flex min-h-dvh items-center justify-center px-4 py-8">
       <div className="w-full max-w-md space-y-8">
-        <a
+        <Link
           href="/"
           className="mx-auto flex min-h-11 w-fit items-center gap-3 text-lg font-semibold"
         >
@@ -27,7 +28,7 @@ export function AuthPanel({
           </span>
           GenieACS{" "}
           <span className="font-normal text-muted-foreground">PWA</span>
-        </a>
+        </Link>
         <Card>
           <CardHeader>
             <CardTitle className="text-2xl" role="heading" aria-level={1}>
