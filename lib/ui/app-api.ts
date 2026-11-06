@@ -156,65 +156,21 @@ router.post("/app/logs", async (ctx) => {
   const filters = ctx.request.body as Record<string, unknown>;
   let q;
   try {
-    if (typeof filters["query"] === "string" && filters["query"]) {
-      // The BFF pre-built this query with the same closed builder;
-      // accept it with engine-side bounds — never a raw client query
-      // (the BFF only forwards what its own builder produced).
-      const limit = Math.min(
-        500,
-        Math.max(1, Number(filters["limit"] ?? 100) || 100),
-      );
-      const offset = Math.min(
-        5000,
-        Math.max(0, Number(filters["offset"] ?? 0) || 0),
-      );
-      if (
-        typeof filters["start"] !== "string" ||
-        typeof filters["end"] !== "string"
-      )
-        throw new Error("invalid window");
-      q = {
-        query: filters["query"],
-        start: filters["start"],
-        end: filters["end"],
-        limit,
-        offset,
-      };
-    } else {
-      q = buildLogQuery(
-        filters as import("../../packages/app-contracts/src/log-query.ts").LogFilters,
-      );
-    }
+    // The engine is the query authority: the CLOSED builder runs here
+    // on the raw wire filters (the BFF forwards them untouched), so no
+    // prebuilt query string ever crosses the boundary — a raw LogsQL
+    // "query" key is rejected like any other unknown field.
+    q = buildLogQuery(
+      filters as import("../../packages/app-contracts/src/log-query.ts").LogFilters,
+    );
   } catch (err) {
-    ctx.status = 400;
-    ctx.type = "application/json";
-    ctx.set("Cache-Control", "private, no-store");
-    ctx.body = JSON.stringify({
-      ok: false,
-      error: {
-        code: "VALIDATION",
-        message: (err as Error).message,
-        retryable: false,
-      },
-      requestId: errorRequestId(ctx),
-    });
+    appError(ctx, 400, "VALIDATION", (err as Error).message, false);
     return;
   }
 
   const logUrl = process.env["LOG_URL"];
   if (!logUrl) {
-    ctx.status = 503;
-    ctx.type = "application/json";
-    ctx.set("Cache-Control", "private, no-store");
-    ctx.body = JSON.stringify({
-      ok: false,
-      error: {
-        code: "BACKEND_UNAVAILABLE",
-        message: "Log store unavailable",
-        retryable: true,
-      },
-      requestId: errorRequestId(ctx),
-    });
+    appError(ctx, 503, "BACKEND_UNAVAILABLE", "Log store unavailable", true);
     return;
   }
 
@@ -233,34 +189,12 @@ router.post("/app/logs", async (ctx) => {
       signal: AbortSignal.timeout(5000),
     });
   } catch {
-    ctx.status = 503;
-    ctx.type = "application/json";
-    ctx.set("Cache-Control", "private, no-store");
-    ctx.body = JSON.stringify({
-      ok: false,
-      error: {
-        code: "BACKEND_UNAVAILABLE",
-        message: "Log store unavailable",
-        retryable: true,
-      },
-      requestId: errorRequestId(ctx),
-    });
+    appError(ctx, 503, "BACKEND_UNAVAILABLE", "Log store unavailable", true);
     return;
   }
 
   if (!response.ok) {
-    ctx.status = 503;
-    ctx.type = "application/json";
-    ctx.set("Cache-Control", "private, no-store");
-    ctx.body = JSON.stringify({
-      ok: false,
-      error: {
-        code: "BACKEND_UNAVAILABLE",
-        message: "Log store unavailable",
-        retryable: true,
-      },
-      requestId: errorRequestId(ctx),
-    });
+    appError(ctx, 503, "BACKEND_UNAVAILABLE", "Log store unavailable", true);
     return;
   }
 
@@ -280,9 +214,10 @@ router.post("/app/logs", async (ctx) => {
 });
 
 // POST /api/app/logs/export — bounded export (≤10.000 rows, 30s
-// budget) through the same checked-field query the search uses. The
-// BFF pre-builds the query; this side only validates bounds and
-// executes. Emits the contract audit event logs.export (filter field
+// budget) through the same CLOSED builder the search uses, run here on
+// the raw wire filters with the export limit profile (the wire format
+// stays closed LogFilters — no prebuilt query string crosses the
+// boundary). Emits the contract audit event logs.export (filter field
 // names + row count, never contents).
 router.post("/app/logs/export", async (ctx) => {
   if (!ctx.state.user?.username) return void (ctx.status = 401);
@@ -292,26 +227,16 @@ router.post("/app/logs/export", async (ctx) => {
     return void (ctx.status = 403);
   }
 
-  const q = ctx.request.body as {
-    query?: unknown;
-    start?: unknown;
-    end?: unknown;
-    limit?: unknown;
-    offset?: unknown;
-  };
-  const LIMIT_MAX = 10_000;
-  const OFFSET_MAX = 5_000;
-  if (typeof q.query !== "string" || !q.query) {
-    appError(ctx, 400, "VALIDATION", "Query export tidak valid", false);
-    return;
-  }
-  const limit = Math.min(
-    LIMIT_MAX,
-    Math.max(1, Number(q.limit ?? LIMIT_MAX) || LIMIT_MAX),
-  );
-  const offset = Math.min(OFFSET_MAX, Math.max(0, Number(q.offset ?? 0) || 0));
-  if (typeof q.start !== "string" || typeof q.end !== "string") {
-    appError(ctx, 400, "VALIDATION", "Rentang waktu export wajib", false);
+  const filters = ctx.request.body as Record<string, unknown>;
+  const EXPORT_LIMIT_MAX = 10_000;
+  let q;
+  try {
+    q = buildLogQuery(
+      filters as import("../../packages/app-contracts/src/log-query.ts").LogFilters,
+      { limitMax: EXPORT_LIMIT_MAX },
+    );
+  } catch (err) {
+    appError(ctx, 400, "VALIDATION", (err as Error).message, false);
     return;
   }
 
@@ -325,8 +250,8 @@ router.post("/app/logs/export", async (ctx) => {
   try {
     const params = new URLSearchParams({
       query: q.query,
-      limit: String(limit),
-      offset: String(offset),
+      limit: String(q.limit),
+      offset: String(q.offset),
       start: String(Math.floor(Date.parse(q.start) / 1000)) + "s",
       end: String(Math.floor(Date.parse(q.end) / 1000)) + "s",
     });
@@ -352,7 +277,7 @@ router.post("/app/logs/export", async (ctx) => {
     message: "log export executed",
     requestId: errorRequestId(ctx),
     actorId: ctx.state.user.username,
-    details: { rows, limit, offset },
+    details: { rows, limit: q.limit, offset: q.offset },
   });
 
   ctx.status = 200;
@@ -691,6 +616,13 @@ router.post("/app/admin/users", async (ctx) => {
     }
     if ((err as { status?: number }).status === 503) {
       appError(ctx, 503, "CONFLICT", (err as Error).message, true);
+      return;
+    }
+    // The findOne pre-check races a concurrent create with the same
+    // username: the loser's insertOne fails E11000 — surface it as the
+    // intended conflict, not an unstructured 500.
+    if ((err as { code?: number }).code === 11000) {
+      appError(ctx, 409, "CONFLICT", "Pengguna sudah ada", false);
       return;
     }
     throw err;

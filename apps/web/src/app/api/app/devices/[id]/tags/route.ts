@@ -107,17 +107,22 @@ export async function POST(
         { status: 404, headers: correlationHeaders(ctx) },
       );
     if (!upstream.ok)
+      // Unmapped statuses are backend faults (engine 500 on a Mongo
+      // outage, throttling, ...): report them as retryable backend
+      // unavailability like every sibling route — a permanent-looking
+      // 400 VALIDATION sends the operator debugging a client error
+      // that does not exist.
       return NextResponse.json(
         {
           ok: false,
           error: {
-            code: "VALIDATION",
+            code: "BACKEND_UNAVAILABLE",
             message: "Tags tidak dapat diperbarui",
-            retryable: false,
+            retryable: true,
           },
           requestId: ctx.requestId,
         },
-        { status: 400, headers: correlationHeaders(ctx) },
+        { status: 503, headers: correlationHeaders(ctx) },
       );
     return NextResponse.json(
       { ok: true, data: {}, requestId: ctx.requestId },

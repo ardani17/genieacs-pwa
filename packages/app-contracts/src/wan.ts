@@ -43,6 +43,24 @@ export function validateWanOperationRequest(
     return { ok: false, error: "settings wajib objek" };
   if (b["deviceId"] != null && b["deviceId"] !== deviceId)
     return { ok: false, error: "deviceId body tidak cocok dengan target URL" };
+  const settings = b["settings"] as Record<string, unknown>;
+  // Field-level checks for the values the executor dereferences without
+  // guards: a bridged conversion re-applies the LAN binding whenever
+  // the mode resolves to bridged (the "IP_Bridged"/"PPPoE_Bridged"
+  // forms and the "bridge" alias) — enable=false must not exempt
+  // lanBind (the write phase has already touched the device by the
+  // time it is needed).
+  if (typeof settings["mode"] !== "string" || !settings["mode"])
+    return { ok: false, error: "settings.mode wajib string" };
+  if (
+    /bridge/i.test(settings["mode"]) &&
+    (typeof settings["lanBind"] !== "string" ||
+      !(settings["lanBind"] as string).trim())
+  )
+    return {
+      ok: false,
+      error: "Pilih LAN/SSID untuk WAN bridge (wajib untuk mode bridged).",
+    };
   return {
     ok: true,
     value: {

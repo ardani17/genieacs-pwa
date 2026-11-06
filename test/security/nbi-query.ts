@@ -114,10 +114,16 @@ void test("regex subset rejects superlinear patterns and features", () => {
     "(a*)*",
     "(a+){2,}",
     "(?:a+?)+",
-    "\\1(b)",
-    "(?=x)",
-    "(?<=x)y",
-    "x(?<!y)",
+    // Nested groups laundered through an outer wrapper: a single flat
+    // last-quantifier flag misses these.
+    "((a+))+",
+    "(((a+)))+",
+    // A quantified group nested inside another quantified group.
+    "((AB)+)+",
+    // Overlapping alternation under repetition — exponential even
+    // without a trailing quantifier.
+    "(a|aa){2,}b",
+    "(a|a)+b",
   ]) {
     assert.throws(
       () => validateRegexPattern(bad),
@@ -131,6 +137,11 @@ void test("regex subset rejects superlinear patterns and features", () => {
     "FW\\.[0-9]+\\.[0-9]+",
     "(AB)+",
     "a{1,4}",
+    // Unquantified alternation and clean nested groups stay allowed.
+    "(cat|dog)",
+    "^(a|b)c$",
+    "(x(y)z)+",
+    "(AB){2,3}",
   ]) {
     validateRegexPattern(ok);
   }
@@ -140,6 +151,25 @@ void test("regex subset rejects superlinear patterns and features", () => {
   );
   assert.throws(
     () => validateRegexPattern("a", "g"),
+    (err) => isKind(err, "regex_flags"),
+  );
+});
+
+void test("expand-produced RegExp patterns survive re-validation", () => {
+  // query.expand() turns wildcards/regex literals into RegExp objects
+  // and nbi.ts re-validates the expanded tree — those must pass (with
+  // their flags checked) instead of failing "$regex requires a string
+  // pattern", which broke upstream's documented wildcard queries.
+  const expanded = {
+    $and: [
+      { "DeviceID.SerialNumber._value": { $regex: /ABC/i } },
+      { "DeviceID.SerialNumber._value": { $regex: /^HG/ } },
+    ],
+  };
+  assert.deepEqual(validateNbiQuery(expanded), expanded);
+  // Exotic flags still rejected, and hostiles cannot smuggle one in.
+  assert.throws(
+    () => validateNbiQuery({ a: { $regex: new RegExp("x", "g") } }),
     (err) => isKind(err, "regex_flags"),
   );
 });

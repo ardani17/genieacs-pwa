@@ -59,7 +59,15 @@ export async function GET(
   try {
     const upstream = await engineFetch(
       `/api/blob/files/${encodeURIComponent(id)}`,
-      { cookie, requestId: ctx.requestId, timeoutMs: 30_000 },
+      {
+        cookie,
+        requestId: ctx.requestId,
+        // The abort signal stays attached for the WHOLE streamed body,
+        // so the budget must cover the transfer, not just the headers:
+        // uploads up to 100MiB are allowed, and 100MiB over a 10 Mbps
+        // link takes ~80s — a 30s cap truncated every large download.
+        timeoutMs: 300_000,
+      },
     );
     if (!upstream.ok)
       return NextResponse.json(

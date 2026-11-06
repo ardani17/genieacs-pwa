@@ -74,9 +74,14 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-// Linear-time regex subset: no backreferences, no lookaround, and no
-// quantifier applied to a sub-expression that already ends in a
-// quantifier (the classic ReDoS shapes like /(a+)+/ or /(a|aa){2,}+/).
+// Linear-time regex subset: no backreferences, no lookaround, no
+// quantifier applied to a group that ends in a quantifier, and no
+// quantifier applied to any group containing a quantifier or an
+// alternation at any depth (the classic ReDoS shapes /(a+)+/,
+// /((a+))+/, /((AB)+)+/, /(a|aa){2,}/, /(a|a)+/ — a single flat flag
+// loses the inner group's shape when the outer group closes, and
+// alternation under repetition is exponentially ambiguous even
+// without a trailing quantifier).
 export function validateRegexPattern(pattern: string, flags?: string): void {
   if (pattern.length > REGEX_PATTERN_MAX)
     fail("regex_length", `regex pattern exceeds ${REGEX_PATTERN_MAX} chars`);
@@ -88,19 +93,31 @@ export function validateRegexPattern(pattern: string, flags?: string): void {
   if (/\(\?=<?!?|\(\?>|\(\?<[=!]/.test(pattern) || /\(\?[[':]/.test(pattern))
     fail("regex_feature", "regex lookaround/groups extensions are not allowed");
 
-  // Nested-quantifier scan: after a group closes we remember whether the
-  // group's body ended in a quantifier; a quantifier applied to such a
-  // group — the classic /(a+)+/ and /(a*)*/ shapes — is rejected.
-  const groupDepthStack: number[] = [];
-  let groupEndedQuantified = false;
+  // Per-depth scan state: each group frame tracks whether its body is
+  // "risky" (contains a quantifier, an alternation, or a quantified
+  // child group). Quantifying a risky group — or a group ending in a
+  // quantified atom — is rejected; risk propagates to the parent when
+  // the group closes so nested shapes cannot launder it.
+  interface GroupFrame {
+    risky: boolean;
+    lastAtomQuantified: boolean;
+  }
+  const groupStack: GroupFrame[] = [];
+  const frame = (): GroupFrame | undefined => groupStack[groupStack.length - 1];
   let lastAtomQuantified = false;
+  let pendingGroupRisky = false;
+  let pendingGroupEndsQuantified = false;
   let escaped = false;
   let inClass = false;
+  const isQuantifierChar = (c: string | undefined): boolean =>
+    c === "+" || c === "*" || c === "?" || c === "{";
   for (let i = 0; i < pattern.length; ++i) {
     const ch = pattern[i];
     if (escaped) {
       escaped = false;
       lastAtomQuantified = false;
+      pendingGroupRisky = false;
+      pendingGroupEndsQuantified = false;
       continue;
     }
     if (ch === "\\") {
@@ -114,43 +131,72 @@ export function validateRegexPattern(pattern: string, flags?: string): void {
     if (ch === "[") {
       inClass = true;
       lastAtomQuantified = false;
+      pendingGroupRisky = false;
+      pendingGroupEndsQuantified = false;
       continue;
     }
     if (ch === "(") {
-      groupDepthStack.push(1);
+      groupStack.push({ risky: false, lastAtomQuantified: false });
       lastAtomQuantified = false;
+      pendingGroupRisky = false;
+      pendingGroupEndsQuantified = false;
       continue;
     }
     if (ch === ")") {
-      if (!groupDepthStack.pop())
-        fail("regex_feature", "unbalanced regex groups");
-      groupEndedQuantified = lastAtomQuantified;
+      const closed = groupStack.pop();
+      if (!closed) fail("regex_feature", "unbalanced regex groups");
+      if (isQuantifierChar(pattern[i + 1])) {
+        // Defer to the quantifier branch, which enforces the rejection;
+        // a quantified subexpression will exist in the parent either way.
+        pendingGroupRisky = closed.risky;
+        pendingGroupEndsQuantified = closed.lastAtomQuantified;
+        lastAtomQuantified = false;
+        const parent = frame();
+        if (parent) parent.risky = true;
+        continue;
+      }
+      // Plain atom in concatenation: only the group's internal risk
+      // travels upward (it matters exactly when an ANCESTOR is later
+      // quantified).
+      if (closed.risky) {
+        const parent = frame();
+        if (parent) parent.risky = true;
+      }
+      pendingGroupRisky = false;
+      pendingGroupEndsQuantified = false;
       lastAtomQuantified = false;
       continue;
     }
-    if (ch === "+" || ch === "*" || ch === "?") {
-      if (lastAtomQuantified || groupEndedQuantified)
-        fail("regex_feature", "nested quantifiers are not allowed");
-      lastAtomQuantified = true;
-      groupEndedQuantified = false;
+    if (ch === "|") {
+      const current = frame();
+      if (current) current.risky = true;
+      lastAtomQuantified = false;
+      pendingGroupRisky = false;
+      pendingGroupEndsQuantified = false;
       continue;
     }
-    if (ch === "{") {
-      if (lastAtomQuantified || groupEndedQuantified)
+    if (isQuantifierChar(ch)) {
+      if (lastAtomQuantified || pendingGroupRisky || pendingGroupEndsQuantified)
         fail("regex_feature", "nested quantifiers are not allowed");
-      const close = pattern.indexOf("}", i);
-      if (close === -1) fail("regex_feature", "malformed regex repetition");
-      if (!/^\{\d+(,\d*)?\}$/.test(pattern.slice(i, close + 1)))
-        fail("regex_feature", "malformed regex repetition");
-      i = close;
+      if (ch === "{") {
+        const close = pattern.indexOf("}", i);
+        if (close === -1) fail("regex_feature", "malformed regex repetition");
+        if (!/^\{\d+(,\d*)?\}$/.test(pattern.slice(i, close + 1)))
+          fail("regex_feature", "malformed regex repetition");
+        i = close;
+      }
+      const current = frame();
+      if (current) current.risky = true;
       lastAtomQuantified = true;
-      groupEndedQuantified = false;
+      pendingGroupRisky = false;
+      pendingGroupEndsQuantified = false;
       continue;
     }
     lastAtomQuantified = false;
-    groupEndedQuantified = false;
+    pendingGroupRisky = false;
+    pendingGroupEndsQuantified = false;
   }
-  if (groupDepthStack.length) fail("regex_feature", "unbalanced regex groups");
+  if (groupStack.length) fail("regex_feature", "unbalanced regex groups");
 }
 
 interface QueryLimits {
@@ -177,9 +223,16 @@ function validateFieldOperatorBody(
       return;
     }
     case "$regex":
-      if (typeof value !== "string")
-        fail("operator_shape", "$regex requires a string pattern");
-      validateRegexPattern(value);
+      // JSON wire input is always a string; a RegExp object can only
+      // come from query.expand() re-entering validation with a
+      // wildcard/regex-literal it synthesized ("*ABC*" → /ABC/, or
+      // "/abc/i" with its flags). Accept those by validating source
+      // and flags through the same linear-time check, preserving
+      // upstream's documented wildcard device queries.
+      if (typeof value === "string") validateRegexPattern(value);
+      else if (value instanceof RegExp)
+        validateRegexPattern(value.source, [...value.flags].sort().join(""));
+      else fail("operator_shape", "$regex requires a string pattern");
       return;
     case "$options":
       if (typeof value !== "string" || !REGEX_FLAGS_ALLOWED.test(value))

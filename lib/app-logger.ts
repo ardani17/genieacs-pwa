@@ -308,7 +308,10 @@ export function createAppLogger(options: AppLoggerOptions): AppLogger {
         await mkdir(dirname(options.filePath), { recursive: true });
         await appendFile(options.filePath, line + "\n", { mode: 0o640 });
       }
-      currentBytes += line.length + 1;
+      // Byte-accurate like the queue accounting below (appendFile
+      // writes UTF-8): .length counts UTF-16 code units and would let
+      // multibyte lines rotate late, drifting the disk budget.
+      currentBytes += Buffer.byteLength(line, "utf8") + 1;
       if (currentBytes >= ROTATE_MAX_BYTES) {
         for (let i = ROTATE_KEEP - 1; i > 0; --i) {
           try {

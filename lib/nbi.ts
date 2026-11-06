@@ -707,9 +707,16 @@ async function handler(
       throw err;
     }
 
+    // Migration note: an absent limit used to stream unboundedly; the
+    // closed grammar now caps it at LIMIT_DEFAULT. `total` stays the
+    // unbounded filter count (pagination needs it), so flag the cut —
+    // otherwise a capped body looks like the complete collection.
+    const appliedLimit = listOptions.limit ?? LIMIT_DEFAULT;
+    const truncated = listOptions.limit === undefined && total > appliedLimit;
     response.writeHead(200, {
       "Content-Type": "application/json",
       total: total,
+      ...(truncated ? { truncated: String(appliedLimit) } : {}),
     });
 
     if (request.method === "HEAD") {
@@ -717,10 +724,8 @@ async function handler(
       return;
     }
 
-    // Migration note: an absent limit used to stream unboundedly; the
-    // closed grammar now caps it at LIMIT_DEFAULT.
     if (listOptions.skip !== undefined) cur.skip(listOptions.skip);
-    cur.limit(listOptions.limit ?? LIMIT_DEFAULT);
+    cur.limit(appliedLimit);
 
     response.write("[\n");
     i = 0;

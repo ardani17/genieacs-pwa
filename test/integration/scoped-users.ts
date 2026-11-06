@@ -121,6 +121,31 @@ void test("scoped user mutations: filter scope, validator, last admin", async (t
       assert.ok([403, 404].includes(denied.status));
     });
 
+    await t.test(
+      "legacy PUT creates a new user (upstream create-or-update)",
+      async () => {
+        // The upstream Mithril UI creates users via PUT with the new
+        // id (ui/users-page.ts putResource isNew) — the scoped
+        // pre-check must not 404 unknown ids for callers whose filter
+        // admits the proposed identity.
+        const created = await app.appRequest(
+          "/api/users/managed-put-created",
+          {
+            method: "PUT",
+            body: JSON.stringify({ roles: "fixtureOperator" }),
+          },
+          "admin",
+        );
+        assert.equal(created.status, 200);
+        const doc = await collections.users.findOne({
+          _id: "managed-put-created",
+        });
+        assert.ok(doc);
+        assert.equal(doc.roles, "fixtureOperator");
+        await collections.users.deleteOne({ _id: "managed-put-created" });
+      },
+    );
+
     await t.test("last admin delete and demote refused", async () => {
       // Leave exactly one admin-capable account ("admin").
       await collections.users.deleteOne({ _id: "managed-second-admin" });

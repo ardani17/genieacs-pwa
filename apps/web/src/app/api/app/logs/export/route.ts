@@ -59,17 +59,16 @@ export async function POST(request: Request): Promise<NextResponse> {
   }
 
   try {
-    // Validate through the closed builder (its own max is 500); the
-    // engine export endpoint applies the 10k export budget itself.
-    const q = buildLogQuery(body as never);
-    // The search builder caps at 500 (its own max); export rides the
-    // engine's 10k budget — raise the limit AFTER validation.
-    q.limit = 10000;
+    // Validate locally for a fast 400, then forward the RAW filters:
+    // the engine rebuilds through its own closed builder with the
+    // export limit profile (10k) — no prebuilt query string travels
+    // the wire, mirroring the search route.
+    buildLogQuery(body as never);
     const upstream = await engineFetch("/api/app/logs/export", {
       method: "POST",
       cookie,
       requestId: ctx.requestId,
-      body: JSON.stringify(q),
+      body: JSON.stringify(body),
       timeoutMs: 32_000,
     });
     if (upstream.status === 403)

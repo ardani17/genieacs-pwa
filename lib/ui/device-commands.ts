@@ -33,6 +33,7 @@ import type { WanDevice } from "../../packages/device-profiles/src/wan-types.ts"
 import {
   claimOperation,
   completeOperation,
+  deleteOperation,
   getOperation,
   legacyRequestFingerprint,
   operationOutcome,
@@ -65,10 +66,20 @@ export interface ExecutorContext {
 // Resolve the CRURL hostname (when it is not an IP literal) with a
 // bounded timeout; failures simply yield no addresses — the guard then
 // treats the path as unidentified and blocks destructive mutations.
+// The bound matters: this runs INSIDE the per-device cwmp_session lock,
+// and getaddrinfo can otherwise stall for 30s+ on a device-supplied
+// hostname with an unresponsive resolver, silently breaking the lock's
+// serialization once its TTL lapses.
+const DNS_RESOLVE_TIMEOUT_MS = 5_000;
 const defaultResolve = (host: string): Promise<string[]> =>
-  lookup(host, { all: true })
-    .then((addrs) => addrs.map((a) => a.address))
-    .catch(() => []);
+  Promise.race([
+    lookup(host, { all: true })
+      .then((addrs) => addrs.map((a) => a.address))
+      .catch(() => []),
+    new Promise<string[]>((resolve) => {
+      setTimeout(() => resolve([]), DNS_RESOLVE_TIMEOUT_MS).unref();
+    }),
+  ]);
 
 export async function resolveCrurlHosts(
   device: WanDevice,
@@ -317,13 +328,20 @@ export async function executeAuthorizedTasks(
   const operationId = options.operation?.operationId;
   // Post-claim failures must not leave a phantom in_progress record
   // (plan: finalize every error after the claim) — the catch marks
-  // the operation unknown and rethrows.
-  const finalizeOnPostClaimError = async (err: unknown): Promise<never> => {
+  // the operation unknown and rethrows. Callers that already have
+  // phase evidence (task ids) pass it so the record keeps what DID
+  // run instead of a bare synthetic phase.
+  const finalizeOnPostClaimError = async (
+    err: unknown,
+    phases?: CommandPhase[],
+  ): Promise<never> => {
     if (operationId) {
       try {
-        await completeOperation(operationId, "unknown", [
-          { name: "execute", state: "unknown", taskIds: [] },
-        ]);
+        await completeOperation(
+          operationId,
+          "unknown",
+          phases ?? [{ name: "execute", state: "unknown", taskIds: [] }],
+        );
       } catch {
         // best-effort finalization only
       }
@@ -344,9 +362,25 @@ export async function executeAuthorizedTasks(
 
   // 3. Serialize concurrent task submissions per device (native lock
   //    semantics preserved: the lock covers validation + insertion).
-  const token = await acquireLock(`cwmp_session_${deviceId}`, 5000, 30000);
-  if (!token)
+  let token: string | null = null;
+  try {
+    token = await acquireLock(`cwmp_session_${deviceId}`, 5000, 30000);
+  } catch (err) {
+    throw await finalizeOnPostClaimError(err);
+  }
+  if (!token) {
+    // Contention BEFORE any device work ran: drop the claim so the
+    // client's retry actually re-executes (the 503 is retryable)
+    // instead of replaying a dead in_progress record until restart.
+    if (operationId) {
+      try {
+        await deleteOperation(operationId);
+      } catch {
+        // Degraded: the restart sweep / 24h TTL eventually clears it.
+      }
+    }
     throw new CommandExecutionError(503, "CONFLICT", "Device is in session");
+  }
 
   let device: Record<string, { value?: [unknown, string] }> | null = null;
   let statuses: { _id: string; status: string; faultCode?: string }[] = [];
@@ -442,6 +476,18 @@ export async function executeAuthorizedTasks(
         }
       }
     }
+  } catch (err) {
+    // Step 5 runs AFTER the insert try/catch closed — without this
+    // catch any exception here (malformed ConnectionRequestURL in the
+    // online-threshold callback, missing Events.Inform, a throwing
+    // connectionRequest) escapes with the claim still in_progress.
+    throw await finalizeOnPostClaimError(err, [
+      {
+        name: "execute",
+        state: "unknown",
+        taskIds: statuses.map((t) => t._id),
+      },
+    ]);
   } finally {
     // Attempted tasks are always cleaned up (native semantics); on
     // probe failure they stay "pending" in the RESULT while the queued

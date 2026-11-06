@@ -146,6 +146,18 @@ export async function getOperation(
   return collections.appOperations.findOne({ _id: operationId });
 }
 
+// Drop a claim that never started device work (e.g. lock contention
+// before the first phase ran) so the client's retry re-executes
+// instead of replaying a dead in_progress record. The state filter
+// keeps a completed record intact if a concurrent writer finalized it
+// first.
+export async function deleteOperation(operationId: string): Promise<void> {
+  await collections.appOperations.deleteOne({
+    _id: operationId,
+    state: "in_progress",
+  });
+}
+
 // Record phase progress atomically (STD-04): $set phases only — the
 // operation state stays whatever completeOperation last wrote, and a
 // concurrent lookup sees coherent per-phase progress without replay.

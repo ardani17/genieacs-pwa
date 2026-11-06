@@ -11,6 +11,7 @@ import assert from "node:assert/strict";
 import { startApp, type AppHarness } from "./helpers/app.ts";
 import { collections } from "../lib/db/db.ts";
 import { runWanPhases, executeWanOperation } from "../lib/ui/wan-operations.ts";
+import { getOperation } from "../lib/ui/operation-store.ts";
 import {
   CommandExecutionError,
   type ExecutorDeps,
@@ -532,21 +533,29 @@ void test("wan operations: phases, partials, guards, idempotency", async (t) => 
     );
 
     await t.test("concurrent target is rejected with 409", async () => {
+      const fake = fakeCwmpDeps({ deviceId: "TEST-WAN-2" });
+      const request = wanRequest(7, "TEST-WAN-2", {
+        settings: bridgeSettings(),
+      });
       const token = await acquireLock(`wan_TEST-WAN-2_${WAN_IP}`, 5000, 1000);
       assert.ok(token);
       try {
-        const fake = fakeCwmpDeps({ deviceId: "TEST-WAN-2" });
         await assert.rejects(
-          executeWanOperation(
-            ctx,
-            wanRequest(7, "TEST-WAN-2", { settings: bridgeSettings() }),
-            { deps: fake.deps },
-          ),
+          executeWanOperation(ctx, request, { deps: fake.deps }),
           (err: CommandExecutionError) => err.status === 409,
         );
+        // Contention happened before any device work: the claim is
+        // RELEASED (not stranded in_progress) so the client's retry
+        // re-executes instead of replaying a dead record.
+        assert.equal(await getOperation(request.operationId), null);
       } finally {
         await releaseLock(`wan_TEST-WAN-2_${WAN_IP}`, token);
       }
+      // Same operationId, lock now free — the retry runs for real.
+      const retry = await executeWanOperation(ctx, request, {
+        deps: fake.deps,
+      });
+      assert.equal(retry.state, "succeeded");
     });
 
     await t.test(

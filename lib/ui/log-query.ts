@@ -40,7 +40,10 @@ function escapeLogsqlString(value: string): string {
   return cleaned;
 }
 
-export function buildLogQuery(filters: LogFilters): {
+export function buildLogQuery(
+  filters: LogFilters,
+  opts: { limitMax?: number } = {},
+): {
   query: string;
   start?: string;
   end?: string;
@@ -50,6 +53,7 @@ export function buildLogQuery(filters: LogFilters): {
   if (filters.query !== undefined)
     throw new LogQueryError("raw query expressions are not allowed");
 
+  const limitMax = opts.limitMax ?? LOG_LIMIT_MAX;
   const now = Date.now();
   let startMs: number;
   let endMs: number;
@@ -74,9 +78,9 @@ export function buildLogQuery(filters: LogFilters): {
   if (endMs - startMs > LOG_WINDOW_MAX_MS)
     throw new LogQueryError("time window exceeds 24h");
 
-  const limit = filters.limit ?? LOG_LIMIT_DEFAULT;
-  if (!Number.isInteger(limit) || limit < 1 || limit > LOG_LIMIT_MAX)
-    throw new LogQueryError(`limit must be 1..${LOG_LIMIT_MAX}`);
+  const limit = filters.limit ?? Math.min(LOG_LIMIT_DEFAULT, limitMax);
+  if (!Number.isInteger(limit) || limit < 1 || limit > limitMax)
+    throw new LogQueryError(`limit must be 1..${limitMax}`);
 
   const offset = filters.offset ?? 0;
   if (!Number.isInteger(offset) || offset < 0 || offset > LOG_OFFSET_MAX)

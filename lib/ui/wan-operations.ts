@@ -21,6 +21,7 @@ import {
 import {
   claimOperation,
   completeOperation,
+  deleteOperation,
   getOperation,
   legacyRequestFingerprint,
   operationOutcome,
@@ -149,6 +150,13 @@ export async function executeWanOperation(
       "collection bukan koleksi WAN TR-098",
     );
 
+  // Authorize BEFORE claiming (same order as the commands executor):
+  // a 403 must never touch the store — a claimed-then-refused
+  // operationId stays burned for its TTL and replays as a stored
+  // "unknown" instead of executing once permissions are granted.
+  if (!ctx.authorizer.hasAccess("devices", 3))
+    throw new CommandExecutionError(403, "FORBIDDEN", "not authorized");
+
   // Idempotency through the shared store: same body returns the stored
   // outcome; a different body under the same id conflicts.
   const fingerprint = requestFingerprint({
@@ -163,13 +171,10 @@ export async function executeWanOperation(
     deviceId,
     "wan",
     fingerprint,
-    // TTL-window compat with pre-canonical HMAC records — only when
-    // the caller's fingerprint matches the actual body's canonical
-    // form (route-behaving callers).
-    fingerprint ===
-      requestFingerprint({ deviceId, collection, instance, settings })
-      ? [legacyRequestFingerprint({ deviceId, collection, instance, settings })]
-      : [],
+    // TTL-window compat with pre-canonical HMAC records (raw JSON key
+    // order) — accepted alongside the canonical form until the 24h TTL
+    // retires them.
+    [legacyRequestFingerprint({ deviceId, collection, instance, settings })],
   );
   if (claim.claim === "conflict")
     throw new CommandExecutionError(
@@ -231,12 +236,18 @@ export async function executeWanOperation(
   // Hold 300s and renew at each phase boundary; ownership is reverified
   // before every mutation.
   // Post-claim failures must not leave in_progress records (plan:
-  // finalize every error after the claim).
+  // finalize every error after the claim). Phases already recorded by
+  // recordPhases are kept — a late failure must not erase the evidence
+  // of what DID run on the device.
   const finalizeOnPostClaimError = async (err: unknown): Promise<never> => {
     try {
-      await completeOperation(operationId, "unknown", [
-        { name: "write", state: "unknown", taskIds: [] },
-      ]);
+      await completeOperation(
+        operationId,
+        "unknown",
+        phases.length
+          ? phases
+          : [{ name: "write", state: "unknown", taskIds: [] }],
+      );
     } catch {
       // best-effort finalization only
     }
@@ -244,13 +255,27 @@ export async function executeWanOperation(
   };
   const wanLock = `wan_${deviceId}_${collection}`;
   const LOCK_TTL_MS = 300_000;
-  let lockToken = await acquireLock(wanLock, LOCK_TTL_MS, 30_000);
-  if (!lockToken)
+  let lockToken: string | null = null;
+  try {
+    lockToken = await acquireLock(wanLock, LOCK_TTL_MS, 30_000);
+  } catch (err) {
+    throw await finalizeOnPostClaimError(err);
+  }
+  if (!lockToken) {
+    // Contention BEFORE any device work ran: drop the claim so the
+    // client's retry actually re-executes (the 409 is retryable)
+    // instead of replaying a dead in_progress record until restart.
+    try {
+      await deleteOperation(operationId);
+    } catch {
+      // Degraded: the restart sweep / 24h TTL eventually clears it.
+    }
     throw new CommandExecutionError(
       409,
       "CONFLICT",
       "Operasi WAN lain sedang berjalan pada target ini",
     );
+  }
   const renewLease = async (): Promise<boolean> => {
     const renewed = await acquireLock(wanLock, LOCK_TTL_MS, 0, lockToken);
     if (renewed === lockToken) return true;
@@ -276,9 +301,6 @@ export async function executeWanOperation(
     });
 
   try {
-    if (!ctx.authorizer.hasAccess("devices", 3))
-      throw new CommandExecutionError(403, "FORBIDDEN", "not authorized");
-
     const device = await fetchAuthorizedDevice(ctx.authorizer, deviceId);
     if (!device)
       throw new CommandExecutionError(404, "NOT_FOUND", "no such device");
@@ -399,7 +421,11 @@ export async function executeWanOperation(
 
     // --- phase: reapply binding when converting to bridge ---
     if (bridge) {
-      const desiredBind = settings.lanBind
+      // lanBind is contract-required for bridged conversions, but this
+      // executor also serves direct engine callers — never assume the
+      // field survived validation; an empty bind simply skips the write
+      // (same as an all-blank value) instead of crashing mid-operation.
+      const desiredBind = (settings.lanBind ?? "")
         .split(",")
         .map((x) => x.trim())
         .filter(Boolean)
