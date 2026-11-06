@@ -1347,12 +1347,12 @@ async function listenerAsync(
     );
   } catch (err) {
     if ((err as { code?: string }).code === "CWMP_COOKIE") {
+      // The status line already carries the code; the body stays a
+      // fixed string so no exception-derived text reaches the CPE.
       httpResponse.writeHead((err as { exposeStatus: number }).exposeStatus, {
         Connection: "close",
       });
-      httpResponse.end(
-        `${(err as { exposeStatus: number }).exposeStatus} Request Header Fields Too Large`,
-      );
+      httpResponse.end("Request Header Fields Too Large");
       return;
     }
     throw err;
