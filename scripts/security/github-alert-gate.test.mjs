@@ -24,6 +24,13 @@ const FRESH = (sha, ref = "refs/heads/development") =>
     error: "",
   }));
 
+const INSTANCE = (state, sha, ref = "refs/pull/6/merge") => ({
+  ref,
+  commit_sha: sha,
+  state,
+  category: "/language:javascript-typescript",
+});
+
 test("successful analysis job with open alert is not a clean gate", () => {
   const r = evaluateGithubAlerts({
     alerts: [OPEN_ALERT(9)],
@@ -262,4 +269,60 @@ test("pull-request merge-ref alerts follow the same mapping and exception rules"
   assert.ok(
     byNumber.get(40).reasons.some((x) => x.startsWith("UNMAPPED_ALERT")),
   );
+});
+
+test("an instance fixed earlier on the same ref verifies once the exact-SHA analysis does", () => {
+  // GitHub pins a fixed alert's surviving instance to the LAST
+  // analysis that contained it — an older SHA. Absent from the
+  // verified exact-SHA analysis, that is fixed-on-ref evidence.
+  const earlier = evaluateGithubAlerts({
+    alerts: [
+      FIXED_ALERT(29, { most_recent_instance: INSTANCE("fixed", "old") }),
+    ],
+    analyses: FRESH("sha-new", "refs/pull/6/merge"),
+    expectedRef: "refs/pull/6/merge",
+    expectedSha: "sha-new",
+    exceptions: [],
+  });
+  assert.equal(earlier.passed, true);
+  assert.equal(earlier.alerts[0].state, "fixed_verified");
+
+  // A non-fixed instance at an older SHA, or any instance from
+  // another ref, stays stale.
+  for (const instance of [
+    INSTANCE("open", "old"),
+    INSTANCE("fixed", "old", "refs/heads/main"),
+    INSTANCE("dismissed", "old"),
+  ]) {
+    const stale = evaluateGithubAlerts({
+      alerts: [FIXED_ALERT(29, { most_recent_instance: instance })],
+      analyses: FRESH("sha-new", "refs/pull/6/merge"),
+      expectedRef: "refs/pull/6/merge",
+      expectedSha: "sha-new",
+      exceptions: [],
+    });
+    assert.equal(stale.passed, false, JSON.stringify(instance));
+    assert.ok(
+      stale.alerts[0].reasons.includes("STALE_ALERT_INSTANCE"),
+      JSON.stringify(instance),
+    );
+  }
+
+  // The same old-SHA fixed instance must NOT pass when the
+  // exact-SHA analysis is missing or failed.
+  for (const analyses of [
+    [],
+    FRESH("sha-new").map((a) => ({ ...a, error: "failed" })),
+  ]) {
+    const unverified = evaluateGithubAlerts({
+      alerts: [
+        FIXED_ALERT(29, { most_recent_instance: INSTANCE("fixed", "old") }),
+      ],
+      analyses,
+      expectedRef: "refs/pull/6/merge",
+      expectedSha: "sha-new",
+      exceptions: [],
+    });
+    assert.equal(unverified.passed, false);
+  }
 });
