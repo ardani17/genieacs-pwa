@@ -228,3 +228,38 @@ test("incomplete pagination is reflected by the caller-provided apiOk=false path
   assert.equal(r.passed, false);
   assert.equal(r.blocked, true);
 });
+
+test("pull-request merge-ref alerts follow the same mapping and exception rules", () => {
+  const base = {
+    analyses: FRESH("sha-new", "refs/pull/6/merge"),
+    expectedRef: "refs/pull/6/merge",
+    expectedSha: "sha-new",
+  };
+  // Mapped PR alert + reviewed exception -> risk_accepted; mapped and
+  // fixed on the merge SHA -> fixed_verified; unknown PR number -> blocks.
+  const r = evaluateGithubAlerts({
+    ...base,
+    alerts: [OPEN_ALERT(22), FIXED_ALERT(27), OPEN_ALERT(40)],
+    exceptions: [
+      {
+        number: 22,
+        reason: "TR-069 Annex G HMAC-SHA1",
+        scope: "lib/udp-cr-auth.ts",
+        cwe: "CWE-327",
+        compensation: "isolated helper, CSPRNG ids",
+        owner: "ardani17",
+        approvedBy: "reviewer@example.invalid",
+        reviewedAt: "2026-11-01T00:00:00.000Z",
+        expiresAt: "2026-11-30T00:00:00.000Z",
+      },
+    ],
+    now: "2026-11-01T00:00:00.000Z",
+  });
+  assert.equal(r.passed, false);
+  const byNumber = new Map(r.alerts.map((a) => [a.number, a]));
+  assert.equal(byNumber.get(22).state, "risk_accepted");
+  assert.equal(byNumber.get(27).state, "fixed_verified");
+  assert.ok(
+    byNumber.get(40).reasons.some((x) => x.startsWith("UNMAPPED_ALERT")),
+  );
+});
