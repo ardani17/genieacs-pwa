@@ -120,7 +120,7 @@ test("API errors, pagination failure and duplicate records block", async () => {
   assert.equal((await run(snapshot)).report.passed, false);
 });
 
-test("target instance overrides repository state and stale instances block", async () => {
+test("target instance overrides repository state; stale instances block unless fixed earlier on the same ref", async () => {
   const snapshot = fixture();
   snapshot.repositoryAlerts[0].state = "fixed";
   snapshot.refAlerts = [
@@ -134,9 +134,25 @@ test("target instance overrides repository state and stale instances block", asy
       },
     },
   ];
+  // An open instance on the exact target overrides repository state.
   assert.equal((await run(snapshot)).report.passed, false);
   snapshot.refAlerts[0].most_recent_instance.state = "fixed";
   snapshot.refAlerts[0].most_recent_instance.commit_sha = "old";
+  // GitHub pins a fixed alert's surviving instance to the LAST
+  // analysis that contained it (older SHA). Fixed earlier on this ref
+  // and absent from the verified exact-SHA analysis = fixed_verified.
+  const fixedEarlier = await run(snapshot);
+  assert.equal(fixedEarlier.report.passed, true);
+  assert.equal(
+    fixedEarlier.report.alerts.find((a) => a.number === 1).state,
+    "fixed_verified",
+  );
+  // A non-fixed instance at an older SHA, or any instance from
+  // another ref, is stale and blocks.
+  snapshot.refAlerts[0].most_recent_instance.state = "open";
+  assert.equal((await run(snapshot)).report.passed, false);
+  snapshot.refAlerts[0].most_recent_instance.state = "fixed";
+  snapshot.refAlerts[0].most_recent_instance.ref = "refs/heads/main";
   assert.equal((await run(snapshot)).report.passed, false);
 });
 
@@ -219,7 +235,7 @@ function prFixture(prAlerts) {
     },
     most_recent_instance: {
       ref: prRef,
-      commit_sha: expectedSha,
+      commit_sha: a.sha ?? expectedSha,
       state: a.state,
       category: "/language:javascript-typescript",
     },
@@ -232,21 +248,29 @@ test("PR merge-ref alerts are evaluated from the ref snapshot, not reported as r
     { number: 17, state: "open", severity: "medium" },
     { number: 27, state: "fixed" },
     { number: 22, state: "open" },
+    // CodeQL keeps a fixed alert's surviving instance pinned to the
+    // LAST analysis that contained it — an older merge SHA (observed
+    // for PR #6 alerts 17-29 after the code fixes landed).
+    { number: 29, state: "fixed", sha: "old" },
   ]);
   const { report } = await run(snapshot, { expectedRef: prRef });
   assert.deepEqual(report.evidenceErrors, []);
   assert.equal(report.blocked, false);
   // Snapshot alerts stay open repository-wide but are absent from the
   // PR ref: judged fixed there once the analyses verify (16 code
-  // scanning + dependabot1 resolved on the ref), plus PR-only alert 27
-  // whose instance is fixed on the merge SHA.
-  assert.equal(report.summary.fixed_verified, 18);
+  // scanning + dependabot1 resolved on the ref), plus PR-only alerts
+  // 27 (fixed on the merge SHA) and 29 (fixed earlier on this ref).
+  assert.equal(report.summary.fixed_verified, 19);
   const pr17 = report.alerts.find((a) => a.number === 17);
   assert.equal(pr17.evidence.observed, "pr_only_ref_instance");
   assert.equal(pr17.mapped, true);
   assert.ok(pr17.reasons.some((r) => r.startsWith("OPEN_ALERT")));
   assert.equal(
     report.alerts.find((a) => a.number === 27).state,
+    "fixed_verified",
+  );
+  assert.equal(
+    report.alerts.find((a) => a.number === 29).state,
     "fixed_verified",
   );
   // An open PR alert without an approved exception still blocks.

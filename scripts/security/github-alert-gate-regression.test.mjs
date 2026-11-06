@@ -144,3 +144,43 @@ test("PR merge-ref evaluation must not weaken the fixed-verified standard", () =
       .reasons.some((x) => x.startsWith("OPEN_ALERT")),
   );
 });
+
+test("a fixed alert surviving at an older SHA on the same PR ref is fixed-on-ref evidence", () => {
+  // The 6 November 2026 follow-up failure mode: after the code fixes
+  // landed, CodeQL marked PR-only alerts 17/19/27/28/29 fixed but
+  // GitHub pinned their surviving instances to the PREVIOUS merge SHA
+  // (351a638) — the last analysis that contained them. The evaluator
+  // must not relabel that STALE_ALERT_INSTANCE when the exact-SHA
+  // analyses for both categories verified; absent-from-latest-analysis
+  // on the same ref is the same evidence as absent-from-ref.
+  const prTarget = {
+    expectedSha: "sha-new",
+    expectedRef: "refs/pull/6/merge",
+    now: "2026-11-06T00:00:00.000Z",
+  };
+  const prAnalyses = ["javascript-typescript", "actions"].map((lang) => ({
+    commit_sha: prTarget.expectedSha,
+    ref: prTarget.expectedRef,
+    category: `/language:${lang}`,
+    tool: { name: "CodeQL" },
+    error: "",
+  }));
+  const survived = { ...alert(29, "fixed"), number: 29 };
+  const r = evaluateGithubAlerts({
+    ...prTarget,
+    analyses: prAnalyses,
+    alerts: [
+      {
+        ...survived,
+        most_recent_instance: {
+          ref: prTarget.expectedRef,
+          commit_sha: "sha-old",
+          state: "fixed",
+          category: "/language:javascript-typescript",
+        },
+      },
+    ],
+  });
+  assert.equal(r.passed, true);
+  assert.equal(r.alerts[0].state, "fixed_verified");
+});
