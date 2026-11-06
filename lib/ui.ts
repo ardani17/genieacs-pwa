@@ -8,6 +8,7 @@ import koaJwt from "koa-jwt";
 import * as config from "./config.ts";
 import api from "./ui/api.ts";
 import appApi from "./ui/app-api.ts";
+import { sendSafeLegacyError } from "./ui/safe-error.ts";
 import {
   issueSession,
   SESSION_MAX_AGE_SECONDS,
@@ -233,8 +234,9 @@ router.post("/init", async (ctx) => {
     await init.seed(status);
   } catch (err) {
     if (err instanceof init.InitValidationError) {
-      ctx.status = 400;
-      ctx.body = err.message;
+      // Koa serves plain string bodies as text/html; the validation
+      // message must go through the safe text/plain + nosniff envelope.
+      sendSafeLegacyError(ctx, 400, "init_validation_failed", err.message);
       return;
     }
     throw err;

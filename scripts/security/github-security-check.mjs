@@ -132,45 +132,75 @@ export async function collectGithubEvidence({
   const repositoryIndex = index(repositoryAlerts, "repository");
   const refIndex = index(refAlerts, "ref");
   index(dependabotAlerts, "dependabot");
-  for (const number of Object.keys(ALERT_MAPPING).filter((n) =>
-    /^\d+$/.test(n),
-  )) {
+  for (const [number, mapping] of Object.entries(ALERT_MAPPING)) {
+    if (!/^\d+$/.test(number) || mapping?.pr) continue;
     if (!repositoryIndex.has(Number(number)))
       errors.push("MISSING_SNAPSHOT_ALERT: " + number);
   }
   if (!dependabotAlerts.some((a) => a.number === 1))
     errors.push("MISSING_SNAPSHOT_ALERT: dependabot1");
-  for (const number of refIndex.keys()) {
-    if (!repositoryIndex.has(number))
+  // GitHub keeps pull-request analyses out of the repository-wide alert
+  // list: on a PR merge ref, ref alerts missing from that list are
+  // expected PR-only alerts and must be EVALUATED, not reported as API
+  // drift. On branch refs the invariant stays strict.
+  const prMergeRef = /^refs\/pull\/\d+\/merge$/.test(expectedRef);
+  const prOnlyAlerts = [];
+  for (const [number, alert] of refIndex) {
+    if (repositoryIndex.has(number)) continue;
+    if (!prMergeRef) {
       errors.push("REF_ALERT_NOT_IN_REPOSITORY: " + number);
+      continue;
+    }
+    const instance = alert.most_recent_instance;
+    if (
+      !instance ||
+      !["open", "fixed", "dismissed"].includes(instance.state) ||
+      !ANALYSIS_CATEGORIES.includes(instance.category)
+    )
+      errors.push("INVALID_REF_INSTANCE: " + number);
+    prOnlyAlerts.push({
+      number: alert.number,
+      rule: alert.rule,
+      tool: "code-scanning",
+      state: instance?.state,
+      ...(instance ? { most_recent_instance: instance } : {}),
+      evidence: {
+        ref: expectedRef,
+        sha: expectedSha,
+        observed: "pr_only_ref_instance",
+      },
+    });
   }
 
   // The ref endpoint returns the instance on this ref, whereas repository-wide
   // state can remain open on main. Absence is only useful with the evaluator's
   // complete, successful analyses of this exact SHA/ref and both categories.
-  const alerts = repositoryAlerts.map((alert) => {
-    const scoped = refIndex.get(alert.number);
-    const instance = scoped?.most_recent_instance;
-    if (
-      scoped &&
-      (!instance ||
-        !["open", "fixed", "dismissed"].includes(instance.state) ||
-        !ANALYSIS_CATEGORIES.includes(instance.category))
-    )
-      errors.push("INVALID_REF_INSTANCE: " + alert.number);
-    return {
-      number: alert.number,
-      rule: alert.rule,
-      tool: "code-scanning",
-      state: scoped ? instance?.state : "fixed",
-      ...(instance ? { most_recent_instance: instance } : {}),
-      evidence: {
-        ref: expectedRef,
-        sha: expectedSha,
-        observed: scoped ? "ref_instance" : "absent_from_ref",
-      },
-    };
-  });
+  const alerts = [
+    ...repositoryAlerts.map((alert) => {
+      const scoped = refIndex.get(alert.number);
+      const instance = scoped?.most_recent_instance;
+      if (
+        scoped &&
+        (!instance ||
+          !["open", "fixed", "dismissed"].includes(instance.state) ||
+          !ANALYSIS_CATEGORIES.includes(instance.category))
+      )
+        errors.push("INVALID_REF_INSTANCE: " + alert.number);
+      return {
+        number: alert.number,
+        rule: alert.rule,
+        tool: "code-scanning",
+        state: scoped ? instance?.state : "fixed",
+        ...(instance ? { most_recent_instance: instance } : {}),
+        evidence: {
+          ref: expectedRef,
+          sha: expectedSha,
+          observed: scoped ? "ref_instance" : "absent_from_ref",
+        },
+      };
+    }),
+    ...prOnlyAlerts,
+  ];
   const graphPatched = sourceSha === expectedSha && patchedEsbuild(lockfiles);
   for (const alert of dependabotAlerts) {
     const number = `dependabot${alert.number}`;

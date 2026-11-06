@@ -6,13 +6,16 @@
 // take the engine down, and lost events must never be invisible.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { closeSync, existsSync, openSync, rmSync } from "node:fs";
+import { closeSync, existsSync, mkdtempSync, openSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
 // Must exist before lib/config.ts is imported (dynamically, inside the
-// test) — config parses GENIEACS_* at import time.
-const blocker = path.join(tmpdir(), "engine-app-logger-blocker");
+// test) — config parses GENIEACS_* at import time. The blocker lives in
+// a unique mkdtemp directory: a predictable shared tmp path is a
+// symlink/interference hazard, and parallel runs would collide.
+const base = mkdtempSync(path.join(tmpdir(), "engine-app-logger-broken-"));
+const blocker = path.join(base, "blocker");
 const logFile = path.join(blocker, "sub", "app.ndjson");
 closeSync(openSync(blocker, "w"));
 process.env.GENIEACS_UI_APP_LOG_FILE = logFile;
@@ -38,4 +41,6 @@ void test("unwritable log directory degrades visibly, counts drops, then recover
   await logger.flush(1000);
   assert.equal(logger.status().state, "healthy");
   assert.ok(existsSync(logFile), "log file written after recovery");
+
+  rmSync(base, { recursive: true, force: true });
 });

@@ -9,9 +9,11 @@
 // never "zero alerts".
 
 // Curated mapping of every alert in the 1 November 2026 snapshot to the
-// package/ticket/test evidence that addresses it. Residual
-// protocol-crypto findings are risk_accepted via exceptions, never
-// silently "fixed".
+// package/ticket/test evidence that addresses it, plus the pull-request
+// merge-ref alerts triaged under ARD-206 (marked pr:true — they never
+// exist in the repository-wide list and are absent once their PR
+// closes). Residual protocol-crypto findings are risk_accepted via
+// exceptions, never silently "fixed".
 export const ALERT_MAPPING = {
   1: {
     package: "M01-S3",
@@ -112,6 +114,117 @@ export const ALERT_MAPPING = {
     ticket: "ARD-202",
     tests: ["test/security/cwmp-cookie.ts"],
     required: true,
+  },
+  // Pull-request merge-ref alerts (triaged 6 November 2026 from the
+  // refs/pull/6/merge analysis at 351a638; see
+  // docs/testing/github-security-evidence.json). GitHub keeps PR-ref
+  // analyses OUT of the repository-wide alert list, so the collector
+  // evaluates these from the PR-ref snapshot; pr:true also excludes
+  // them from the snapshot completeness check — they exist only while
+  // that pull request is open, and later PRs re-triage new numbers.
+  17: {
+    package: "M01-S5",
+    ticket: "ARD-206",
+    tests: ["test/security/cwmp-cookie.ts"],
+    required: true,
+    pr: true,
+    fixedInPr: "status echo removed from the cookie-error body",
+  },
+  18: {
+    package: "M01-S3",
+    ticket: "ARD-206",
+    tests: ["test/security/error-response.ts"],
+    required: true,
+    pr: true,
+    residualProtocol: true,
+  },
+  19: {
+    package: "M01-S3",
+    ticket: "ARD-206",
+    tests: ["test/security/error-response.ts"],
+    required: true,
+    pr: true,
+    fixedInPr: "init validation errors routed through sendSafeLegacyError",
+  },
+  20: {
+    package: "M01-S2",
+    ticket: "ARD-206",
+    tests: ["test/security/nbi-query.ts", "test/security/nbi-route.ts"],
+    required: true,
+    pr: true,
+    residualProtocol: true,
+  },
+  21: {
+    package: "M01-S2",
+    ticket: "ARD-206",
+    tests: ["test/security/nbi-query.ts", "test/security/nbi-route.ts"],
+    required: true,
+    pr: true,
+    residualProtocol: true,
+  },
+  22: {
+    package: "M01-S7",
+    ticket: "ARD-206",
+    tests: ["test/security/udp-cr-auth.ts"],
+    required: true,
+    pr: true,
+    residualProtocol: true,
+  },
+  23: {
+    package: "M01-E",
+    ticket: "ARD-206",
+    tests: ["test/app-logger.ts"],
+    required: true,
+    pr: true,
+    residualProtocol: true,
+  },
+  24: {
+    package: "M01-E",
+    ticket: "ARD-206",
+    tests: ["test/app-logger.ts"],
+    required: true,
+    pr: true,
+    residualProtocol: true,
+  },
+  25: {
+    package: "M01-E",
+    ticket: "ARD-206",
+    tests: ["test/app-logger.ts"],
+    required: true,
+    pr: true,
+    residualProtocol: true,
+  },
+  26: {
+    package: "M01-A",
+    ticket: "ARD-206",
+    tests: ["scripts/security/inventory.test.mjs"],
+    required: true,
+    pr: true,
+    residualProtocol: true,
+  },
+  27: {
+    package: "M01-S2",
+    ticket: "ARD-206",
+    tests: ["test/security/nbi-query.ts"],
+    required: true,
+    pr: true,
+    fixedInPr: "projection/sort built via Map, not computed keys",
+  },
+  28: {
+    package: "M01-S2",
+    ticket: "ARD-206",
+    tests: ["test/security/nbi-query.ts"],
+    required: true,
+    pr: true,
+    fixedInPr: "projection/sort built via Map, not computed keys",
+  },
+  29: {
+    package: "M01-E",
+    ticket: "ARD-206",
+    tests: ["test/engine-app-logger-broken-dir.ts"],
+    required: true,
+    pr: true,
+    fixedInPr: "unique mkdtemp base directory",
   },
   dependabot1: {
     package: "M01-B",
