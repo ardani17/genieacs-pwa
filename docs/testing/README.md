@@ -120,6 +120,16 @@ for 14 days, including a blocked verdict when collection fails. A checkout
 mismatch, missing category, stale/failed analysis, incomplete API response,
 unmapped alert or unapproved risk fails the gate.
 
+On pull requests (`EXPECTED_REF=refs/pull/N/merge`) the gate also evaluates
+PR-only alerts: GitHub keeps analyses uploaded on a PR merge ref out of the
+repository-wide alert list, so the collector reads them from the PR-ref snapshot
+and judges them like any other alert — fixed-verified on the exact merge SHA, or
+covered by a reviewed exception. Snapshot completeness (alerts 1–16 and
+dependabot1) is still checked against the repository-wide list, and on branch
+refs a ref alert missing from that list remains an API error. Triaged PR alerts
+are marked `pr: true` in the gate's mapping; every new pull request re-triages
+its own alert numbers against the same standard.
+
 Known alerts may remain open on main before release. A clean scan on development
 can prove absence on that ref; a patched esbuild graph is bound to the
 checked-out SHA and all matching lock entries. The report retains
