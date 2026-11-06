@@ -391,9 +391,22 @@ export function evaluateGithubAlerts({
     }
 
     const instance = alert.most_recent_instance;
-    if (
+    // An instance from another ref is always stale. On the SAME ref,
+    // GitHub pins a fixed alert's surviving instance to the LAST
+    // analysis that contained it — an older SHA — while the alert is
+    // gone from the latest analysis (observed on PR #6: alerts 17-29
+    // stayed listed at 351a638 after the fixes landed). "Fixed earlier
+    // on this ref, absent from the verified exact-SHA analysis" is the
+    // same evidence as absent-from-ref, so only non-fixed instances at
+    // an older SHA are stale. The exact-SHA/ref analyses for BOTH
+    // categories must still succeed (checked above) before any alert
+    // can be labeled fixed_verified.
+    if (instance && instance.ref !== expectedRef)
+      entry.reasons.push("STALE_ALERT_INSTANCE");
+    else if (
       instance &&
-      (instance.ref !== expectedRef || instance.commit_sha !== expectedSha)
+      instance.commit_sha !== expectedSha &&
+      instance.state !== "fixed"
     )
       entry.reasons.push("STALE_ALERT_INSTANCE");
     if (alert.state === "fixed") {
