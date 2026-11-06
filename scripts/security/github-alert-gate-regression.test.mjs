@@ -101,3 +101,46 @@ test("complete reviewed protocol exception remains risk accepted", () => {
   assert.equal(r.passed, true);
   assert.equal(r.alerts[0].state, "risk_accepted");
 });
+
+test("PR merge-ref evaluation must not weaken the fixed-verified standard", () => {
+  // The 5 November 2026 PR #6 failure mode: PR-only alerts were reported
+  // as repository drift (apiOk=false), which relabels every genuinely
+  // fixed snapshot alert UNVERIFIED_ANALYSIS. PR-ref evaluation happens
+  // in the collector; the evaluator must keep requiring that a PR alert
+  // is fixed on the exact merge SHA or covered by a reviewed exception.
+  const prTarget = {
+    expectedSha: "sha-new",
+    expectedRef: "refs/pull/6/merge",
+    now: "2026-11-04T00:00:00.000Z",
+  };
+  const prAnalyses = ["javascript-typescript", "actions"].map((lang) => ({
+    commit_sha: prTarget.expectedSha,
+    ref: prTarget.expectedRef,
+    category: `/language:${lang}`,
+    tool: { name: "CodeQL" },
+    error: "",
+  }));
+  const r = evaluateGithubAlerts({
+    ...prTarget,
+    analyses: prAnalyses,
+    alerts: [
+      {
+        ...alert(18, "open"),
+        rule: {
+          id: "js/xss-through-exception",
+          security_severity_level: "medium",
+        },
+      },
+      alert(20, "open"),
+    ],
+    exceptions: [exception({ number: 20 })],
+  });
+  assert.equal(r.passed, false);
+  assert.equal(r.blocked, false);
+  assert.equal(r.alerts.find((a) => a.number === 20).state, "risk_accepted");
+  assert.ok(
+    r.alerts
+      .find((a) => a.number === 18)
+      .reasons.some((x) => x.startsWith("OPEN_ALERT")),
+  );
+});

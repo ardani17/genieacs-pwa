@@ -11,7 +11,7 @@
     "approvalPolicy": "Pending exceptions below are proposals. They require named approvedBy and reviewedAt, full scope/CWE/compensation/owner and expiry within 30 days. No approval is inferred from this file or unit tests.",
     "publicationPolicy": "Local tests do not close GitHub alerts. Publish through an authorized PR to development, transition the existing default CodeQL setup to this advanced workflow, then evaluate actual exact-ref evidence."
   },
-  "scope": "Evidence mapping for the 16 CodeQL + 1 Dependabot alerts in the 2026-11-01 snapshot (docs/design/github-security-alerts.json). Alert closure is only claimed as fixed_verified after the security-alerts workflow scans the exact ref/SHA; until the branch is pushed and scanned, every entry stays needs_validation. Residual protocol-crypto findings are risk_accepted via reviewed exceptions with expiry, never silently fixed.",
+  "scope": "Evidence mapping for the 16 CodeQL + 1 Dependabot alerts in the 2026-11-01 snapshot (docs/design/github-security-alerts.json), plus the PR merge-ref alerts 17-29 triaged on 2026-11-06 from the refs/pull/6/merge analysis at 351a638 (marked pr:true; GitHub keeps them out of the repository-wide list, the collector evaluates them from the PR-ref snapshot, and each new pull request re-triages its own numbers). Alert closure is only claimed as fixed_verified after the security-alerts workflow scans the exact ref/SHA; until the branch is pushed and scanned, every entry stays needs_validation. Residual protocol-crypto findings are risk_accepted via reviewed exceptions with expiry, never silently fixed.",
   "sourceSnapshot": {
     "checkedAt": "2026-11-01T14:24:50Z",
     "analysisRef": "refs/heads/main",
@@ -150,6 +150,200 @@
       "ticket": "ARD-202",
       "state": "needs_validation",
       "tests": ["test/security/cwmp-cookie.ts"]
+    },
+    "17": {
+      "package": "M01-S5",
+      "ticket": "ARD-206",
+      "state": "needs_validation",
+      "pr": true,
+      "rule": "js/xss-through-exception",
+      "location": "lib/cwmp.ts:1354",
+      "disposition": "code_fixed_in_pr: the numeric status echo is removed from the cookie-error body; the status line already carries the code and no exception-derived text reaches the CPE",
+      "tests": ["test/security/cwmp-cookie.ts"]
+    },
+    "18": {
+      "package": "M01-S3",
+      "ticket": "ARD-206",
+      "state": "risk_accepted_pending_scan",
+      "pr": true,
+      "rule": "js/xss-through-exception",
+      "location": "lib/ui/safe-error.ts:40",
+      "tests": ["test/security/error-response.ts"],
+      "exception": {
+        "reviewStatus": "pending_human_review",
+        "reason": "Safe error envelope echoes a bounded validation message by design; CodeQL flags any exception-to-body flow, but the response is text/plain charset utf-8 with nosniff so reflected text is never rendered as HTML",
+        "scope": "lib/ui/safe-error.ts sendSafeLegacyError response body (legacy API)",
+        "cwe": "CWE-79, CWE-116",
+        "compensation": "text/plain charset utf-8 + X-Content-Type-Options nosniff on every response; messages are allowlisted fixed strings or parse-only validation text (code + position/size, M01-S1); raw err.name/message only reach the sanitized logger; requestId correlation in every body",
+        "owner": "ardani17",
+        "expiresAt": "2026-12-04T00:00:00.000Z"
+      }
+    },
+    "19": {
+      "package": "M01-S3",
+      "ticket": "ARD-206",
+      "state": "needs_validation",
+      "pr": true,
+      "rule": "js/xss-through-exception",
+      "location": "lib/ui.ts:237",
+      "disposition": "code_fixed_in_pr: InitValidationError on POST /init no longer sets a bare string body (koa serves those as text/html); it goes through sendSafeLegacyError (text/plain + nosniff)",
+      "tests": ["test/integration/init-install.ts"]
+    },
+    "20": {
+      "package": "M01-S2",
+      "ticket": "ARD-206",
+      "state": "risk_accepted_pending_scan",
+      "pr": true,
+      "rule": "js/sql-injection",
+      "location": "lib/nbi.ts:680 (collection.find)",
+      "tests": ["test/security/nbi-query.ts", "test/security/nbi-route.ts"],
+      "exception": {
+        "reviewStatus": "pending_human_review",
+        "reason": "The MongoDB filter for collection.find is built from the authenticated NBI query parameter and structurally validated by the closed-grammar validator (M01-S2) before reaching the driver; CodeQL's whole-object taint model cannot see that validator",
+        "scope": "lib/nbi.ts collection.find(q) with q from parseNbiListOptions/validateNbiQuery",
+        "cwe": "CWE-89, CWE-943",
+        "compensation": "closed-grammar validator rejects $where/$function/$accumulator/$expr and every unknown operator, rejects prototype keys at every depth, caps depth 10 / 1000 nodes / 8192 bytes / projection 100 fields / sort 8 fields, restricts regexes to a linear-time subset; QUERY_MAX_TIME_MS 5000 server budget; authenticated NBI only",
+        "owner": "ardani17",
+        "expiresAt": "2026-12-04T00:00:00.000Z"
+      }
+    },
+    "21": {
+      "package": "M01-S2",
+      "ticket": "ARD-206",
+      "state": "risk_accepted_pending_scan",
+      "pr": true,
+      "rule": "js/sql-injection",
+      "location": "lib/nbi.ts:698 (countDocuments)",
+      "tests": ["test/security/nbi-query.ts", "test/security/nbi-route.ts"],
+      "exception": {
+        "reviewStatus": "pending_human_review",
+        "reason": "Same validated filter object as alert 20 reaching countDocuments; the taint model cannot see the closed-grammar validator between the request and the driver",
+        "scope": "lib/nbi.ts collection.countDocuments(q) with q from parseNbiListOptions/validateNbiQuery",
+        "cwe": "CWE-89, CWE-943",
+        "compensation": "identical to alert 20 (same validated object, same limits); countDocuments additionally cannot take a projection",
+        "owner": "ardani17",
+        "expiresAt": "2026-12-04T00:00:00.000Z"
+      }
+    },
+    "22": {
+      "package": "M01-S7",
+      "ticket": "ARD-206",
+      "state": "risk_accepted_pending_scan",
+      "pr": true,
+      "rule": "js/weak-cryptographic-algorithm",
+      "location": "lib/udp-cr-auth.ts:36",
+      "tests": ["test/security/udp-cr-auth.ts"],
+      "exception": {
+        "reviewStatus": "pending_human_review",
+        "reason": "UDP Connection Request signature is HMAC-SHA1 fixed by TR-069 Annex G; the CPE-side verifier requires exactly this construction (same residual as snapshot alert 12, seen again on the PR merge ref)",
+        "scope": "lib/udp-cr-auth.ts buildUdpCrSignature (protocol-only)",
+        "cwe": "CWE-327, CWE-328",
+        "compensation": "isolated helper; CSPRNG ids; target validation (host/port shape, no URI injection); no secrets logged; mirrors the alert 12 disposition",
+        "owner": "ardani17",
+        "expiresAt": "2026-12-04T00:00:00.000Z"
+      }
+    },
+    "23": {
+      "package": "M01-E",
+      "ticket": "ARD-206",
+      "state": "risk_accepted_pending_scan",
+      "pr": true,
+      "rule": "js/http-to-file-access",
+      "location": "lib/app-logger.ts:301",
+      "tests": ["test/app-logger.ts"],
+      "exception": {
+        "reviewStatus": "pending_human_review",
+        "reason": "An application log is request-derived by design; the flagged flow is the already-serialized event line reaching the configured log file",
+        "scope": "lib/app-logger.ts file sink appendFile (engine/web/vpn)",
+        "cwe": "CWE-434, CWE-912",
+        "compensation": "events are JSON.stringify'd before the sink: control characters escaped, exactly one physical line per record (no NDJSON forging); recursive secret redaction (keys, URL query values, TR-069 sensitive path suffixes); bounded queue 1000 events / 2MiB; file path is operator configuration (GENIEACS_*_APP_LOG_FILE), never request-derived",
+        "owner": "ardani17",
+        "expiresAt": "2026-12-04T00:00:00.000Z"
+      }
+    },
+    "24": {
+      "package": "M01-E",
+      "ticket": "ARD-206",
+      "state": "risk_accepted_pending_scan",
+      "pr": true,
+      "rule": "js/http-to-file-access",
+      "location": "lib/app-logger.ts:309",
+      "tests": ["test/app-logger.ts"],
+      "exception": {
+        "reviewStatus": "pending_human_review",
+        "reason": "Same sink as alert 23 on the ENOENT retry path (directory recreated after storage loss, then the identical serialized line)",
+        "scope": "lib/app-logger.ts file sink appendFile retry (engine/web/vpn)",
+        "cwe": "CWE-434, CWE-912",
+        "compensation": "identical to alert 23; the retry writes the same single-line serialized event",
+        "owner": "ardani17",
+        "expiresAt": "2026-12-04T00:00:00.000Z"
+      }
+    },
+    "25": {
+      "package": "M01-E",
+      "ticket": "ARD-206",
+      "state": "risk_accepted_pending_scan",
+      "pr": true,
+      "rule": "js/http-to-file-access",
+      "location": "lib/logger.ts:319",
+      "tests": ["test/app-logger.ts"],
+      "exception": {
+        "reviewStatus": "pending_human_review",
+        "reason": "Access-log records contain request metadata by design; the flagged flow is the serialized record reaching the configured access-log file",
+        "scope": "lib/logger.ts accessLog write (formatJson path)",
+        "cwe": "CWE-434, CWE-912",
+        "compensation": "JSON mode serializes with JSON.stringify: control characters escaped, one line per record; file path is operator configuration (GENIEACS_*_ACCESS_LOG_FILE); systemd severity prefix comes from an allowlist",
+        "owner": "ardani17",
+        "expiresAt": "2026-12-04T00:00:00.000Z"
+      }
+    },
+    "26": {
+      "package": "M01-A",
+      "ticket": "ARD-206",
+      "state": "risk_accepted_pending_scan",
+      "pr": true,
+      "rule": "js/http-to-file-access",
+      "location": "scripts/security/inventory.mjs:167",
+      "tests": ["scripts/security/inventory.test.mjs"],
+      "exception": {
+        "reviewStatus": "pending_human_review",
+        "reason": "The dependency-inventory scanner persists the npm bulk-advisory response as evidence; persisting that response is its function",
+        "scope": "scripts/security/inventory.mjs writeJson of advisory-response.json",
+        "cwe": "CWE-434, CWE-912",
+        "compensation": "HTTPS to registry.npmjs.org; content is re-serialized through JSON.stringify (control characters escaped) into artifacts/security/ under fixed filenames; read back only as evidence JSON, never executed or reflected to clients",
+        "owner": "ardani17",
+        "expiresAt": "2026-12-04T00:00:00.000Z"
+      }
+    },
+    "27": {
+      "package": "M01-S2",
+      "ticket": "ARD-206",
+      "state": "needs_validation",
+      "pr": true,
+      "rule": "js/remote-property-injection",
+      "location": "lib/nbi-query.ts:325 (projection)",
+      "disposition": "code_fixed_in_pr: projection fields are collected in a Map and converted at the boundary — no request-derived string is used as a computed property key; PROTOTYPE_KEYS/length guards unchanged",
+      "tests": ["test/security/nbi-query.ts"]
+    },
+    "28": {
+      "package": "M01-S2",
+      "ticket": "ARD-206",
+      "state": "needs_validation",
+      "pr": true,
+      "rule": "js/remote-property-injection",
+      "location": "lib/nbi-query.ts:348 (sort)",
+      "disposition": "code_fixed_in_pr: same Map pattern for sort keys",
+      "tests": ["test/security/nbi-query.ts"]
+    },
+    "29": {
+      "package": "M01-E",
+      "ticket": "ARD-206",
+      "state": "needs_validation",
+      "pr": true,
+      "rule": "js/insecure-temporary-file",
+      "location": "test/engine-app-logger-broken-dir.ts:17",
+      "disposition": "code_fixed_in_pr: the blocker now lives under a unique mkdtempSync directory with cleanup — no predictable shared tmp path",
+      "tests": ["test/engine-app-logger-broken-dir.ts"]
     },
     "dependabot1": {
       "package": "M01-B",

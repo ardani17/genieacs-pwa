@@ -202,3 +202,97 @@ test("dependency resolution is bound to checked-out SHA and every esbuild lock e
     false,
   );
 });
+
+const prRef = "refs/pull/6/merge";
+// The 5 November 2026 gate situation: repository-wide list keeps the 16
+// snapshot alerts open on main, the PR-ref scan carries its own alerts
+// (PR-only numbers), and the analyses sit on the merge SHA/ref.
+function prFixture(prAlerts) {
+  const snapshot = fixture();
+  snapshot.analyses = snapshot.analyses.map((a) => ({ ...a, ref: prRef }));
+  snapshot.refAlerts = prAlerts.map((a) => ({
+    number: a.number,
+    state: a.state,
+    rule: {
+      id: a.rule ?? `rule-${a.number}`,
+      security_severity_level: a.severity ?? "high",
+    },
+    most_recent_instance: {
+      ref: prRef,
+      commit_sha: expectedSha,
+      state: a.state,
+      category: "/language:javascript-typescript",
+    },
+  }));
+  return snapshot;
+}
+
+test("PR merge-ref alerts are evaluated from the ref snapshot, not reported as repository drift", async () => {
+  const snapshot = prFixture([
+    { number: 17, state: "open", severity: "medium" },
+    { number: 27, state: "fixed" },
+    { number: 22, state: "open" },
+  ]);
+  const { report } = await run(snapshot, { expectedRef: prRef });
+  assert.deepEqual(report.evidenceErrors, []);
+  assert.equal(report.blocked, false);
+  // Snapshot alerts stay open repository-wide but are absent from the
+  // PR ref: judged fixed there once the analyses verify (16 code
+  // scanning + dependabot1 resolved on the ref), plus PR-only alert 27
+  // whose instance is fixed on the merge SHA.
+  assert.equal(report.summary.fixed_verified, 18);
+  const pr17 = report.alerts.find((a) => a.number === 17);
+  assert.equal(pr17.evidence.observed, "pr_only_ref_instance");
+  assert.equal(pr17.mapped, true);
+  assert.ok(pr17.reasons.some((r) => r.startsWith("OPEN_ALERT")));
+  assert.equal(
+    report.alerts.find((a) => a.number === 27).state,
+    "fixed_verified",
+  );
+  // An open PR alert without an approved exception still blocks.
+  assert.equal(report.passed, false);
+});
+
+test("PR merge-ref alerts pass only through reviewed exceptions", async () => {
+  const snapshot = prFixture([
+    { number: 17, state: "open", severity: "medium" },
+    { number: 22, state: "open" },
+  ]);
+  const exception = (number) => ({
+    number,
+    reason: "triaged residual risk",
+    scope: "pr fixture",
+    cwe: "CWE-79",
+    compensation: "text/plain + nosniff envelope",
+    owner: "ardani17",
+    approvedBy: "reviewer@example.invalid",
+    reviewedAt: "2026-11-03T00:00:00.000Z",
+    expiresAt: "2026-11-30T00:00:00.000Z",
+  });
+  const { report } = await run(snapshot, {
+    expectedRef: prRef,
+    exceptions: [exception(17), exception(22)],
+  });
+  assert.equal(report.passed, true);
+  assert.equal(report.summary.risk_accepted, 2);
+});
+
+test("branch refs keep the repository-list invariant (PR-only handling is PR-scoped)", async () => {
+  const snapshot = fixture();
+  snapshot.refAlerts = [
+    {
+      number: 17,
+      state: "open",
+      rule: { id: "rule-17", security_severity_level: "medium" },
+      most_recent_instance: {
+        ref: expectedRef,
+        commit_sha: expectedSha,
+        state: "open",
+        category: "/language:javascript-typescript",
+      },
+    },
+  ];
+  const { report } = await run(snapshot);
+  assert.ok(report.evidenceErrors.includes("REF_ALERT_NOT_IN_REPOSITORY: 17"));
+  assert.equal(report.passed, false);
+});

@@ -369,20 +369,24 @@ export function parseNbiListOptions(search: URLSearchParams): NbiListOptions {
   }
 
   if (search.has("projection")) {
-    const projection: Record<string, number> = {};
+    // Request-derived field names are collected in a Map and converted
+    // only at the boundary: no remote string is ever used as a computed
+    // property key on an object (prototype-pollution class), and the
+    // PROTOTYPE_KEYS/length guards still run on every field.
+    const projection = new Map<string, 1>();
     for (const p of (search.get("projection") as string).split(",")) {
       const field = p.trim();
       if (!field) continue;
       if (PROTOTYPE_KEYS.has(field) || field.length > FIELD_PATH_MAX)
         fail("projection", "invalid projection field");
-      projection[field] = 1;
-      if (Object.keys(projection).length > PROJECTION_FIELDS_MAX)
+      projection.set(field, 1);
+      if (projection.size > PROJECTION_FIELDS_MAX)
         fail(
           "projection",
           `projection exceeds ${PROJECTION_FIELDS_MAX} fields`,
         );
     }
-    options.projection = projection;
+    options.projection = Object.fromEntries(projection);
   }
 
   if (search.has("sort")) {
@@ -393,16 +397,17 @@ export function parseNbiListOptions(search: URLSearchParams): NbiListOptions {
       fail("json", `sort is not valid JSON: ${(err as Error).name}`);
     }
     if (!isPlainObject(parsed)) fail("sort", "sort must be an object");
-    const sort: Record<string, 1 | -1> = {};
+    // Same Map pattern as projection: sort keys are remote data.
+    const sort = new Map<string, 1 | -1>();
     for (const [k, v] of Object.entries(parsed)) {
       if (PROTOTYPE_KEYS.has(k) || k.length > FIELD_PATH_MAX)
         fail("sort", "invalid sort field");
       if (v !== 1 && v !== -1) fail("sort", "sort direction must be 1 or -1");
-      sort[k] = v;
-      if (Object.keys(sort).length > SORT_FIELDS_MAX)
+      sort.set(k, v);
+      if (sort.size > SORT_FIELDS_MAX)
         fail("sort", `sort exceeds ${SORT_FIELDS_MAX} fields`);
     }
-    options.sort = sort;
+    options.sort = Object.fromEntries(sort);
   }
 
   if (search.has("skip")) {
