@@ -18,9 +18,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="id">
-      <body>
-        <main className="app-shell">{children}</main>
-      </body>
+      <body>{children}</body>
     </html>
   );
 }

@@ -1,11 +1,41 @@
 import { NextResponse } from "next/server";
-import { engineFetch, nativeCookieFrom } from "@/server/genieacs-client";
+import {
+  engineFetch,
+  nativeCookieFrom,
+  requireSameOrigin,
+} from "@/server/genieacs-client";
 import {
   correlationHeaders,
   requestContextFrom,
   type RequestContext,
 } from "@/server/request-context";
 import { FILE_UPLOAD_MAX_BYTES } from "@contracts/resources.ts";
+
+const PUBLIC_ORIGIN = process.env.PUBLIC_ORIGIN ?? "http://localhost:3000";
+
+// Byte-counted passthrough: the 100MiB cap is enforced on the ACTUAL
+// bytes streamed, not the (optional, spoofable) Content-Length. Past
+// the limit the stream errors — the upstream fetch aborts mid-body
+// and the engine keeps the previous firmware version intact.
+function countBytes(
+  body: ReadableStream<Uint8Array> | null,
+  max: number,
+): ReadableStream<Uint8Array> | null {
+  if (!body) return body;
+  let seen = 0;
+  return body.pipeThrough(
+    new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, controller) {
+        seen += chunk.byteLength;
+        if (seen > max) {
+          controller.error(new Error("upload exceeds size limit"));
+          return;
+        }
+        controller.enqueue(chunk);
+      },
+    }),
+  );
+}
 
 export const dynamic = "force-dynamic";
 
@@ -19,13 +49,25 @@ export async function GET(
 ): Promise<Response> {
   const ctx = requestContextFrom(request);
   const { id } = await paramsCtx.params;
+
+  // GET is a safe read: plain browser download links carry no
+  // X-App-Request/Origin. The session cookie and the engine's
+  // files:2 filter still gate the download.
   const cookie = nativeCookieFrom(request.headers.get("cookie"));
   if (!cookie) return unauthenticated(ctx);
 
   try {
     const upstream = await engineFetch(
       `/api/blob/files/${encodeURIComponent(id)}`,
-      { cookie, requestId: ctx.requestId, timeoutMs: 30_000 },
+      {
+        cookie,
+        requestId: ctx.requestId,
+        // The abort signal stays attached for the WHOLE streamed body,
+        // so the budget must cover the transfer, not just the headers:
+        // uploads up to 100MiB are allowed, and 100MiB over a 10 Mbps
+        // link takes ~80s — a 30s cap truncated every large download.
+        timeoutMs: 300_000,
+      },
     );
     if (!upstream.ok)
       return NextResponse.json(
@@ -90,6 +132,21 @@ export async function PUT(
 ): Promise<NextResponse> {
   const ctx = requestContextFrom(request);
   const { id } = await paramsCtx.params;
+  // Contracts.md mutation rules on the upload itself.
+  const sameOrigin = requireSameOrigin(request, PUBLIC_ORIGIN);
+  if (!sameOrigin.ok)
+    return NextResponse.json(
+      {
+        ok: false,
+        error: {
+          code: "FORBIDDEN",
+          message: "Permintaan ditolak (same-origin)",
+          retryable: false,
+        },
+        requestId: ctx.requestId,
+      },
+      { status: 403, headers: correlationHeaders(ctx) },
+    );
   const cookie = nativeCookieFrom(request.headers.get("cookie"));
   if (!cookie) return unauthenticated(ctx) as NextResponse;
 
@@ -128,10 +185,12 @@ export async function PUT(
           // carry a duplex body): the id joins engine access logs.
           "X-Request-Id": ctx.requestId,
         },
-        body: request.body,
+        body: countBytes(request.body, FILE_UPLOAD_MAX_BYTES),
         // @ts-expect-error Node undici duplex streaming
         duplex: "half",
-        signal: AbortSignal.timeout(120_000),
+        // Client aborts propagate (request.signal); the 120s cap only
+        // guards against abandoned streams.
+        signal: AbortSignal.any([request.signal, AbortSignal.timeout(120_000)]),
       },
     );
     if (upstream.ok)

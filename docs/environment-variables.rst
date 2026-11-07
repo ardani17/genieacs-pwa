@@ -27,9 +27,19 @@ EXT_TIMEOUT
   Default: ``3000``
 
 DEBUG_FILE
-  File to dump CPE debug log.
+  File to dump CPE debug log. Raw protocol payloads can carry CWMP
+  credentials, so setting this alone produces NO output: pair it with
+  ``GENIEACS_DEBUG_RAW=1`` to actually persist raw request/response
+  dumps (bounded troubleshooting window, disable again afterwards).
 
   Default: unset
+
+GENIEACS_DEBUG_RAW
+  Opt-in required to make ``DEBUG_FILE`` write raw protocol dumps.
+  ``1`` enables; any other value (or unset) keeps the raw sink off
+  while ``DEBUG_FILE`` is set.
+
+  Default: unset (raw sink disabled)
 
 DEBUG_FORMAT
   Debug log format. Valid values are 'yaml' and 'json'.

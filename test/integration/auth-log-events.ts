@@ -95,7 +95,11 @@ void test("login outcomes and permission denials land as sanitized service:ui ev
       deniedEvents.length >= 1,
       "permission_denied event with requestId",
     );
-    assert.equal(deniedEvents[0].event, "auth.permission_denied");
+    // The contract event name is permission.denied; the auth.* alias
+    // is emitted alongside it (both carry the same correlation).
+    const deniedNames = deniedEvents.map((e) => e.event).sort();
+    assert.ok(deniedNames.includes("permission.denied"));
+    assert.ok(deniedNames.includes("auth.permission_denied"));
     assert.equal(deniedEvents[0].service, "ui");
     // Every persisted row is a complete envelope.
     for (const e of events) {

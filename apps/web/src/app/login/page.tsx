@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { AuthPanel } from "@/components/auth-panel";
+import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
 import { Status } from "@/components/ui/status";
 
@@ -15,6 +17,14 @@ export default function LoginPage() {
     e.preventDefault();
     if (busy) return; // no duplicate submit
     const form = new FormData(e.currentTarget);
+    const fail = (body: unknown): void => {
+      setError(
+        (body as { error?: { code?: string } } | null)?.error?.code ===
+          "RATE_LIMITED"
+          ? "Terlalu banyak percobaan gagal. Coba lagi nanti."
+          : "Nama pengguna atau password salah.",
+      );
+    };
     setBusy(true);
     setError(null);
     try {
@@ -30,16 +40,18 @@ export default function LoginPage() {
           password: String(form.get("password") ?? ""),
         }),
       });
+      if (!res.ok) {
+        // Non-2xx still carries the typed envelope; unparseable bodies
+        // fall through to the catch below (same as before).
+        fail(await res.json());
+        return;
+      }
       const body = await res.json();
-      if (res.ok && body?.ok) {
+      if (body?.ok) {
         router.push("/overview");
         return;
       }
-      setError(
-        body?.error?.code === "RATE_LIMITED"
-          ? "Terlalu banyak percobaan gagal. Coba lagi nanti."
-          : "Nama pengguna atau password salah.",
-      );
+      fail(body);
     } catch {
       setError("Tidak dapat menghubungi server.");
     } finally {
@@ -48,12 +60,14 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="app-shell">
-      <h1>Masuk</h1>
-      <form onSubmit={onSubmit} noValidate>
+    <AuthPanel
+      title="Masuk"
+      description="Masuk ke ruang kerja untuk memantau dan mengelola perangkat Anda."
+    >
+      <form onSubmit={onSubmit} className="form-stack" noValidate>
         <Field label="Nama pengguna" required>
           {({ id, describedBy }) => (
-            <input
+            <Input
               id={id}
               name="username"
               autoComplete="username"
@@ -64,7 +78,7 @@ export default function LoginPage() {
         </Field>
         <Field label="Password" required>
           {({ id, describedBy }) => (
-            <input
+            <Input
               id={id}
               name="password"
               type="password"
@@ -79,6 +93,6 @@ export default function LoginPage() {
           Masuk
         </Button>
       </form>
-    </main>
+    </AuthPanel>
   );
 }

@@ -127,6 +127,66 @@ export function makeGeneric(options: {
   } as unknown as Device;
 }
 
+// Flat (query-shaped) ZTE WAN fixture mirroring the frozen reference
+// fixture in docs/design/reference-wan-model.md: both a WAN IP and a
+// WAN PPP instance under the first connection device, every parameter
+// writable except PossibleConnectionTypes. Dummy credentials only.
+import type { WanDevice } from "../../packages/device-profiles/src/wan-types.ts";
+
+export const WAN_ROOT =
+  "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1";
+export const WAN_IP = `${WAN_ROOT}.WANIPConnection`;
+export const WAN_IP_INSTANCE = `${WAN_IP}.1`;
+export const WAN_PPP = `${WAN_ROOT}.WANPPPConnection`;
+export const WAN_PPP_INSTANCE = `${WAN_PPP}.2`;
+
+export function makeZteWan(options: {
+  model?: string;
+  firmware?: string | null;
+  id?: string;
+}): WanDevice {
+  const d: WanDevice = {
+    "DeviceID.ID": { value: [options.id ?? "TEST-F670-TEST", "xsd:string"] },
+    "DeviceID.Manufacturer": { value: ["ZTE", "xsd:string"] },
+    [WAN_IP]: { writable: true },
+    [WAN_PPP]: { writable: true },
+  };
+  if (options.model)
+    d["DeviceID.ProductClass"] = { value: [options.model, "xsd:string"] };
+  if (options.firmware)
+    d["InternetGatewayDevice.DeviceInfo.SoftwareVersion"] = {
+      value: [options.firmware, "xsd:string"],
+    };
+  for (const base of [WAN_IP_INSTANCE, WAN_PPP_INSTANCE]) {
+    d[base] = { writable: true };
+    for (const [name, value, type] of [
+      ["Name", "", "xsd:string"],
+      ["Enable", false, "xsd:boolean"],
+      ["ConnectionType", "IP_Routed", "xsd:string"],
+      ["PossibleConnectionTypes", "IP_Routed,PPPoE_Bridged", "xsd:string"],
+      ["ConnectionTrigger", "AlwaysOn", "xsd:string"],
+      ["X_ZTE-COM_ServiceList", "", "xsd:string"],
+      ["X_ZTE-COM_VLANEnable", 0, "xsd:unsignedInt"],
+      ["X_ZTE-COM_VLANID", 0, "xsd:unsignedInt"],
+      ["X_ZTE-COM_8021P", 0, "xsd:unsignedInt"],
+      ["NATEnabled", true, "xsd:boolean"],
+      ["Username", "", "xsd:string"],
+      ["Password", "", "xsd:string"],
+      ["AddressingType", "DHCP", "xsd:string"],
+      ["ExternalIPAddress", "0.0.0.0", "xsd:string"],
+      ["SubnetMask", "0.0.0.0", "xsd:string"],
+      ["DefaultGateway", "0.0.0.0", "xsd:string"],
+      ["DNSServers", "", "xsd:string"],
+      ["X_ZTE-COM_LanInterface", "", "xsd:string"],
+    ] as const)
+      d[`${base}.${name}`] = {
+        value: [value, type],
+        writable: name !== "PossibleConnectionTypes",
+      };
+  }
+  return d;
+}
+
 export const PROFILE_MATRIX = {
   verifiedZte: [
     makeZte({ model: "F609", firmware: "V5.2.10P5T13", id: "TEST-ZTE-F609" }),

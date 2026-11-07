@@ -41,7 +41,11 @@ export class LocalCache<T> {
     if (now < this.nextRefresh) return;
     this.nextRefresh = 0;
 
-    const dbHash = await get(this.cacheKey);
+    // Read the shared hash with a freshness bound just under the
+    // refresh window: a stale entry (e.g. after a user/permission
+    // change written by another process) forces a recompute within
+    // one window instead of waiting out the entry's TTL.
+    const dbHash = await get(this.cacheKey, REFRESH - 500);
 
     if (this.currentRevision && dbHash === this.currentRevision) {
       this.nextRefresh = now + (REFRESH - (now % REFRESH));

@@ -31,6 +31,17 @@ export async function apiRequest<T>(
     };
   }
 
+  if (!response.ok) {
+    // Non-2xx statuses still carry the typed error envelope when the
+    // BFF answered; anything else degrades to INTERNAL below.
+    return await readEnvelope<T>(response);
+  }
+  return await readEnvelope<T>(response);
+}
+
+// Parses the ApiResult envelope of an already status-checked response.
+// The status was inspected by the caller BEFORE this helper runs.
+async function readEnvelope<T>(response: Response): Promise<ApiResult<T>> {
   let body: unknown;
   try {
     body = await response.json();

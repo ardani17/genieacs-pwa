@@ -11,7 +11,7 @@
     "approvalPolicy": "Pending exceptions below are proposals. They require named approvedBy and reviewedAt, full scope/CWE/compensation/owner and expiry within 30 days. No approval is inferred from this file or unit tests.",
     "publicationPolicy": "Local tests do not close GitHub alerts. Publish through an authorized PR to development, transition the existing default CodeQL setup to this advanced workflow, then evaluate actual exact-ref evidence."
   },
-  "scope": "Evidence mapping for the 16 CodeQL + 1 Dependabot alerts in the 2026-11-01 snapshot (docs/design/github-security-alerts.json), plus the PR merge-ref alerts 17-29 triaged on 2026-11-06 from the refs/pull/6/merge analysis at 351a638 (marked pr:true; GitHub keeps them out of the repository-wide list, the collector evaluates them from the PR-ref snapshot, and each new pull request re-triages its own numbers). Alert closure is only claimed as fixed_verified after the security-alerts workflow scans the exact ref/SHA; until the branch is pushed and scanned, every entry stays needs_validation. Residual protocol-crypto findings are risk_accepted via reviewed exceptions with expiry, never silently fixed.",
+  "scope": "Evidence mapping for the 16 CodeQL + 1 Dependabot alerts in the 2026-11-01 snapshot, plus PR merge-ref alerts triaged per pull request: PR #6 alerts 17-29 (2026-11-06) and PR #8 alerts 68-80 (2026-11-07, refs/pull/8/merge at b8bf7d1; line shifts renumbered the app-logger sinks and the reflected-xss rule fires at the approved envelope call sites). Alert closure is only claimed as fixed_verified after the security-alerts workflow scans the exact ref/SHA. Residual risks are risk_accepted via reviewed exceptions with expiry, never silently fixed.",
   "sourceSnapshot": {
     "checkedAt": "2026-11-01T14:24:50Z",
     "analysisRef": "refs/heads/main",
@@ -360,6 +360,246 @@
       "location": "test/engine-app-logger-broken-dir.ts:17",
       "disposition": "code_fixed_in_pr: the blocker now lives under a unique mkdtempSync directory with cleanup — no predictable shared tmp path",
       "tests": ["test/engine-app-logger-broken-dir.ts"]
+    },
+    "68": {
+      "package": "M01-S3",
+      "ticket": "ARD-206",
+      "state": "risk_accepted_pending_scan",
+      "pr": true,
+      "rule": "js/reflected-xss",
+      "location": "lib/ui/app-api.ts:74 (appError helper)",
+      "tests": ["test/security/error-response.ts"],
+      "exception": {
+        "reviewStatus": "approved",
+        "reason": "Reflected content in a non-HTML authenticated API response: the reviewer approved this envelope class on 2026-11-07 (alert 18 decision); re-recorded under the PR #8 alert numbers where the reflected-xss rule additionally fires at the same envelope call sites",
+        "scope": "lib/ui/app-api.ts:74 (appError helper) (json envelope)",
+        "cwe": "CWE-79, CWE-116",
+        "compensation": "application/json content type + X-Content-Type-Options nosniff + Cache-Control private no-store; consumed by the authenticated BFF fetch layer, never rendered as a document",
+        "owner": "ardani17",
+        "approvedBy": "ardani17",
+        "reviewedAt": "2026-11-07T03:43:56.000Z",
+        "expiresAt": "2026-12-04T00:00:00.000Z"
+      }
+    },
+    "69": {
+      "package": "M01-S3",
+      "ticket": "ARD-206",
+      "state": "risk_accepted_pending_scan",
+      "pr": true,
+      "rule": "js/reflected-xss",
+      "location": "lib/ui/app-api.ts:429 (operation outcome echo)",
+      "tests": ["test/security/error-response.ts"],
+      "exception": {
+        "reviewStatus": "approved",
+        "reason": "Reflected content in a non-HTML authenticated API response: the reviewer approved this envelope class on 2026-11-07 (alert 18 decision); re-recorded under the PR #8 alert numbers where the reflected-xss rule additionally fires at the same envelope call sites",
+        "scope": "lib/ui/app-api.ts:429 (operation outcome echo) (json envelope)",
+        "cwe": "CWE-79, CWE-116",
+        "compensation": "application/json content type + X-Content-Type-Options nosniff + Cache-Control private no-store; consumed by the authenticated BFF fetch layer, never rendered as a document",
+        "owner": "ardani17",
+        "approvedBy": "ardani17",
+        "reviewedAt": "2026-11-07T03:43:56.000Z",
+        "expiresAt": "2026-12-04T00:00:00.000Z"
+      }
+    },
+    "70": {
+      "package": "M01-S3",
+      "ticket": "ARD-206",
+      "state": "risk_accepted_pending_scan",
+      "pr": true,
+      "rule": "js/reflected-xss",
+      "location": "lib/ui/app-api.ts:634 (user roles echo)",
+      "tests": ["test/security/error-response.ts"],
+      "exception": {
+        "reviewStatus": "approved",
+        "reason": "Reflected content in a non-HTML authenticated API response: the reviewer approved this envelope class on 2026-11-07 (alert 18 decision); re-recorded under the PR #8 alert numbers where the reflected-xss rule additionally fires at the same envelope call sites",
+        "scope": "lib/ui/app-api.ts:634 (user roles echo) (json envelope)",
+        "cwe": "CWE-79, CWE-116",
+        "compensation": "application/json content type + X-Content-Type-Options nosniff + Cache-Control private no-store; consumed by the authenticated BFF fetch layer, never rendered as a document",
+        "owner": "ardani17",
+        "approvedBy": "ardani17",
+        "reviewedAt": "2026-11-07T03:43:56.000Z",
+        "expiresAt": "2026-12-04T00:00:00.000Z"
+      }
+    },
+    "71": {
+      "package": "M01-S3",
+      "ticket": "ARD-206",
+      "state": "risk_accepted_pending_scan",
+      "pr": true,
+      "rule": "js/reflected-xss",
+      "location": "lib/ui/api.ts:740 (tasks_rejected)",
+      "tests": ["test/security/error-response.ts"],
+      "exception": {
+        "reviewStatus": "approved",
+        "reason": "Reflected content in a non-HTML authenticated API response: the reviewer approved this envelope class on 2026-11-07 (alert 18 decision); re-recorded under the PR #8 alert numbers where the reflected-xss rule additionally fires at the same envelope call sites",
+        "scope": "lib/ui/api.ts:740 (tasks_rejected) (legacy envelope)",
+        "cwe": "CWE-79, CWE-116",
+        "compensation": "text/plain charset utf-8 + X-Content-Type-Options nosniff (sendSafeLegacyError envelope, M01-S3); allowlisted or bounded validation messages only",
+        "owner": "ardani17",
+        "approvedBy": "ardani17",
+        "reviewedAt": "2026-11-07T03:43:56.000Z",
+        "expiresAt": "2026-12-04T00:00:00.000Z"
+      }
+    },
+    "72": {
+      "package": "M01-S3",
+      "ticket": "ARD-206",
+      "state": "risk_accepted_pending_scan",
+      "pr": true,
+      "rule": "js/reflected-xss",
+      "location": "lib/ui/app-api.ts:694 (username echo)",
+      "tests": ["test/security/error-response.ts"],
+      "exception": {
+        "reviewStatus": "approved",
+        "reason": "Reflected content in a non-HTML authenticated API response: the reviewer approved this envelope class on 2026-11-07 (alert 18 decision); re-recorded under the PR #8 alert numbers where the reflected-xss rule additionally fires at the same envelope call sites",
+        "scope": "lib/ui/app-api.ts:694 (username echo) (json envelope)",
+        "cwe": "CWE-79, CWE-116",
+        "compensation": "application/json content type + X-Content-Type-Options nosniff + Cache-Control private no-store; consumed by the authenticated BFF fetch layer, never rendered as a document",
+        "owner": "ardani17",
+        "approvedBy": "ardani17",
+        "reviewedAt": "2026-11-07T03:43:56.000Z",
+        "expiresAt": "2026-12-04T00:00:00.000Z"
+      }
+    },
+    "73": {
+      "package": "M01-S3",
+      "ticket": "ARD-206",
+      "state": "risk_accepted_pending_scan",
+      "pr": true,
+      "rule": "js/reflected-xss",
+      "location": "lib/ui/app-api.ts:733 (password change echo)",
+      "tests": ["test/security/error-response.ts"],
+      "exception": {
+        "reviewStatus": "approved",
+        "reason": "Reflected content in a non-HTML authenticated API response: the reviewer approved this envelope class on 2026-11-07 (alert 18 decision); re-recorded under the PR #8 alert numbers where the reflected-xss rule additionally fires at the same envelope call sites",
+        "scope": "lib/ui/app-api.ts:733 (password change echo) (json envelope)",
+        "cwe": "CWE-79, CWE-116",
+        "compensation": "application/json content type + X-Content-Type-Options nosniff + Cache-Control private no-store; consumed by the authenticated BFF fetch layer, never rendered as a document",
+        "owner": "ardani17",
+        "approvedBy": "ardani17",
+        "reviewedAt": "2026-11-07T03:43:56.000Z",
+        "expiresAt": "2026-12-04T00:00:00.000Z"
+      }
+    },
+    "74": {
+      "package": "M01-S3",
+      "ticket": "ARD-206",
+      "state": "risk_accepted_pending_scan",
+      "pr": true,
+      "rule": "js/reflected-xss",
+      "location": "lib/ui/safe-error.ts:40 (sendSafeLegacyError body)",
+      "tests": ["test/security/error-response.ts"],
+      "exception": {
+        "reviewStatus": "approved",
+        "reason": "Reflected content in a non-HTML authenticated API response: the reviewer approved this envelope class on 2026-11-07 (alert 18 decision); re-recorded under the PR #8 alert numbers where the reflected-xss rule additionally fires at the same envelope call sites",
+        "scope": "lib/ui/safe-error.ts:40 (sendSafeLegacyError body) (legacy envelope)",
+        "cwe": "CWE-79, CWE-116",
+        "compensation": "text/plain charset utf-8 + X-Content-Type-Options nosniff (sendSafeLegacyError envelope, M01-S3); allowlisted or bounded validation messages only",
+        "owner": "ardani17",
+        "approvedBy": "ardani17",
+        "reviewedAt": "2026-11-07T03:43:56.000Z",
+        "expiresAt": "2026-12-04T00:00:00.000Z"
+      }
+    },
+    "75": {
+      "package": "M01-S3",
+      "ticket": "ARD-206",
+      "state": "risk_accepted_pending_scan",
+      "pr": true,
+      "rule": "js/xss-through-exception",
+      "location": "lib/ui/app-api.ts:74 (appError message)",
+      "tests": ["test/security/error-response.ts"],
+      "exception": {
+        "reviewStatus": "approved",
+        "reason": "Exception-derived message text in the same approved non-HTML envelope class (alert 18 decision, 2026-11-07), re-recorded for the PR #8 alert numbers",
+        "scope": "lib/ui/app-api.ts:74 (appError message) (json envelope)",
+        "cwe": "CWE-79, CWE-116",
+        "compensation": "application/json + nosniff + private no-store; JSON body is parsed, never rendered as HTML",
+        "owner": "ardani17",
+        "approvedBy": "ardani17",
+        "reviewedAt": "2026-11-07T03:43:56.000Z",
+        "expiresAt": "2026-12-04T00:00:00.000Z"
+      }
+    },
+    "76": {
+      "package": "M01-S3",
+      "ticket": "ARD-206",
+      "state": "risk_accepted_pending_scan",
+      "pr": true,
+      "rule": "js/xss-through-exception",
+      "location": "lib/ui/api.ts:740 (tasks_rejected message)",
+      "tests": ["test/security/error-response.ts"],
+      "exception": {
+        "reviewStatus": "approved",
+        "reason": "Exception-derived message text in the same approved non-HTML envelope class (alert 18 decision, 2026-11-07), re-recorded for the PR #8 alert numbers",
+        "scope": "lib/ui/api.ts:740 (tasks_rejected message) (legacy envelope)",
+        "cwe": "CWE-79, CWE-116",
+        "compensation": "text/plain charset utf-8 + nosniff; bounded validation messages only",
+        "owner": "ardani17",
+        "approvedBy": "ardani17",
+        "reviewedAt": "2026-11-07T03:43:56.000Z",
+        "expiresAt": "2026-12-04T00:00:00.000Z"
+      }
+    },
+    "77": {
+      "package": "M05-A",
+      "ticket": "ARD-206",
+      "state": "needs_validation",
+      "pr": true,
+      "rule": "js/polynomial-redos",
+      "location": "packages/device-profiles/src/management-wan.ts:100",
+      "disposition": "code_fixed_in_pr: linear trimTrailingDots (charCode scan) replaces the polynomial /.+$/ anchored-quantifier regexes in both trailing-dot normalizations",
+      "tests": ["packages/device-profiles/src/management-wan.test.ts"]
+    },
+    "78": {
+      "package": "M05-A",
+      "ticket": "ARD-206",
+      "state": "needs_validation",
+      "pr": true,
+      "rule": "js/polynomial-redos",
+      "location": "packages/device-profiles/src/management-wan.ts:122",
+      "disposition": "code_fixed_in_pr: linear trimTrailingDots (charCode scan) replaces the polynomial /.+$/ anchored-quantifier regexes in both trailing-dot normalizations",
+      "tests": ["packages/device-profiles/src/management-wan.test.ts"]
+    },
+    "79": {
+      "package": "M01-E",
+      "ticket": "ARD-206",
+      "state": "risk_accepted_pending_scan",
+      "pr": true,
+      "rule": "js/http-to-file-access",
+      "location": "lib/app-logger.ts:301",
+      "tests": ["test/app-logger.ts"],
+      "exception": {
+        "reviewStatus": "approved",
+        "reason": "Same app-logger sink approved as alerts 23/24 on 2026-11-07; the M05/M06 line shifts renumbered the identical locations on the PR #8 merge ref",
+        "scope": "lib/app-logger.ts file sink appendFile (engine/web/vpn)",
+        "cwe": "CWE-434, CWE-912",
+        "compensation": "events JSON.stringify-ed: control characters escaped, one physical line per record; recursive secret redaction; bounded queue; operator-configured path",
+        "owner": "ardani17",
+        "approvedBy": "ardani17",
+        "reviewedAt": "2026-11-07T03:43:56.000Z",
+        "expiresAt": "2026-12-04T00:00:00.000Z"
+      }
+    },
+    "80": {
+      "package": "M01-E",
+      "ticket": "ARD-206",
+      "state": "risk_accepted_pending_scan",
+      "pr": true,
+      "rule": "js/http-to-file-access",
+      "location": "lib/app-logger.ts:309",
+      "tests": ["test/app-logger.ts"],
+      "exception": {
+        "reviewStatus": "approved",
+        "reason": "Same app-logger sink approved as alerts 23/24 on 2026-11-07; the M05/M06 line shifts renumbered the identical locations on the PR #8 merge ref",
+        "scope": "lib/app-logger.ts file sink appendFile retry (engine/web/vpn)",
+        "cwe": "CWE-434, CWE-912",
+        "compensation": "events JSON.stringify-ed: control characters escaped, one physical line per record; recursive secret redaction; bounded queue; operator-configured path",
+        "owner": "ardani17",
+        "approvedBy": "ardani17",
+        "reviewedAt": "2026-11-07T03:43:56.000Z",
+        "expiresAt": "2026-12-04T00:00:00.000Z"
+      }
     },
     "dependabot1": {
       "package": "M01-B",

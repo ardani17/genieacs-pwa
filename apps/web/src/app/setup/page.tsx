@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { AuthPanel } from "@/components/auth-panel";
+import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
 import { Status } from "@/components/ui/status";
 
@@ -18,8 +20,12 @@ export default function SetupPage() {
 
   useEffect(() => {
     fetch("/api/app/setup", { cache: "no-store" })
-      .then((res) => res.json())
-      .then((body) => {
+      .then(async (res) => {
+        if (!res.ok) {
+          setState("error");
+          return;
+        }
+        const body = await res.json();
         if (body?.ok) setState(body.data.available ? "available" : "locked");
         else setState("error");
       })
@@ -48,8 +54,17 @@ export default function SetupPage() {
         },
         body: JSON.stringify({ password }),
       });
+      if (!res.ok) {
+        // Non-2xx still carries the typed envelope; unparseable bodies
+        // fall through to the catch below (same as before).
+        const errBody = (await res.json()) as {
+          error?: { message?: string };
+        } | null;
+        setMessage(errBody?.error?.message ?? "Gagal membuat admin.");
+        return;
+      }
       const body = await res.json();
-      if (res.ok && body?.ok) {
+      if (body?.ok) {
         setState("locked");
         setMessage("Admin berhasil dibuat. Silakan masuk.");
         (e.target as HTMLFormElement).reset();
@@ -64,8 +79,10 @@ export default function SetupPage() {
   }
 
   return (
-    <main className="app-shell">
-      <h1>Penyiapan Awal</h1>
+    <AuthPanel
+      title="Penyiapan Awal"
+      description="Buat akun administrator untuk instalasi pertama."
+    >
       {state === "checking" ? <Status tone="muted">Memeriksa…</Status> : null}
       {state === "locked" ? (
         <Status tone="warning">
@@ -76,13 +93,13 @@ export default function SetupPage() {
         <Status tone="danger">Tidak dapat menghubungi server.</Status>
       ) : null}
       {state === "available" ? (
-        <form onSubmit={onSubmit} noValidate>
+        <form onSubmit={onSubmit} className="form-stack" noValidate>
           <Field label="Nama pengguna admin" required>
-            {({ id }) => <input id={id} value="admin" readOnly />}
+            {({ id }) => <Input id={id} value="admin" readOnly />}
           </Field>
           <Field label="Password admin" required>
             {({ id }) => (
-              <input
+              <Input
                 id={id}
                 name="password"
                 type="password"
@@ -94,7 +111,7 @@ export default function SetupPage() {
           </Field>
           <Field label="Konfirmasi password" required>
             {({ id }) => (
-              <input
+              <Input
                 id={id}
                 name="confirm"
                 type="password"
@@ -113,6 +130,6 @@ export default function SetupPage() {
       {state === "locked" && message ? (
         <Status tone="success">{message}</Status>
       ) : null}
-    </main>
+    </AuthPanel>
   );
 }

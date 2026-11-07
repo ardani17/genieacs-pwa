@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { useEffect } from "react";
 import { captureClientError } from "@/components/error-reporter";
 
@@ -18,15 +19,19 @@ export default function Error({
 
   const requestId = error.digest ?? "unknown";
   return (
-    <section role="alert" aria-labelledby="error-title">
+    <section
+      className="app-shell space-y-4"
+      role="alert"
+      aria-labelledby="error-title"
+    >
       <h1 id="error-title">Terjadi kesalahan</h1>
       <p>Permintaan tidak dapat diselesaikan. Silakan coba lagi.</p>
       <p>
         <small>request {requestId}</small>
       </p>
-      <button type="button" onClick={reset}>
+      <Button type="button" onClick={reset}>
         Coba lagi
-      </button>
+      </Button>
     </section>
   );
 }

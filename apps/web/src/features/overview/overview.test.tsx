@@ -77,7 +77,7 @@ describe("Overview", () => {
     expect(filtered.length).toBe(2);
 
     // Slice counts are clickable through to the same filter.
-    const slices = await screen.findAllByRole("button", { name: "7" });
+    const slices = await screen.findAllByRole("button", { name: /: 7$/ });
     expect(slices.length).toBe(2);
   });
 

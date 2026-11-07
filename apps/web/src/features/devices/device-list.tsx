@@ -2,11 +2,21 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { DataView } from "@/components/ui/data-view";
+import { DataView, type DataViewProps } from "@/components/ui/data-view";
 import { Button } from "@/components/ui/button";
 import { FilterBar } from "./filter-bar";
+import { runBulk, BULK_MAX_TARGETS } from "../tasks/bulk";
 
-import styles from "./device-list.module.css";
+import { ArrowLeft, ArrowRight, ArrowUpRight, Download } from "lucide-react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import type { ApiResult, Page } from "@contracts/api.ts";
 
 type FlatDevice = Record<string, { value?: [unknown, string] } | unknown>;
@@ -17,21 +27,138 @@ function value(device: FlatDevice, path: string): string {
 }
 
 function lastInformText(device: FlatDevice): string {
-  const ts = (device["_lastInform"] as { value?: [number, string] } | undefined)
-    ?.value;
-  if (!ts) return "—";
-  return new Date(Number(ts[0])).toLocaleString("id-ID");
+  const ts = value(device, "Events.Inform") || value(device, "_lastInform");
+  if (!ts) return "Belum tersedia";
+  const date = new Date(Number.isFinite(Number(ts)) ? Number(ts) : ts);
+  return Number.isNaN(date.getTime())
+    ? "Belum tersedia"
+    : date.toLocaleString("id-ID");
+}
+
+function BulkBar({
+  selected,
+  onClear,
+  reload,
+}: {
+  selected: string[];
+  onClear: () => void;
+  reload: () => void;
+}) {
+  const [tag, setTag] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [results, setResults] = useState<
+    { deviceId: string; state: string }[] | null
+  >(null);
+  const controllerRef = useRef<AbortController | null>(null);
+
+  const runTags = async (on: boolean): Promise<void> => {
+    setBusy(true);
+    setResults(null);
+    // A fresh controller per run: the cancel button aborts it and
+    // runBulk skips every target not yet submitted.
+    controllerRef.current = new AbortController();
+    try {
+      await runBulkTags(on);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const runBulkTags = async (on: boolean): Promise<void> => {
+    const handle = await runBulk(
+      selected.map((deviceId) => ({ deviceId })),
+      {
+        async submit({ deviceId }) {
+          const res = await fetch(
+            `/api/app/devices/${encodeURIComponent(deviceId)}/tags`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "X-App-Request": "1",
+              },
+              body: JSON.stringify({ [tag]: on }),
+              cache: "no-store",
+            },
+          );
+          const state = res.ok ? "succeeded" : "failed";
+          return { deviceId, state: state as "succeeded" | "failed" };
+        },
+      },
+      controllerRef.current?.signal,
+    );
+    setResults(handle.outcomes);
+    onClear();
+    reload();
+  };
+
+  return (
+    <div className="space-y-2 rounded-xl border bg-card p-3">
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <span className="font-medium">{selected.length} dipilih</span>
+        <input
+          aria-label="Tag untuk bulk"
+          value={tag}
+          placeholder="nama-tag"
+          className="min-h-11 rounded-md border px-3"
+          onChange={(e) => setTag(e.target.value)}
+        />
+        <Button
+          size="sm"
+          disabled={busy || !tag.trim()}
+          onClick={() => void runTags(true)}
+        >
+          Tambah tag
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={busy || !tag.trim()}
+          onClick={() => void runTags(false)}
+        >
+          Hapus tag
+        </Button>
+        {busy ? (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => controllerRef.current?.abort()}
+          >
+            Batalkan sisanya
+          </Button>
+        ) : null}
+      </div>
+      {results ? (
+        <ul className="text-xs text-muted-foreground" aria-live="polite">
+          {results.map((r) => (
+            <li key={r.deviceId}>
+              {r.deviceId}: {r.state}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
 }
 
 export function DeviceList() {
   const params = useSearchParams();
-  const [state, setState] = useState<"loading" | "ready" | "error" | "empty">(
-    "loading",
-  );
+  const [state, setState] =
+    useState<DataViewProps<FlatDevice>["state"]>("loading");
   const [page, setPage] = useState<Page<FlatDevice> | null>(null);
   const [requestId, setRequestId] = useState<string | undefined>();
   const abortRef = useRef<AbortController | null>(null);
-  const lastQueryRef = useRef<string | null>(null);
+  const [reload, setReload] = useState(0);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const toggle = (id: string): void => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else if (next.size < BULK_MAX_TARGETS) next.add(id);
+      return next;
+    });
+  };
+  const reloadList = (): void => setReload((n) => n + 1);
 
   const queryText = useMemo(() => params.toString(), [params]);
 
@@ -41,35 +168,51 @@ export function DeviceList() {
       abortRef.current?.abort();
       const controller = new AbortController();
       abortRef.current = controller;
-
-      const search = params.get("search");
-      const filter = params.get("filter");
+      setState("loading");
+      setRequestId(undefined);
       const apiParams = new URLSearchParams(queryText);
       // The BFF builds the native query; the browser passes page/size/
       // sort/filter/search through and the adapter bounds them.
-      void search;
-      void filter;
       const url = `/api/app/resources/devices?${apiParams.toString()}`;
 
       fetch(url, { signal: controller.signal, cache: "no-store" })
         .then(async (res) => {
-          const body = (await res.json()) as ApiResult<Page<FlatDevice>>;
-          if (!body.ok) {
-            setRequestId(body.requestId);
-            setState("error");
+          const applyResult = (result: ApiResult<Page<FlatDevice>>): void => {
+            if (controller.signal.aborted) return;
+            if (result.ok === false) {
+              setPage(null);
+              setRequestId(result.requestId);
+              setState(
+                result.error.code === "FORBIDDEN"
+                  ? "permission-denied"
+                  : result.error.code === "BACKEND_UNAVAILABLE"
+                    ? "unavailable"
+                    : "error",
+              );
+              return;
+            }
+            setPage(result.data);
+            setState(result.data.items.length === 0 ? "empty" : "ready");
+          };
+          if (!res.ok) {
+            // Non-2xx still carries the typed envelope; unparseable
+            // bodies fall through to the catch below (same as before).
+            applyResult((await res.json()) as ApiResult<Page<FlatDevice>>);
             return;
           }
-          setPage(body.data);
-          setState(body.data.items.length === 0 ? "empty" : "ready");
+          applyResult((await res.json()) as ApiResult<Page<FlatDevice>>);
         })
         .catch((err) => {
           if (err instanceof DOMException && err.name === "AbortError") return;
+          setPage(null);
           setState("error");
         });
     }, 300);
-    lastQueryRef.current = queryText;
-    return () => clearTimeout(timer);
-  }, [queryText, params]);
+    return () => {
+      clearTimeout(timer);
+      abortRef.current?.abort();
+    };
+  }, [queryText, params, reload]);
 
   const currentPage = page?.page ?? 1;
   const hasNext = page?.hasNext ?? false;
@@ -88,119 +231,184 @@ export function DeviceList() {
   }
 
   return (
-    <div
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: "var(--space-12)",
-      }}
-    >
+    <div className="min-w-0 space-y-6">
       <FilterBar />
-      <DataView
-        state={state}
-        items={page?.items ?? []}
-        errorRequestId={requestId}
-        onRetry={() => setState("loading")}
-        renderReady={(items) => (
-          <>
-            <div
-              className={styles.tableWrap}
-              role="region"
-              aria-label="Daftar perangkat (tabel)"
+      <Card className="min-w-0 gap-0 overflow-hidden pb-0">
+        <CardHeader className="mb-6 flex flex-wrap items-center justify-between gap-4">
+          <div className="space-y-1">
+            <CardTitle role="heading" aria-level={2}>
+              Daftar perangkat
+            </CardTitle>
+            <p className="text-sm text-muted-foreground" aria-live="polite">
+              {page?.total != null
+                ? page.total.toLocaleString("id-ID") + " perangkat ditemukan"
+                : "Hasil berdasarkan filter dan izin akun"}
+            </p>
+          </div>
+          <Button variant="outline" onClick={exportCsv}>
+            <Download aria-hidden="true" />
+            Ekspor CSV
+          </Button>
+        </CardHeader>
+        <DataView
+          state={state}
+          items={page?.items ?? []}
+          errorRequestId={requestId}
+          onRetry={() => {
+            setState("loading");
+            setReload((n) => n + 1);
+          }}
+          renderReady={(items) => (
+            <>
+              {selected.size ? (
+                <BulkBar
+                  selected={[...selected]}
+                  onClear={() => setSelected(new Set())}
+                  reload={reloadList}
+                />
+              ) : null}
+              <div
+                className="hidden min-w-0 md:block"
+                role="region"
+                aria-label="Daftar perangkat (tabel)"
+              >
+                <Table>
+                  <TableHeader className="bg-muted/60">
+                    <TableRow>
+                      <TableHead scope="col" className="w-10 px-2">
+                        <span className="sr-only">Pilih</span>
+                      </TableHead>
+                      {["ID", "Model", "Firmware", "Terakhir inform", "IP"].map(
+                        (label) => (
+                          <TableHead scope="col" key={label} className="px-6">
+                            {label}
+                          </TableHead>
+                        ),
+                      )}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {items.map((device) => {
+                      const id = value(device, "DeviceID.ID");
+                      return (
+                        <TableRow key={id}>
+                          <TableCell className="px-2">
+                            <input
+                              type="checkbox"
+                              aria-label={`Pilih ${id}`}
+                              checked={selected.has(id)}
+                              onChange={() => toggle(id)}
+                              className="size-5"
+                            />
+                          </TableCell>
+                          <TableCell className="px-6">
+                            <a
+                              className="inline-flex min-h-11 items-center gap-2 font-medium text-primary hover:underline"
+                              href={"/devices/" + encodeURIComponent(id)}
+                            >
+                              {id}
+                              <ArrowUpRight
+                                className="size-3.5"
+                                aria-hidden="true"
+                              />
+                            </a>
+                          </TableCell>
+                          <TableCell className="px-6">
+                            {value(device, "DeviceID.ProductClass") || "—"}
+                          </TableCell>
+                          <TableCell className="px-6">
+                            {value(
+                              device,
+                              "InternetGatewayDevice.DeviceInfo.SoftwareVersion",
+                            ) || "—"}
+                          </TableCell>
+                          <TableCell className="px-6 text-muted-foreground">
+                            {lastInformText(device)}
+                          </TableCell>
+                          <TableCell className="px-6 font-mono text-xs">
+                            {value(
+                              device,
+                              "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.ExternalIPAddress",
+                            ) || "—"}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+              <div className="divide-y border-t md:hidden">
+                {items.map((device) => {
+                  const id = value(device, "DeviceID.ID");
+                  return (
+                    <CardContent key={id} className="space-y-3 py-4">
+                      <a
+                        href={"/devices/" + encodeURIComponent(id)}
+                        className="flex min-h-11 items-center justify-between gap-2 break-all text-sm font-semibold text-primary"
+                      >
+                        {id}
+                        <ArrowUpRight
+                          className="size-4 shrink-0"
+                          aria-hidden="true"
+                        />
+                      </a>
+                      <dl className="grid grid-cols-2 gap-3 text-xs">
+                        <div>
+                          <dt className="text-muted-foreground">Model</dt>
+                          <dd className="mt-1 font-medium">
+                            {value(device, "DeviceID.ProductClass") || "—"}
+                          </dd>
+                        </div>
+                        <div>
+                          <dt className="text-muted-foreground">Firmware</dt>
+                          <dd className="mt-1 font-medium">
+                            {value(
+                              device,
+                              "InternetGatewayDevice.DeviceInfo.SoftwareVersion",
+                            ) || "—"}
+                          </dd>
+                        </div>
+                        <div className="col-span-2">
+                          <dt className="text-muted-foreground">
+                            Terakhir inform
+                          </dt>
+                          <dd className="mt-1">{lastInformText(device)}</dd>
+                        </div>
+                      </dl>
+                    </CardContent>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        />
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t p-4 md:px-6">
+          <span className="text-xs text-muted-foreground" aria-live="polite">
+            Halaman {currentPage}
+            {page?.total != null
+              ? " dari " + Math.max(1, Math.ceil(page.total / page.pageSize))
+              : ""}
+          </span>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              onClick={() => navigatePage(-1)}
+              disabled={state === "loading" || currentPage <= 1}
             >
-              <table className={styles.table}>
-                <thead>
-                  <tr>
-                    <th scope="col">ID</th>
-                    <th scope="col">Model</th>
-                    <th scope="col">Firmware</th>
-                    <th scope="col">Terakhir inform</th>
-                    <th scope="col">IP</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((device) => {
-                    const id = value(device, "DeviceID.ID");
-                    return (
-                      <tr key={id}>
-                        <td>
-                          <a href={`/devices/${encodeURIComponent(id)}`}>
-                            {id}
-                          </a>
-                        </td>
-                        <td>{value(device, "DeviceID.ProductClass") || "—"}</td>
-                        <td>
-                          {value(
-                            device,
-                            "InternetGatewayDevice.DeviceInfo.SoftwareVersion",
-                          ) || "—"}
-                        </td>
-                        <td>{lastInformText(device)}</td>
-                        <td>
-                          {value(
-                            device,
-                            "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.ExternalIPAddress",
-                          ) || "—"}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-            <div className={styles.cards}>
-              {items.map((device) => {
-                const id = value(device, "DeviceID.ID");
-                return (
-                  <div className={styles.card} key={id}>
-                    <a
-                      className={styles.cardId}
-                      href={`/devices/${encodeURIComponent(id)}`}
-                    >
-                      {id}
-                    </a>
-                    <span className={styles.cardMeta}>
-                      {value(device, "DeviceID.ProductClass") || "—"} ·{" "}
-                      {value(
-                        device,
-                        "InternetGatewayDevice.DeviceInfo.SoftwareVersion",
-                      ) || "—"}
-                    </span>
-                    <span className={styles.cardMeta}>
-                      {lastInformText(device)}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </>
-        )}
-      />
-      <div className={styles.pager}>
-        <Button
-          variant="secondary"
-          onClick={() => navigatePage(-1)}
-          disabled={currentPage <= 1}
-        >
-          Sebelumnya
-        </Button>
-        <span className={styles.mutedText} aria-live="polite">
-          Halaman {currentPage}
-          {page?.total != null
-            ? ` dari ${Math.max(1, Math.ceil(page.total / page.pageSize))}`
-            : ""}
-        </span>
-        <Button
-          variant="secondary"
-          onClick={() => navigatePage(1)}
-          disabled={!hasNext}
-        >
-          Berikutnya
-        </Button>
-        <Button variant="secondary" onClick={exportCsv}>
-          Ekspor CSV
-        </Button>
-      </div>
+              <ArrowLeft aria-hidden="true" />
+              <span>Sebelumnya</span>
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => navigatePage(1)}
+              disabled={state === "loading" || !hasNext}
+            >
+              <span>Berikutnya</span>
+              <ArrowRight aria-hidden="true" />
+            </Button>
+          </div>
+        </div>
+      </Card>
     </div>
   );
 }

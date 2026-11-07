@@ -21,15 +21,29 @@ function hashPassword(pass, salt) {
   );
 }
 
-function param(value, type = "xsd:string") {
-  return { _value: value, _type: type, _object: false, _timestamp: 1 };
+function param(value, type = "xsd:string", writable = false) {
+  return {
+    _value: value,
+    _type: type,
+    _writable: writable,
+    _object: false,
+    _timestamp: 1,
+  };
 }
 
 function buildDevice(i) {
+  const firmware = i === 2 ? "unknown-version" : "V6.0.10P3N19";
   return {
     _id: `TEST-DEVICE-${String(i).padStart(5, "0")}`,
     _lastInform: new Date(),
     _registered: new Date(),
+    _tags: ["demo", "fixture-a\\b"],
+    _deviceId: {
+      _Manufacturer: "ZTE",
+      _OUI: "000000",
+      _ProductClass: "F670",
+      _SerialNumber: `TEST-SN-${i}`,
+    },
     DeviceID: {
       ID: param(`TEST-DEVICE-${String(i).padStart(5, "0")}`),
       Manufacturer: param("ZTE"),
@@ -37,7 +51,82 @@ function buildDevice(i) {
       SerialNumber: param(`TEST-SN-${i}`),
     },
     InternetGatewayDevice: {
-      DeviceInfo: { SoftwareVersion: param("V6.0.10P3N19") },
+      DeviceInfo: { SoftwareVersion: param(firmware) },
+      ManagementServer: {
+        // TEST-NET host: never the device's WAN IP, so the management
+        // WAN guard keeps this instance editable in e2e flows.
+        ConnectionRequestURL: param("http://192.0.2.99:7547/"),
+      },
+      LANDevice: {
+        1: {
+          WLANConfiguration: {
+            2: {
+              SSID: param("Lab", "xsd:string", true),
+              Enable: param(true, "xsd:boolean", true),
+              Standard: param("802.11b/g/n"),
+              BeaconType: param("11i"),
+              "PreSharedKey.1.PreSharedKey": param("", "xsd:string", true),
+            },
+          },
+        },
+      },
+      WANDevice: {
+        1: {
+          WANConnectionDevice: {
+            1: {
+              WANIPConnection: {
+                _writable: true,
+                1: {
+                  Name: param("INTERNET", "xsd:string", true),
+                  Enable: param(true, "xsd:boolean", true),
+                  ConnectionType: param("IP_Routed", "xsd:string", true),
+                  PossibleConnectionTypes: param(
+                    "IP_Routed,PPPoE_Bridged",
+                    "xsd:string",
+                    false,
+                  ),
+                  "X_ZTE-COM_ServiceList": param(
+                    "INTERNET",
+                    "xsd:string",
+                    true,
+                  ),
+                  "X_ZTE-COM_VLANEnable": param(0, "xsd:unsignedInt", true),
+                  "X_ZTE-COM_VLANID": param(0, "xsd:unsignedInt", true),
+                  "X_ZTE-COM_8021P": param(0, "xsd:unsignedInt", true),
+                  NATEnabled: param(true, "xsd:boolean", true),
+                  AddressingType: param("DHCP", "xsd:string", true),
+                  ExternalIPAddress: param("192.0.2.50"),
+                  SubnetMask: param("0.0.0.0"),
+                  DefaultGateway: param("0.0.0.0"),
+                  DNSServers: param("", "xsd:string", true),
+                  "X_ZTE-COM_LanInterface": param("", "xsd:string", true),
+                },
+              },
+              WANPPPConnection: {
+                _writable: true,
+                1: {
+                  Name: param("PPPoE", "xsd:string", true),
+                  Enable: param(false, "xsd:boolean", true),
+                  ConnectionType: param("PPPoE_Routed", "xsd:string", true),
+                  PossibleConnectionTypes: param(
+                    "PPPoE_Routed,PPPoE_Bridged",
+                    "xsd:string",
+                    false,
+                  ),
+                  "X_ZTE-COM_ServiceList": param("", "xsd:string", true),
+                  "X_ZTE-COM_VLANEnable": param(0, "xsd:unsignedInt", true),
+                  "X_ZTE-COM_VLANID": param(0, "xsd:unsignedInt", true),
+                  "X_ZTE-COM_8021P": param(0, "xsd:unsignedInt", true),
+                  NATEnabled: param(true, "xsd:boolean", true),
+                  Username: param("", "xsd:string", true),
+                  Password: param("", "xsd:string", true),
+                  "X_ZTE-COM_LanInterface": param("", "xsd:string", true),
+                },
+              },
+            },
+          },
+        },
+      },
     },
     // The e2e masking assertions look for this sentinel parameter.
     "Device.WiFi.KeyPassphrase": param("e2e-secret-passphrase"),

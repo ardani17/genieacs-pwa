@@ -76,6 +76,11 @@ Configure systemd
     NODE_OPTIONS=--enable-source-maps
     GENIEACS_EXT_DIR=/opt/genieacs/ext
 
+  .. note:: ``GENIEACS_DEBUG_FILE`` alone writes nothing: raw protocol
+    dumps can carry CWMP credentials, so the sink is gated behind the
+    explicit opt-in ``GENIEACS_DEBUG_RAW=1``. Add it to the env file
+    only for the duration of a troubleshooting session, then remove it.
+
   Generate a secure JWT secret and append to :file:`/opt/genieacs/genieacs.env`:
 
   .. code:: bash

@@ -1,16 +1,13 @@
-import styles from "./ui.module.css";
-
+import { CheckCircle2, CircleHelp, TriangleAlert } from "lucide-react";
+import { Badge } from "./badge";
+import { cn } from "@/lib/utils";
 export type StatusTone = "success" | "warning" | "danger" | "muted";
-
-const ICONS: Record<StatusTone, string> = {
-  success: "M8 1.5 2.5 7l2 2L8 5.5 14 11.5l2-2z",
-  warning: "M9 1 1 15h16L9 1zm-1 5h2v5H8V6zm0 6h2v2H8v-2z",
-  danger: "M9 1 1 15h16L9 1zM8 6h2v5H8V6zm0 6h2v2H8v-2z",
-  muted: "M9 1a8 8 0 1 0 0 16A8 8 0 0 0 9 1zm0 2a6 6 0 1 1 0 12A6 6 0 0 1 9 3z",
+const tones = {
+  success: "border-success/20 bg-success/5 text-success",
+  warning: "border-warning/20 bg-warning/5 text-warning",
+  danger: "border-destructive/20 bg-destructive/5 text-destructive",
+  muted: "border-border bg-muted text-muted-foreground",
 };
-
-// Status = icon + text, announced politely; inline SVG is local with
-// aria-hidden (the text carries the meaning).
 export function Status({
   tone,
   children,
@@ -18,24 +15,24 @@ export function Status({
   tone: StatusTone;
   children: React.ReactNode;
 }) {
+  const Icon =
+    tone === "success"
+      ? CheckCircle2
+      : tone === "muted"
+        ? CircleHelp
+        : TriangleAlert;
   return (
-    <span
-      className={`${styles.statusRow} ${
-        tone === "danger" ? styles.dangerText : styles[tone]
-      }`}
+    <Badge
+      variant="outline"
+      className={cn(
+        "max-w-full gap-2 whitespace-normal px-3 py-2 text-xs leading-relaxed",
+        tones[tone],
+      )}
       role="status"
       aria-live="polite"
     >
-      <svg
-        width="18"
-        height="18"
-        viewBox="0 0 18 18"
-        aria-hidden="true"
-        focusable="false"
-      >
-        <path fill="currentColor" d={ICONS[tone]} />
-      </svg>
-      <span className={styles.statusText}>{children}</span>
-    </span>
+      <Icon className="size-4 shrink-0" aria-hidden="true" />
+      <span>{children}</span>
+    </Badge>
   );
 }

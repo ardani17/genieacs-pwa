@@ -62,3 +62,16 @@ diminta masuk planning. Snapshot API 16 CodeQL+1 Dependabot dipetakan pada
 [register](github-security-alerts.md), sembilan paket M01-S1–S9 dan 43 paket
 total. Perbaikan source/dependency serta penutupan alert tetap pekerjaan
 implementasi; sesi ini hanya memperbarui dokumen/tiket dan dependency gate.
+
+## Revisi UI — 4 November 2026
+
+Pengguna meminta shadcn/ui menjadi kontrak fondasi UI/UX dan rencana dicatat di
+Linear sebelum refactor. Source komponen resmi disimpan di repository, memakai
+primitive Radix, Tailwind CSS 4, CSS variables semantik dan ikon Lucide lokal.
+Tema biru-putih, font sistem, mobile-first serta batas server/BFF tetap berlaku.
+Keputusan ini mengganti pilihan CSS Modules custom sebagai fondasi frontend.
+
+[Kontrak sistem desain](ui-design-system.md) dan tiket UI-01/ARD-218,
+UI-02/ARD-219, UI-03/ARD-220 menjadi acuan migrasi dan acceptance visual.
+Pekerjaan lama tetap mempunyai riwayatnya; scope tambahan membuka M03–M04
+kembali sampai fondasi, halaman, tes dan preview yang konsisten selesai.

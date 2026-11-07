@@ -1,7 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { AuthPanel } from "@/components/auth-panel";
+import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
 import { Status } from "@/components/ui/status";
 
@@ -22,6 +25,16 @@ export default function AccountPasswordPage() {
       setMessage({ tone: "danger", text: "Konfirmasi password tidak sama." });
       return;
     }
+    const fail = (body: unknown): void => {
+      setMessage({
+        tone: "danger",
+        text:
+          (body as { error?: { code?: string } } | null)?.error?.code ===
+          "VALIDATION"
+            ? "Password baru tidak memenuhi kebijakan."
+            : "Password saat ini salah.",
+      });
+    };
     setBusy(true);
     setMessage(null);
     try {
@@ -37,20 +50,20 @@ export default function AccountPasswordPage() {
           newPassword,
         }),
       });
+      if (!res.ok) {
+        // Non-2xx still carries the typed envelope; unparseable bodies
+        // fall through to the catch below (same as before).
+        fail(await res.json());
+        return;
+      }
       const body = await res.json();
-      if (res.ok && body?.ok) {
+      if (body?.ok) {
         setMessage({ tone: "success", text: "Password berhasil diganti." });
         // Clear the form fields from memory immediately.
         (e.target as HTMLFormElement).reset();
         return;
       }
-      setMessage({
-        tone: "danger",
-        text:
-          body?.error?.code === "VALIDATION"
-            ? "Password baru tidak memenuhi kebijakan."
-            : "Password saat ini salah.",
-      });
+      fail(body);
     } catch {
       setMessage({ tone: "danger", text: "Tidak dapat menghubungi server." });
     } finally {
@@ -59,12 +72,14 @@ export default function AccountPasswordPage() {
   }
 
   return (
-    <main className="app-shell">
-      <h1>Ganti Password</h1>
-      <form onSubmit={onSubmit} noValidate>
+    <AuthPanel
+      title="Ganti Password"
+      description="Perbarui password akun Anda. Gunakan password yang kuat dan unik."
+    >
+      <form onSubmit={onSubmit} className="form-stack" noValidate>
         <Field label="Password saat ini" required>
           {({ id }) => (
-            <input
+            <Input
               id={id}
               name="oldPassword"
               type="password"
@@ -75,7 +90,7 @@ export default function AccountPasswordPage() {
         </Field>
         <Field label="Password baru" required>
           {({ id }) => (
-            <input
+            <Input
               id={id}
               name="newPassword"
               type="password"
@@ -87,7 +102,7 @@ export default function AccountPasswordPage() {
         </Field>
         <Field label="Konfirmasi password baru" required>
           {({ id }) => (
-            <input
+            <Input
               id={id}
               name="confirm"
               type="password"
@@ -101,7 +116,13 @@ export default function AccountPasswordPage() {
         <Button type="submit" busy={busy}>
           Simpan
         </Button>
+        <Link
+          href="/overview"
+          className="flex min-h-11 items-center justify-center text-sm font-medium text-primary hover:underline"
+        >
+          Kembali ke ringkasan
+        </Link>
       </form>
-    </main>
+    </AuthPanel>
   );
 }

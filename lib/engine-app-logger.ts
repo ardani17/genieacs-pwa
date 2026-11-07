@@ -99,11 +99,14 @@ export function emitPermissionDenied(
   ctx: KoaLikeContext | undefined,
   action: string,
 ): void {
-  getEngineAppLogger().emit({
-    event: "auth.permission_denied",
-    level: "warn",
+  // Contract event name is "permission.denied"; the auth.* alias keeps
+  // the M02 event-consumer tests and any existing queries working.
+  const fields = {
+    level: "warn" as const,
     ...correlation(ctx),
-    outcome: "failure",
+    outcome: "failure" as const,
     message: `not authorized: ${action}`,
-  });
+  };
+  getEngineAppLogger().emit({ event: "permission.denied", ...fields });
+  getEngineAppLogger().emit({ event: "auth.permission_denied", ...fields });
 }

@@ -19,7 +19,11 @@
   },
   "index": {
     "components": [
-      { "type": "string", "label": "ID Perangkat", "parameter": "DeviceID.ID" },
+      {
+        "type": "string",
+        "label": "ID Perangkat",
+        "parameter": "DeviceID.ID"
+      },
       {
         "type": "string",
         "label": "Serial",
@@ -41,7 +45,11 @@
           }
         ]
       },
-      { "type": "anchor", "label": "Detail", "url": "/devices/{{DEVICE_ID}}" },
+      {
+        "type": "anchor",
+        "label": "Detail",
+        "url": "/devices/{{DEVICE_ID}}"
+      },
       {
         "type": "chart",
         "label": "Trafik",
@@ -53,11 +61,114 @@
         "label": "<img onerror=alert(1)>",
         "html": "<img src=x onerror=alert(1)>"
       },
-      { "type": "totally-unknown-type", "label": "Komponen masa depan" }
+      {
+        "type": "totally-unknown-type",
+        "label": "Komponen masa depan"
+      }
     ]
   },
   "filters": [
-    { "label": "Online", "expression": "online" },
-    { "label": "PPPoE", "expression": "DeviceID.ID LIKE \"TEST-%\"" }
-  ]
+    {
+      "label": "Online",
+      "expression": "online"
+    },
+    {
+      "label": "PPPoE",
+      "expression": "DeviceID.ID LIKE \"TEST-%\""
+    }
+  ],
+  "device": {
+    "components": [
+      {
+        "type": "parameter",
+        "label": "Model",
+        "parameter": "DeviceID.ProductClass"
+      },
+      {
+        "type": "parameter-list",
+        "label": "Ringkas",
+        "list": [
+          {
+            "type": "parameter",
+            "parameter": "DeviceID.ID"
+          },
+          {
+            "type": "parameter",
+            "parameter": "InternetGatewayDevice.DeviceInfo.SoftwareVersion"
+          }
+        ]
+      },
+      {
+        "type": "parameter-table",
+        "label": "Tabel",
+        "parameters": ["DeviceID.ID", "DeviceID.SerialNumber"]
+      },
+      {
+        "type": "container",
+        "label": "Grup",
+        "components": [
+          {
+            "type": "overview-dot",
+            "label": "Online",
+            "expression": "DeviceID.ID != null"
+          },
+          {
+            "type": "long-text",
+            "label": "Catatan",
+            "expression": "DeviceID.ID"
+          }
+        ]
+      },
+      {
+        "type": "a",
+        "label": "Dokumentasi",
+        "href": "https://example.invalid/docs"
+      },
+      {
+        "type": "device-link",
+        "label": "Perangkat",
+        "components": [
+          {
+            "type": "parameter",
+            "parameter": "DeviceID.ID"
+          }
+        ]
+      },
+      {
+        "type": "summon-button",
+        "label": "Summon"
+      },
+      {
+        "type": "tags",
+        "label": "Tags"
+      },
+      {
+        "type": "ping",
+        "label": "Ping"
+      },
+      {
+        "type": "device-faults",
+        "label": "Fault"
+      },
+      {
+        "type": "device-actions",
+        "label": "Aksi"
+      },
+      {
+        "type": "all-parameters",
+        "label": "Semua parameter"
+      },
+      {
+        "type": "loading",
+        "label": "Memuat"
+      },
+      {
+        "type": "dangerous-raw-html",
+        "html": "<script>alert(1)</script>"
+      },
+      {
+        "type": "totally-unknown-type"
+      }
+    ]
+  }
 }

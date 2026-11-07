@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@/components/ui/button";
 import { useEffect } from "react";
 import { captureClientError } from "@/components/error-reporter";
 
@@ -20,15 +21,15 @@ export default function GlobalError({
   return (
     <html lang="id">
       <body>
-        <main role="alert">
+        <main className="app-shell space-y-4" role="alert">
           <h1>Aplikasi mengalami kesalahan</h1>
           <p>Silakan muat ulang halaman.</p>
           <p>
             <small>request {requestId}</small>
           </p>
-          <button type="button" onClick={reset}>
+          <Button type="button" onClick={reset}>
             Muat ulang
-          </button>
+          </Button>
         </main>
       </body>
     </html>

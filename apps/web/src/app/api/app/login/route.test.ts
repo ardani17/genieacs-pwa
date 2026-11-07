@@ -173,4 +173,30 @@ describe("POST /api/app/login", () => {
     );
     expect(otherClient.status).toBe(401);
   });
+
+  it("engine 5xx maps to 502 and records no limiter strike", async () => {
+    // Backend faults (secret unset → 500, overload → 503) must not
+    // masquerade as wrong credentials — otherwise an outage locks
+    // every retrying user out and monitoring never sees a 5xx.
+    for (const status of [500, 503]) {
+      engineFetchMock.mockResolvedValueOnce(
+        new Response("engine fault", { status }) as never,
+      );
+      const res = await login(
+        loginRequest({ username: "outage-user", password: "correct-or-not" }),
+      );
+      expect(res.status).toBe(502);
+      const body = (await res.json()) as { error: { code: string } };
+      expect(body.error.code).toBe("BACKEND_UNAVAILABLE");
+    }
+    // Ten backend faults later, the same (ip, username) bucket is
+    // STILL not limited — only credential rejections (400) count.
+    engineFetchMock.mockResolvedValueOnce(
+      new Response("Incorrect username or password", { status: 400 }) as never,
+    );
+    const after = await login(
+      loginRequest({ username: "outage-user", password: "wrong" }),
+    );
+    expect(after.status).toBe(401);
+  });
 });

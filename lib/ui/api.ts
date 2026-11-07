@@ -1,14 +1,15 @@
 import { Readable } from "node:stream";
 import Router from "@koa/router";
-import { ObjectId } from "mongodb";
 import * as db from "./db.ts";
 import * as apiFunctions from "../api-functions.ts";
 import { evaluate, and, extractParams } from "../common/expression/util.ts";
 import { parse } from "../common/expression/parser.ts";
 import * as logger from "../logger.ts";
-import { emitPermissionDenied } from "../engine-app-logger.ts";
-import { getConfig } from "../ui/local-cache.ts";
-import { Expression, Task } from "../types.ts";
+import {
+  emitPermissionDenied,
+  getEngineAppLogger,
+} from "../engine-app-logger.ts";
+import { Expression } from "../types.ts";
 import { generateSalt, hashPassword } from "../auth.ts";
 import { del } from "../cache.ts";
 import Authorizer from "../common/authorizer.ts";
@@ -16,9 +17,18 @@ import { ping } from "../ping.ts";
 import { decodeTag } from "../util.ts";
 import { stringify as yamlStringify } from "../common/yaml.ts";
 import { ResourceLockedError } from "../common/errors.ts";
-import { acquireLock, releaseLock } from "../lock.ts";
-import { collections } from "../db/db.ts";
 import { quoteCsvCell, sendSafeLegacyError } from "./safe-error.ts";
+import {
+  LastAdminError,
+  countAdminsAfter,
+  fetchScopedUser,
+  userPassesFilter,
+  withLastAdminGuard,
+} from "./users-guard.ts";
+import {
+  CommandExecutionError,
+  executeAuthorizedTasks,
+} from "./device-commands.ts";
 
 const router = new Router();
 export default router;
@@ -407,6 +417,49 @@ for (const [resource, flags] of Object.entries(resources)) {
         return void (ctx.status = 403);
       }
 
+      // Last-admin guard: deleting the final account whose roles grant
+      // users:3 would lock every installation administrator out (the
+      // runbook recovery requires direct database access). The count
+      // AND the delete run inside the shared user-guard lock —
+      // releasing before the delete let two parallel deletes of the
+      // last two admins both pass the invariant.
+      if (resource === "users") {
+        try {
+          await withLastAdminGuard(async () => {
+            const remaining = await countAdminsAfter([ctx.params.id]);
+            if (remaining < 1) throw new LastAdminError();
+            await apiFunctions.deleteResource(resource, ctx.params.id);
+            return { remainingAdmins: remaining };
+          });
+        } catch (err) {
+          log.message += " refused (last admin)";
+          logger.accessWarn(log);
+          sendSafeLegacyError(
+            ctx,
+            (err as { status?: number }).status ?? 409,
+            "last_admin_refused",
+            "Menghapus admin terakhir ditolak. Pulihkan lewat runbook reset admin.",
+          );
+          return;
+        }
+
+        logger.accessInfo(log);
+        // Audit: resource + id + config revision only (never the body).
+        getEngineAppLogger().emit({
+          event: "admin.resource.updated",
+          level: "info",
+          message: `deleted ${resource}/${ctx.params.id}`,
+          actorId: ctx.state.user?.username,
+          details: {
+            resource,
+            id: ctx.params.id,
+            revision: ctx.state.configSnapshot,
+          },
+        });
+        ctx.body = "";
+        return;
+      }
+
       try {
         await apiFunctions.deleteResource(resource, ctx.params.id);
       } catch (err) {
@@ -425,6 +478,18 @@ for (const [resource, flags] of Object.entries(resources)) {
       }
 
       logger.accessInfo(log);
+      // Audit: resource + id + config revision only (never the body).
+      getEngineAppLogger().emit({
+        event: "admin.resource.updated",
+        level: "info",
+        message: `deleted ${resource}/${ctx.params.id}`,
+        actorId: ctx.state.user?.username,
+        details: {
+          resource,
+          id: ctx.params.id,
+          revision: ctx.state.configSnapshot,
+        },
+      });
 
       ctx.body = "";
     });
@@ -455,7 +520,55 @@ for (const [resource, flags] of Object.entries(resources)) {
       }
 
       try {
-        await apiFunctions.putResource(resource, id, obj);
+        // Users writes resolve the target THROUGH the caller's filter
+        // (out-of-scope = 404) and role changes cannot demote the last
+        // admin-capable account (same invariant as the app endpoints).
+        // Upstream PUT semantics are create-or-update (putUser
+        // upserts): an unknown id still creates when the caller's
+        // filter admits the proposed identity — the shipped legacy
+        // UI's "Create new user" form depends on it.
+        let guardedWriteDone = false;
+        if (resource === "users") {
+          const scoped = await fetchScopedUser(authorizer, id);
+          const creating = scoped == null && userPassesFilter(authorizer, id);
+          if (scoped == null && !creating) return void (ctx.status = 404);
+          if (scoped != null) {
+            const nextRoles = String(
+              (obj as { roles?: unknown }).roles ?? scoped.roles,
+            );
+            // The count AND the write run inside the shared guard
+            // lock — the same shape as the delete path: releasing
+            // between check and write let two parallel demotions of
+            // the last two admins both pass the invariant.
+            try {
+              await withLastAdminGuard(async () => {
+                const remaining = await countAdminsAfter(
+                  [],
+                  new Map([[id, nextRoles]]),
+                );
+                if (remaining < 1) throw new LastAdminError();
+                await apiFunctions.putResource(resource, id, obj);
+                return { remainingAdmins: remaining };
+              });
+              guardedWriteDone = true;
+            } catch (err) {
+              if (err instanceof LastAdminError) {
+                log.message += " refused (last admin)";
+                logger.accessWarn(log);
+                sendSafeLegacyError(
+                  ctx,
+                  (err as { status?: number }).status ?? 409,
+                  "last_admin_refused",
+                  "Mengubah admin terakhir ditolak. Pulihkan lewat runbook reset admin.",
+                );
+                return;
+              }
+              throw err;
+            }
+          }
+        }
+        if (!guardedWriteDone)
+          await apiFunctions.putResource(resource, id, obj);
       } catch (err) {
         log.message += " failed";
         logger.accessWarn(log);
@@ -485,6 +598,13 @@ for (const [resource, flags] of Object.entries(resources)) {
       }
 
       logger.accessInfo(log);
+      getEngineAppLogger().emit({
+        event: "admin.resource.updated",
+        level: "info",
+        message: `updated ${resource}/${id}`,
+        actorId: ctx.state.user?.username,
+        details: { resource, id, revision: ctx.state.configSnapshot },
+      });
 
       ctx.body = "";
     });
@@ -585,112 +705,50 @@ router.post("/devices/:id/tasks", async (ctx) => {
   // Extend socket timeout while waiting for session
   if (socketTimeout) ctx.socket.setTimeout(300000);
 
-  const token = await acquireLock(`cwmp_session_${deviceId}`, 5000, 30000);
-  if (!token) {
-    log.message += " failed";
-    logger.accessWarn(log);
-    ctx.body = "Device is in session";
-    ctx.status = 503;
-    // Restore socket timeout
-    if (socketTimeout) ctx.socket.setTimeout(socketTimeout);
-    return;
-  }
-
-  let device;
-
-  let statuses: { _id: string; status: string }[];
-
   try {
-    const filter = and(authorizer.getFilter("devices", 3), [
-      "=",
-      ["PARAM", "DeviceID.ID"],
+    // Legacy adapter over the shared guarded executor (M05-B): the
+    // response shape (statuses array + Connection-Request header) and
+    // every legacy status code stay identical; new whitelist and
+    // management-WAN guard rejections surface as 400 instead of the old
+    // unstructured 500.
+    const result = await executeAuthorizedTasks(
+      {
+        authorizer,
+        configSnapshot: ctx.state.configSnapshot,
+        username: ctx.state.user?.username ?? null,
+      },
       deviceId,
-    ]);
-    device = (await db.query("devices", filter).next()).value;
-    if (!device) return void (ctx.status = 404);
+      ctx.request.body as unknown[],
+    );
 
-    const validate = authorizer.getValidator("devices", device);
-    for (const t of ctx.request.body as unknown[]) {
-      if (!validate("task", t)) {
-        logUnauthorizedWarning(log);
+    log.tasks = result.statuses.map((t) => t._id).join(",");
+    logger.accessInfo(log);
+
+    ctx.set("Connection-Request", result.connectionRequestStatus || "OK");
+    ctx.body = result.statuses;
+  } catch (err) {
+    if (err instanceof CommandExecutionError) {
+      log.message += " failed";
+      logger.accessWarn(log);
+      if (err.status === 403) {
+        emitPermissionDenied(ctx, "Commit tasks");
         return void (ctx.status = 403);
       }
-    }
-
-    let tasks = ctx.request.body as Task[];
-
-    for (const task of tasks) {
-      delete task._id;
-      task["device"] = deviceId;
-    }
-
-    tasks = await apiFunctions.insertTasks(tasks);
-
-    statuses = tasks.map((t) => ({ _id: t._id, status: "pending" }));
-  } finally {
-    await releaseLock(`cwmp_session_${deviceId}`, token);
-  }
-
-  const onlineThreshold = getConfig(
-    ctx.state.configSnapshot,
-    "cwmp.deviceOnlineThreshold",
-    {},
-    Date.now(),
-    (exp) => {
-      if (!Array.isArray(exp)) return exp;
-      if (exp[0] === "PARAM") {
-        const p = device[exp[1]];
-        if (p?.value) return p.value[0];
-      } else if (exp[0] === "FUNC") {
-        if (exp[1] === "REMOTE_ADDRESS") {
-          for (const root of ["InternetGatewayDevice", "Device"]) {
-            const p = device[`${root}.ManagementServer.ConnectionRequestURL`];
-            if (p?.value) return new URL(p.value[0]).hostname;
-          }
-          return null;
-        }
+      if (err.status === 404) return void (ctx.status = 404);
+      if (err.status === 503) {
+        // Koa serves bare string bodies as text/html; engine rejection
+        // text goes through the safe text/plain + nosniff envelope.
+        sendSafeLegacyError(ctx, 503, "tasks_overloaded", err.message);
+        return;
       }
-      return exp;
-    },
-  ) as number;
-
-  const lastInform = device["Events.Inform"].value[0] as number;
-
-  let status = await apiFunctions.connectionRequest(deviceId, device);
-  if (!status) {
-    const sessionStarted = await apiFunctions.awaitSessionStart(
-      deviceId,
-      lastInform,
-      onlineThreshold,
-    );
-    if (!sessionStarted) {
-      status = "No contact from CPE";
-    } else {
-      const sessionEnded = await apiFunctions.awaitSessionEnd(deviceId, 120000);
-      if (!sessionEnded) status = "Session took too long to complete";
+      sendSafeLegacyError(ctx, 400, "tasks_rejected", err.message);
+      return;
     }
+    throw err;
+  } finally {
+    // Restore socket timeout
+    if (socketTimeout) ctx.socket.setTimeout(socketTimeout);
   }
-
-  if (!status) {
-    const promises = statuses.map((t) =>
-      collections.faults.count({ _id: `${deviceId}:task_${t._id}` }),
-    );
-
-    const res = await Promise.all(promises);
-    for (const [i, r] of statuses.entries())
-      r.status = res[i] ? "fault" : "done";
-  }
-
-  await Promise.all(statuses.map((t) => db.deleteTask(new ObjectId(t._id))));
-
-  // Restore socket timeout
-  if (socketTimeout) ctx.socket.setTimeout(socketTimeout);
-
-  log.tasks = statuses.map((t) => t._id).join(",");
-  logger.accessInfo(log);
-
-  ctx.set("Connection-Request", status || "OK");
-  ctx.body = statuses;
 });
 
 router.post("/devices/:id/tags", async (ctx) => {
