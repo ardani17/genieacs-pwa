@@ -29,6 +29,13 @@ import {
   CommandExecutionError,
   executeAuthorizedTasks,
 } from "./device-commands.ts";
+import {
+  SECRET_MASK,
+  maskConfigRow,
+  revealRequested,
+} from "./config-masking.ts";
+import { FileTooLargeError } from "./db.ts";
+import { collections } from "../db/db.ts";
 
 const router = new Router();
 export default router;
@@ -221,12 +228,25 @@ for (const [resource, flags] of Object.entries(resources)) {
 
     logger.accessInfo(log);
     ctx.type = "application/json";
+    // Config list rows keep the SAME secret policy as the detail route
+    // (M06-B): credential-looking values leave masked unless the caller
+    // holds config:3 AND explicitly asked to reveal.
+    const configReveal =
+      resource === "config" &&
+      authorizer.hasAccess("config", 3) &&
+      revealRequested(ctx.request.headers["x-reveal-secrets"]);
     ctx.body = Readable.from(
       (async function* () {
         let c = 0;
         yield "[\n";
         for await (const obj of db.query(resource, filter, options))
-          yield (c++ ? "," : "") + JSON.stringify(obj) + "\n";
+          yield (c++ ? "," : "") +
+            JSON.stringify(
+              resource === "config"
+                ? maskConfigRow(obj as Record<string, unknown>, configReveal)
+                : obj,
+            ) +
+            "\n";
         yield "]";
       })(),
     );
@@ -387,7 +407,18 @@ for (const [resource, flags] of Object.entries(resources)) {
     if (!res) return void (ctx.status = 404);
 
     logger.accessInfo(log);
-    ctx.body = res;
+    // Config secrets stay masked server-side; the reveal is a
+    // per-request explicit action gated on config:3 (M06-B — the value
+    // used to cross to the browser before any reveal).
+    if (resource === "config") {
+      ctx.body = maskConfigRow(
+        res as Record<string, unknown>,
+        authorizer.hasAccess("config", 3) &&
+          revealRequested(ctx.request.headers["x-reveal-secrets"]),
+      );
+    } else {
+      ctx.body = res;
+    }
   });
 
   if (flags & RESOURCE_DELETE) {
@@ -519,6 +550,24 @@ for (const [resource, flags] of Object.entries(resources)) {
         return void (ctx.status = 403);
       }
 
+      // Writing the mask sentinel back would destroy the credential it
+      // hides (the editor is readOnly while masked; this guards the API
+      // itself — M06-B).
+      if (
+        resource === "config" &&
+        (obj as { value?: unknown }).value === SECRET_MASK
+      ) {
+        log.message += " refused (masked value)";
+        logger.accessWarn(log);
+        sendSafeLegacyError(
+          ctx,
+          400,
+          "masked_value",
+          "Nilai termasking tidak dapat disimpan; tampilkan nilai dulu.",
+        );
+        return;
+      }
+
       try {
         // Users writes resolve the target THROUGH the caller's filter
         // (out-of-scope = 404) and role changes cannot demote the last
@@ -637,6 +686,42 @@ router.get("/blob/files/:id", async (ctx) => {
   if (!count) return void (ctx.status = 404);
 
   logger.accessInfo(log);
+
+  // Single-range download support (M06-C): the Range header is parsed
+  // server-side; an unsatisfiable range answers 416, everything else
+  // streams the slice with 206/Content-Range.
+  const rangeHeader = singleParam(ctx.request.headers["range"]) ?? "";
+  const range = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader.trim());
+  if (range && (range[1] !== "" || range[2] !== "")) {
+    const doc = (await collections.files.findOne({
+      _id: id,
+    })) as unknown as { length?: number } | null;
+    const size = typeof doc?.length === "number" ? doc.length : 0;
+    // Suffix ranges (`bytes=-N`) name the LAST N bytes; open ranges
+    // (`bytes=N-`) run to the end.
+    const suffix = range[1] === "";
+    const start = suffix
+      ? Math.max(0, size - (Number(range[2]) || 0))
+      : Number(range[1]);
+    const end = suffix
+      ? Math.max(0, size - 1)
+      : range[2] === ""
+        ? Math.max(0, size - 1)
+        : Math.min(Number(range[2]), Math.max(0, size - 1));
+    if (!(size > 0) || start > end || start >= size) {
+      ctx.status = 416;
+      ctx.set("Content-Range", `bytes */${size}`);
+      return;
+    }
+    ctx.status = 206;
+    ctx.set("Content-Range", `bytes ${start}-${end}/${size}`);
+    ctx.set("Accept-Ranges", "bytes");
+    ctx.set("Content-Length", String(end - start + 1));
+    ctx.body = db.downloadFileRange(id, start, end);
+    return;
+  }
+
+  ctx.set("Accept-Ranges", "bytes");
   ctx.body = db.downloadFile(id);
   ctx.attachment(id);
 });
@@ -672,13 +757,21 @@ router.put("/files/:id", async (ctx) => {
     return void (ctx.status = 403);
   }
 
+  // The replacement uploads to a temp GridFS id and only publishes
+  // over the old version once the stream completed within the byte
+  // cap — an abort or failed stream can no longer destroy the previous
+  // version (PR #8 review).
   try {
-    await db.deleteFile(id);
+    await db.replaceFile(id, metadata, ctx.req);
   } catch (err) {
-    // File doesn't exist, ignore
+    if (err instanceof FileTooLargeError) {
+      log.message += " failed (too large)";
+      logger.accessWarn(log);
+      sendSafeLegacyError(ctx, 413, "file_too_large", err.message);
+      return;
+    }
+    throw err;
   }
-
-  await db.putFile(id, metadata, ctx.req);
   log.metadata = metadata;
   logger.accessInfo(log);
 

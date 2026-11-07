@@ -532,6 +532,12 @@
       "command": "npm",
       "args": ["run", "build"],
       "artifacts": ["apps/web/.next/BUILD_ID"]
+    },
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/test-ts.mjs", "test/integration/files-replace.ts"],
+      "artifacts": ["artifacts/tests/test/integration/files-replace.test.cjs"]
     }
   ],
   "M06-C2": [
@@ -540,6 +546,12 @@
       "command": "node",
       "args": ["scripts/test-ts.mjs", "test/integration/scoped-users.ts"],
       "artifacts": ["artifacts/tests/test/integration/scoped-users.test.cjs"]
+    },
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/test-ts.mjs", "test/integration/config-masking.ts"],
+      "artifacts": ["artifacts/tests/test/integration/config-masking.test.cjs"]
     }
   ]
 }
