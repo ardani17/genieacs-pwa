@@ -226,6 +226,118 @@ export const ALERT_MAPPING = {
     pr: true,
     fixedInPr: "unique mkdtemp base directory",
   },
+  // PR #8 (M05-M06 integration) alerts, triaged 7 November 2026 from
+  // the refs/pull/8/merge analysis at b8bf7d1. Line shifts from the
+  // M05/M06 changes renumbered the app-logger sinks (23/24 -> 79/80);
+  // the reflected-xss rule additionally fires at the same envelope
+  // call sites the reviewer approved as a class on 7 November 2026
+  // (alert 18). management-wan polynomial redos are code-fixed.
+  68: {
+    package: "M01-S3",
+    ticket: "ARD-206",
+    tests: ["test/security/error-response.ts"],
+    required: true,
+    pr: true,
+    envelope: "json",
+  },
+  69: {
+    package: "M01-S3",
+    ticket: "ARD-206",
+    tests: ["test/security/error-response.ts"],
+    required: true,
+    pr: true,
+    envelope: "json",
+  },
+  70: {
+    package: "M01-S3",
+    ticket: "ARD-206",
+    tests: ["test/security/error-response.ts"],
+    required: true,
+    pr: true,
+    envelope: "json",
+  },
+  71: {
+    package: "M01-S3",
+    ticket: "ARD-206",
+    tests: ["test/security/error-response.ts"],
+    required: true,
+    pr: true,
+    envelope: "legacy",
+  },
+  72: {
+    package: "M01-S3",
+    ticket: "ARD-206",
+    tests: ["test/security/error-response.ts"],
+    required: true,
+    pr: true,
+    envelope: "json",
+  },
+  73: {
+    package: "M01-S3",
+    ticket: "ARD-206",
+    tests: ["test/security/error-response.ts"],
+    required: true,
+    pr: true,
+    envelope: "json",
+  },
+  74: {
+    package: "M01-S3",
+    ticket: "ARD-206",
+    tests: ["test/security/error-response.ts"],
+    required: true,
+    pr: true,
+    envelope: "legacy",
+  },
+  75: {
+    package: "M01-S3",
+    ticket: "ARD-206",
+    tests: ["test/security/error-response.ts"],
+    required: true,
+    pr: true,
+    envelope: "json",
+  },
+  76: {
+    package: "M01-S3",
+    ticket: "ARD-206",
+    tests: ["test/security/error-response.ts"],
+    required: true,
+    pr: true,
+    envelope: "legacy",
+  },
+  77: {
+    package: "M05-A",
+    ticket: "ARD-206",
+    tests: ["packages/device-profiles/src/management-wan.test.ts"],
+    required: true,
+    pr: true,
+    fixedInPr:
+      "linear trimTrailingDots replaces the polynomial /\\.+$/ regexes",
+  },
+  78: {
+    package: "M05-A",
+    ticket: "ARD-206",
+    tests: ["packages/device-profiles/src/management-wan.test.ts"],
+    required: true,
+    pr: true,
+    fixedInPr:
+      "linear trimTrailingDots replaces the polynomial /\\.+$/ regexes",
+  },
+  79: {
+    package: "M01-E",
+    ticket: "ARD-206",
+    tests: ["test/app-logger.ts"],
+    required: true,
+    pr: true,
+    renumberedFrom: 23,
+  },
+  80: {
+    package: "M01-E",
+    ticket: "ARD-206",
+    tests: ["test/app-logger.ts"],
+    required: true,
+    pr: true,
+    renumberedFrom: 24,
+  },
   dependabot1: {
     package: "M01-B",
     ticket: "ARD-165",

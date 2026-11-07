@@ -736,8 +736,9 @@ router.post("/devices/:id/tasks", async (ctx) => {
       }
       if (err.status === 404) return void (ctx.status = 404);
       if (err.status === 503) {
-        ctx.status = 503;
-        ctx.body = err.message;
+        // Koa serves bare string bodies as text/html; engine rejection
+        // text goes through the safe text/plain + nosniff envelope.
+        sendSafeLegacyError(ctx, 503, "tasks_overloaded", err.message);
         return;
       }
       sendSafeLegacyError(ctx, 400, "tasks_rejected", err.message);

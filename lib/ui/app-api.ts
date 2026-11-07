@@ -71,6 +71,9 @@ function appError(
   ctx.status = status;
   ctx.type = "application/json";
   ctx.set("Cache-Control", "private, no-store");
+  // Reflected message text never renders as HTML: nosniff plus the
+  // explicit JSON content type, same envelope policy as safe-error.ts.
+  ctx.set("X-Content-Type-Options", "nosniff");
   ctx.body = JSON.stringify({
     ok: false,
     error: { code, message, retryable },

@@ -97,7 +97,7 @@ function criticalSpvInstances(
   if (task.name !== "setParameterValues") return [];
   const instances = new Set<string>();
   for (const [path] of task.parameterValues ?? []) {
-    const normalized = path.replace(/\.+$/, "");
+    const normalized = trimTrailingDots(path);
     // Wildcard segments (…WANIPConnection.*.Enable) expand at the
     // device to EVERY instance under the prefix: flag when any
     // management instance falls under the wildcard prefix.
@@ -116,10 +116,19 @@ function criticalSpvInstances(
   return [...instances];
 }
 
+// Linear-time trailing-dot trim: /\.+$/ is a polynomial regex shape
+// (anchored quantifier scanned from every start position), so scan the
+// code units instead — paths arrive from admin task payloads.
+function trimTrailingDots(path: string): string {
+  let end = path.length;
+  while (end > 0 && path.charCodeAt(end - 1) === 46) end--;
+  return end === path.length ? path : path.slice(0, end);
+}
+
 // Normalize an object path the way the engine does before overlap
 // checks: no trailing dot, no wildcard suffix, exact segments.
 export function normalizeTargetPath(input: string): string {
-  let out = input.replace(/\.+$/, "");
+  let out = trimTrailingDots(input);
   // A wildcard suffix names the parent collection — collapse it away so
   // overlap checks compare against the collection path itself.
   out = out.replace(/\.\*$/, "");
