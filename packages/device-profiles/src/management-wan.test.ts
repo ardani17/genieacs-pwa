@@ -155,17 +155,27 @@ test("native non-WAN tasks are never blocked by the guard", () => {
   );
 });
 
-test("no CRURL: SPV is allowed but WAN deletes demand diagnosis first", () => {
+test("no CRURL: critical SPV and WAN deletes demand diagnosis first", () => {
   const d = makeZteWan({});
-  // SPV without any CRURL: the write cannot be mapped to a management
-  // path, so it stays allowed (same as the reference form guard).
-  assert.doesNotThrow(() =>
-    assertManagementWanSafe(d, [
-      spv(WAN_IP_INSTANCE, "ConnectionType", "IP_Bridged"),
-    ]),
+  // PR #8 review (deliberately strengthened guard): without any CRURL
+  // the write cannot be mapped to a management path, and missing
+  // evidence is not permission — critical SPV on ANY WAN instance is
+  // held (the old test asserted this was allowed).
+  assert.throws(
+    () =>
+      assertManagementWanSafe(d, [
+        spv(WAN_IP_INSTANCE, "ConnectionType", "IP_Bridged"),
+      ]),
+    ManagementWanGuardError,
   );
-  // The strengthened server guard: WAN deletes with an unknowable
-  // management identity are refused — see the follow-up tests below.
+  assert.throws(
+    () => assertManagementWanSafe(d, [spv(WAN_IP_INSTANCE, "Enable", false)]),
+    ManagementWanGuardError,
+  );
+  // Non-critical fields stay editable when the identity is unknown.
+  assert.doesNotThrow(() =>
+    assertManagementWanSafe(d, [spv(WAN_IP_INSTANCE, "Name", "x")]),
+  );
 });
 
 // --- review follow-ups: bypass vectors must not reach the device ---
@@ -220,6 +230,116 @@ test("provisions writing management-critical leaves are rejected", () => {
       {
         name: "provisions",
         provisions: [["value", WAN_PPP_INSTANCE + ".Enable", false]],
+      },
+    ]),
+  );
+});
+
+// --- PR #8 review: the two reproduced guard bypasses, as regressions ---
+
+test("unresolvable CRURL hostname holds critical SPV (review fixture 1)", () => {
+  const d = makeZteWan({});
+  d[`${WAN_IP_INSTANCE}.ExternalIPAddress`].value[0] = "192.0.2.10";
+  d[CRURL] = { value: ["http://acs.example.invalid:7547/", "xsd:string"] };
+  // No resolution results: the management identity is unknowable, so
+  // disabling any WAN instance could sever the ACS path.
+  assert.throws(
+    () => assertManagementWanSafe(d, [spv(WAN_IP_INSTANCE, "Enable", false)]),
+    ManagementWanGuardError,
+  );
+  // The same device WITH the resolution identifies the management WAN,
+  // so a benign write on the other instance passes.
+  assert.doesNotThrow(() =>
+    assertManagementWanSafe(
+      d,
+      [spv(WAN_PPP_INSTANCE, "Name", "x")],
+      ["192.0.2.10"],
+    ),
+  );
+});
+
+test("wildcard provision on the identified management WAN is rejected (review fixture 2)", () => {
+  const d = managementFixture();
+  assert.throws(
+    () =>
+      assertManagementWanSafe(d, [
+        {
+          name: "provisions",
+          provisions: [["value", WAN_IP + ".*.Enable", false]],
+        },
+      ]),
+    ManagementWanGuardError,
+  );
+  // Trailing-dot and nested-wildcard spellings are held too.
+  assert.throws(
+    () =>
+      assertManagementWanSafe(d, [
+        {
+          name: "provisions",
+          provisions: [["value", WAN_IP + ".*.Enable.", false]],
+        },
+      ]),
+    ManagementWanGuardError,
+  );
+  assert.throws(
+    () =>
+      assertManagementWanSafe(d, [
+        {
+          name: "provisions",
+          provisions: [["value", WAN_IP_INSTANCE + ".*", false]],
+        },
+      ]),
+    ManagementWanGuardError,
+  );
+  // A literal non-critical leaf on the management WAN stays allowed.
+  assert.doesNotThrow(() =>
+    assertManagementWanSafe(d, [
+      {
+        name: "provisions",
+        provisions: [["value", WAN_IP_INSTANCE + ".Name", "x"]],
+      },
+    ]),
+  );
+  // A wildcard provision over a NON-management WAN stays allowed.
+  assert.doesNotThrow(() =>
+    assertManagementWanSafe(d, [
+      {
+        name: "provisions",
+        provisions: [["value", WAN_PPP + ".*.Enable", false]],
+      },
+    ]),
+  );
+});
+
+test("unresolvable CRURL hostname holds risky provisions", () => {
+  const d = makeZteWan({});
+  d[CRURL] = { value: ["http://acs.example.invalid:7547/", "xsd:string"] };
+  assert.throws(
+    () =>
+      assertManagementWanSafe(d, [
+        {
+          name: "provisions",
+          provisions: [["value", WAN_IP + ".*.Enable", false]],
+        },
+      ]),
+    ManagementWanGuardError,
+  );
+  assert.throws(
+    () =>
+      assertManagementWanSafe(d, [
+        {
+          name: "provisions",
+          provisions: [["value", WAN_IP_INSTANCE + ".Enable", false]],
+        },
+      ]),
+    ManagementWanGuardError,
+  );
+  // Non-critical literal provision stays allowed.
+  assert.doesNotThrow(() =>
+    assertManagementWanSafe(d, [
+      {
+        name: "provisions",
+        provisions: [["value", WAN_IP_INSTANCE + ".Name", "x"]],
       },
     ]),
   );

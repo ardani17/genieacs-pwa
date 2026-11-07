@@ -90,6 +90,18 @@ function destructiveTargets(task: GuardedWanTask): string[] {
   return [];
 }
 
+// Every WAN instance path present on the device. When the management
+// identity cannot be determined, ANY of these may be the active ACS
+// path — this is the candidate set the unidentifiable branch guards.
+function wanInstancePaths(device: WanDevice): string[] {
+  const instances = new Set<string>();
+  for (const key of Object.keys(device)) {
+    const match = key.match(WAN_INSTANCE);
+    if (match) instances.add(match[1]);
+  }
+  return [...instances].sort();
+}
+
 function criticalSpvInstances(
   task: GuardedWanTask,
   managementPaths: string[] = [],
@@ -145,21 +157,35 @@ export function assertManagementWanSafe(
   const paths = identity.paths;
   // The management identity is UNKNOWABLE when there is no CRURL at
   // all, or when the CRURL host is a name that resolved to nothing.
-  // Destructive WAN mutations are held either way — missing evidence is
-  // not permission; SPV stays allowed like the reference form guard.
+  // Missing evidence is not permission: destructive deletes, critical
+  // SPV and risky provisions are held against EVERY WAN instance — any
+  // of them may be the active ACS path (PR #8 review: critical SPV
+  // used to pass here and could sever the unknown management WAN).
   if (paths.length === 0) {
     const hostUnidentifiable =
       host == null || (!/^[0-9.]+$/.test(host) && !host.includes(":"));
     if (hostUnidentifiable) {
+      const candidates = wanInstancePaths(device);
+      const unidentifiedReject = (what: string): never => {
+        throw new ManagementWanGuardError(
+          `VALIDATION Jalur manajemen tidak dapat ditentukan (ConnectionRequestURL tidak ada atau host tidak teresolusi); ${what} pada WAN ditahan. Jalankan diagnosis sebelum mengubah WAN.`,
+        );
+      };
       for (const task of tasks) {
         if (
           task.name === "deleteObject" &&
           task.objectName &&
           touchesWan(task.objectName)
         )
-          throw new ManagementWanGuardError(
-            "VALIDATION Jalur manajemen tidak dapat ditentukan (ConnectionRequestURL tidak ada atau host tidak teresolusi). Jalankan diagnosis sebelum menghapus objek WAN.",
-          );
+          unidentifiedReject("hapus objek");
+        if (candidates.length === 0) continue;
+        if (criticalSpvInstances(task, candidates).length)
+          unidentifiedReject("SPV kritis");
+        if (
+          task.name === "provisions" &&
+          touchesManagementProvision(task, candidates)
+        )
+          unidentifiedReject("provision");
       }
     }
     return;
@@ -228,6 +254,34 @@ interface ProvisionTask extends GuardedWanTask {
   provisions?: [string, ...unknown[]][];
 }
 
+// Segment-aligned overlap with wildcard support: `arg` overlaps `p`
+// when every compared segment is equal (a `*` segment in `arg` matches
+// anything) and one path is a segment-prefix of the other. Literal
+// prefix comparison missed `WANIPConnection.*.Enable` on the
+// identified management instance (PR #8 review).
+function pathOverlaps(arg: string, p: string): boolean {
+  const a = arg.split(".");
+  const b = p.split(".");
+  const n = Math.min(a.length, b.length);
+  for (let i = 0; i < n; ++i) {
+    if (a[i] !== "*" && b[i] !== "*" && a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+// A provision arg is risky when it can write a management-critical
+// leaf, or when it covers the instance/collection itself (including
+// wildcard expansion — the device applies those to every instance).
+function riskyProvisionArg(arg: string, managementPaths: string[]): boolean {
+  const overlapping = managementPaths.filter((p) => pathOverlaps(arg, p));
+  if (!overlapping.length) return false;
+  if (arg.split(".").includes("*")) return true;
+  if (overlapping.some((p) => arg === p || p.startsWith(`${arg}.`)))
+    return true;
+  const segments = arg.split(".");
+  return CRITICAL_PARAMETERS.has(segments[segments.length - 1]);
+}
+
 function touchesManagementProvision(
   task: GuardedWanTask,
   managementPaths: string[],
@@ -237,13 +291,11 @@ function touchesManagementProvision(
   for (const args of prov.provisions) {
     for (const arg of args) {
       if (typeof arg !== "string") continue;
-      if (
-        managementPaths.some(
-          (p) =>
-            arg === p || arg.startsWith(`${p}.`) || p.startsWith(`${arg}.`),
-        )
-      )
-        return true;
+      // Trailing dots normalize away; only WAN-shaped paths can hit a
+      // management instance.
+      const normalized = trimTrailingDots(arg);
+      if (!WAN_ROOT_PREFIX.test(normalized)) continue;
+      if (riskyProvisionArg(normalized, managementPaths)) return true;
     }
   }
   return false;
