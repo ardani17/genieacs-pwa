@@ -171,9 +171,29 @@ export function normalizeTaskOutcome(result: {
   const states = result.tasks.map((t) => t.status);
   if (states.some((s) => ["fault", "failed", "error"].includes(s)))
     return { state: "failed" };
+  // "expired" = the CWMP session silently discarded the task before
+  // execution (no fault is ever recorded for it): absence of a fault is
+  // NOT execution evidence, so an expired task can never complete a
+  // succeeded outcome (PR #8 review).
   if (states.length && states.every((s) => s === "done"))
     return { state: "succeeded" };
   return { state: "unknown" };
+}
+
+// A task whose expiry window has fully lapsed by the time the session
+// ended has no native execution evidence: lib/cwmp.ts drops expired
+// tasks into doneTasks WITHOUT writing a fault, so the old
+// "no fault ⇒ done" check reported never-executed work as succeeded.
+function taskExpiredWindow(
+  task: { expiry?: number },
+  insertedAt: number,
+  now: number,
+): boolean {
+  return (
+    typeof task.expiry === "number" &&
+    Number.isFinite(task.expiry) &&
+    now >= insertedAt + task.expiry * 1000
+  );
 }
 
 export interface TaskExecutionResult {
@@ -277,6 +297,23 @@ export async function executeAuthorizedTasks(
 
   if (!ctx.authorizer.hasAccess("devices", 3))
     throw new CommandExecutionError(403, "FORBIDDEN", "not authorized");
+
+  // Firmware downloads reference a stored file: the caller must be able
+  // to READ that exact file under their CURRENT files filter (M05-D
+  // review: the executor never checked files access for direct download
+  // input). Pre-claim, so a 403/404 never burns the operationId.
+  for (const t of tasks as TaskInput[]) {
+    if (t.name !== "download" || !t.file) continue;
+    if (!ctx.authorizer.hasAccess("files", 2))
+      throw new CommandExecutionError(403, "FORBIDDEN", "not authorized");
+    const fileFilter = and(ctx.authorizer.getFilter("files", 2), [
+      "=",
+      ["PARAM", "_id"],
+      t.file,
+    ]);
+    if (!(await db.count("files", fileFilter)))
+      throw new CommandExecutionError(404, "NOT_FOUND", "no such file");
+  }
 
   // 2. Idempotent claim: same operationId + same fingerprint returns
   //    the stored outcome (never a second submission); a different
@@ -384,6 +421,8 @@ export async function executeAuthorizedTasks(
 
   let device: Record<string, { value?: [unknown, string] }> | null = null;
   let statuses: { _id: string; status: string; faultCode?: string }[] = [];
+  let prepared: Task[] = [];
+  let insertedAt = 0;
 
   try {
     const filter = and(ctx.authorizer.getFilter("devices", 3), [
@@ -424,10 +463,9 @@ export async function executeAuthorizedTasks(
       throw err;
     }
 
-    const prepared = (tasks as TaskInput[]).map((t) =>
-      rebuildTask(t, deviceId),
-    );
+    prepared = (tasks as TaskInput[]).map((t) => rebuildTask(t, deviceId));
 
+    insertedAt = Date.now();
     const inserted = await deps.insertTasks(prepared);
     statuses = inserted.map((t) => ({ _id: t._id, status: "pending" }));
   } catch (err) {
@@ -466,11 +504,17 @@ export async function executeAuthorizedTasks(
     }
 
     if (!status) {
+      const checkedAt = Date.now();
       for (const [i, t] of statuses.entries()) {
         const faults = await deps.countFaults(deviceId, t._id);
         if (faults) {
           statuses[i].status = "fault";
           statuses[i].faultCode = await deps.faultCode(deviceId, t._id);
+        } else if (taskExpiredWindow(prepared[i], insertedAt, checkedAt)) {
+          // Expiry evidence: the window lapsed without a fault, and the
+          // CWMP session drops expired tasks WITHOUT writing one —
+          // execution is unproven, never "done".
+          statuses[i].status = "expired";
         } else {
           statuses[i].status = "done";
         }
@@ -501,6 +545,9 @@ export async function executeAuthorizedTasks(
     status,
     tasks: statuses,
   });
+  const expiredTaskIds = statuses
+    .filter((t) => t.status === "expired")
+    .map((t) => t._id);
   const phases: CommandPhase[] = [
     {
       name: "execute",
@@ -509,6 +556,7 @@ export async function executeAuthorizedTasks(
       ...(statuses.find((t) => t.faultCode)
         ? { faultCode: statuses.find((t) => t.faultCode)?.faultCode }
         : {}),
+      ...(expiredTaskIds.length ? { errorCode: "TASK_EXPIRED" as const } : {}),
     },
   ];
 
@@ -541,6 +589,7 @@ export async function executeAuthorizedTasks(
       ...(statuses.find((t) => t.faultCode)
         ? { faultCode: statuses.find((t) => t.faultCode)?.faultCode }
         : {}),
+      ...(expiredTaskIds.length ? { expiredTaskIds } : {}),
     },
   });
 
