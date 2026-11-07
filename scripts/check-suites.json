@@ -1,0 +1,365 @@
+{
+  "M01-A": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["--test", "scripts/security/inventory.test.mjs"]
+    },
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/security/inventory.mjs"],
+      "artifacts": [
+        "artifacts/security/root-inventory.json",
+        "artifacts/security/web-inventory.json",
+        "artifacts/security/advisory-response.json",
+        "artifacts/security/lock-hashes.json"
+      ]
+    }
+  ],
+  "M01-B": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/test-ts.mjs", "test/db.ts", "test/security-compat.ts"],
+      "artifacts": [
+        "artifacts/tests/test/db.test.cjs",
+        "artifacts/tests/test/security-compat.test.cjs"
+      ]
+    }
+  ],
+  "M01-C": [
+    {
+      "cwd": ".",
+      "command": "npm",
+      "args": ["--prefix", "apps/web", "run", "typecheck"]
+    },
+    {
+      "cwd": ".",
+      "command": "npm",
+      "args": ["--prefix", "apps/web", "run", "test"],
+      "artifacts": []
+    },
+    {
+      "cwd": ".",
+      "command": "npm",
+      "args": ["--prefix", "apps/web", "run", "build"],
+      "artifacts": ["apps/web/.next/BUILD_ID"]
+    }
+  ],
+  "M01-D": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": [
+        "--test",
+        "scripts/preflight.test.mjs",
+        "scripts/compose-static.test.mjs"
+      ]
+    }
+  ],
+  "M01-E": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/test-ts.mjs", "test/app-logger.ts"],
+      "artifacts": ["artifacts/tests/test/app-logger.test.cjs"]
+    },
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/test-ts.mjs", "test/engine-app-logger.ts"],
+      "artifacts": ["artifacts/tests/test/engine-app-logger.test.cjs"]
+    },
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/test-ts.mjs", "test/engine-app-logger-broken-dir.ts"],
+      "artifacts": [
+        "artifacts/tests/test/engine-app-logger-broken-dir.test.cjs"
+      ]
+    }
+  ],
+  "M01-F": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/test-ts.mjs", "test/integration/log-pipeline.ts"],
+      "artifacts": ["artifacts/tests/test/integration/log-pipeline.test.cjs"]
+    },
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/log-smoke.mjs"]
+    }
+  ],
+  "M01-S1": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": [
+        "scripts/test-ts.mjs",
+        "test/security/script-validation.ts",
+        "test/security/script-permissions.ts"
+      ],
+      "artifacts": [
+        "artifacts/tests/test/security/script-validation.test.cjs",
+        "artifacts/tests/test/security/script-permissions.test.cjs"
+      ]
+    }
+  ],
+  "M01-S2": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": [
+        "scripts/test-ts.mjs",
+        "test/security/nbi-query.ts",
+        "test/security/nbi-route.ts"
+      ],
+      "artifacts": [
+        "artifacts/tests/test/security/nbi-query.test.cjs",
+        "artifacts/tests/test/security/nbi-route.test.cjs"
+      ]
+    }
+  ],
+  "M01-S3": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": [
+        "scripts/test-ts.mjs",
+        "test/security/escaping.ts",
+        "test/security/error-response.ts"
+      ],
+      "artifacts": [
+        "artifacts/tests/test/security/escaping.test.cjs",
+        "artifacts/tests/test/security/error-response.test.cjs"
+      ]
+    }
+  ],
+  "M01-S4": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": [
+        "scripts/test-ts.mjs",
+        "test/security/expression-parser.ts",
+        "test/security/like-pattern.ts"
+      ],
+      "artifacts": [
+        "artifacts/tests/test/security/expression-parser.test.cjs",
+        "artifacts/tests/test/security/like-pattern.test.cjs"
+      ]
+    }
+  ],
+  "M01-S5": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/test-ts.mjs", "test/security/cwmp-cookie.ts"],
+      "artifacts": ["artifacts/tests/test/security/cwmp-cookie.test.cjs"]
+    }
+  ],
+  "M01-S6": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/test-ts.mjs", "test/security/http-digest.ts"],
+      "artifacts": ["artifacts/tests/test/security/http-digest.test.cjs"]
+    }
+  ],
+  "M01-S7": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/test-ts.mjs", "test/security/udp-cr-auth.ts"],
+      "artifacts": ["artifacts/tests/test/security/udp-cr-auth.test.cjs"]
+    }
+  ],
+  "M01-S8": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": [
+        "scripts/test-ts.mjs",
+        "test/security/xmpp-scram.ts",
+        "test/security/xmpp-negotiation.ts"
+      ],
+      "artifacts": [
+        "artifacts/tests/test/security/xmpp-scram.test.cjs",
+        "artifacts/tests/test/security/xmpp-negotiation.test.cjs"
+      ]
+    }
+  ],
+  "M01-S9": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": [
+        "--test",
+        "scripts/security/github-alert-gate.test.mjs",
+        "scripts/security/github-alert-gate-regression.test.mjs",
+        "scripts/security/github-security-check.test.mjs"
+      ]
+    }
+  ],
+  "M02-A": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/test-ts.mjs", "test/session.ts"],
+      "artifacts": ["artifacts/tests/test/session.test.cjs"]
+    }
+  ],
+  "M02-B": [
+    {
+      "cwd": "apps/web",
+      "command": "npm",
+      "args": ["run", "test"]
+    },
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/test-ts.mjs", "test/integration/resource-access.ts"],
+      "artifacts": ["artifacts/tests/test/integration/resource-access.test.cjs"]
+    }
+  ],
+  "M02-C": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": [
+        "scripts/test-ts.mjs",
+        "test/app-permissions.ts",
+        "test/log-query.ts"
+      ],
+      "artifacts": [
+        "artifacts/tests/test/app-permissions.test.cjs",
+        "artifacts/tests/test/log-query.test.cjs"
+      ]
+    }
+  ],
+  "M03-A": [
+    {
+      "cwd": "apps/web",
+      "command": "npm",
+      "args": ["run", "test"]
+    }
+  ],
+  "M03-B": [
+    {
+      "cwd": "apps/web",
+      "command": "npm",
+      "args": ["run", "typecheck"]
+    },
+    {
+      "cwd": "apps/web",
+      "command": "npm",
+      "args": ["run", "test"]
+    }
+  ],
+  "M03-C": [
+    {
+      "cwd": "apps/web",
+      "command": "npm",
+      "args": ["run", "test"]
+    },
+    {
+      "cwd": "apps/web",
+      "command": "npm",
+      "args": ["run", "typecheck"]
+    }
+  ],
+  "M04-A": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": [
+        "scripts/test-ts.mjs",
+        "packages/device-profiles/src/resolve.test.ts",
+        "apps/web/src/features/devices/query.test.ts"
+      ],
+      "artifacts": [
+        "artifacts/tests/packages/device-profiles/src/resolve.test.test.cjs",
+        "artifacts/tests/apps/web/src/features/devices/query.test.test.cjs"
+      ]
+    },
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["--test", "scripts/fixtures/seed.test.mjs"]
+    }
+  ],
+  "M04-B": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/test-ts.mjs", "test/integration/list-query.ts"],
+      "artifacts": ["artifacts/tests/test/integration/list-query.test.cjs"]
+    },
+    {
+      "cwd": "apps/web",
+      "command": "npm",
+      "args": ["run", "typecheck"]
+    },
+    {
+      "cwd": "apps/web",
+      "command": "npm",
+      "args": ["run", "test"]
+    },
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/test-ts.mjs", "test/integration/overview-config.ts"],
+      "artifacts": ["artifacts/tests/test/integration/overview-config.test.cjs"]
+    }
+  ],
+  "M04-C": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/test-ts.mjs", "test/device-diagnostics.ts"],
+      "artifacts": ["artifacts/tests/test/device-diagnostics.test.cjs"]
+    },
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/test-ts.mjs", "test/integration/app-diagnostics.ts"],
+      "artifacts": ["artifacts/tests/test/integration/app-diagnostics.test.cjs"]
+    },
+    {
+      "cwd": "apps/web",
+      "command": "npm",
+      "args": ["run", "typecheck"]
+    },
+    {
+      "cwd": "apps/web",
+      "command": "npm",
+      "args": ["run", "test"]
+    }
+  ],
+  "REV-AUTH": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/test-ts.mjs", "test/session.ts"]
+    },
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/test-ts.mjs", "test/app-permissions.ts"]
+    },
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/test-ts.mjs", "test/integration/init-install.ts"]
+    },
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/test-ts.mjs", "test/integration/auth-log-events.ts"],
+      "artifacts": ["artifacts/tests/test/integration/auth-log-events.test.cjs"]
+    }
+  ]
+}

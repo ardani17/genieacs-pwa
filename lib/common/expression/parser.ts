@@ -2,20 +2,72 @@ import parsimmon from "parsimmon";
 import { Expression } from "../../types.ts";
 
 // Turn escaped characters into real ones (e.g. "\\n" becomes "\n").
-function interpretEscapes(str): string {
-  const escapes = {
+// Linear single-pass scanner for JS-style double-quoted strings. The old
+// parsimmon regexp /"((?:\\.|.)*?)"/ backtracked over adversarial input
+// (CodeQL #15); this walker consumes each character exactly once. Escapes
+// are preserved verbatim in `raw` (interpretEscapes runs afterwards, as
+// before). A literal newline, a trailing escape or EOF before the closing
+// quote fails with the offending index.
+export class StringScanError extends Error {
+  index: number;
+
+  constructor(index: number, message: string) {
+    super(message);
+    this.name = "StringScanError";
+    this.index = index;
+  }
+}
+
+// Number of characters visited by the last readQuotedJsString call —
+// exposed for the linearity assertion (<= input length + 1).
+export let lastScanVisitedChars = 0;
+
+export function readQuotedJsString(
+  text: string,
+  start: number,
+): { raw: string; end: number } {
+  if (text[start] !== '"')
+    throw new StringScanError(start, "not at a string start");
+
+  let raw = "";
+  let i = start + 1;
+  const begin = start;
+  while (i < text.length) {
+    lastScanVisitedChars = i - begin + 1;
+    const c = text[i];
+    if (c === "\\") {
+      const next = text[i + 1];
+      if (next === undefined)
+        throw new StringScanError(i, "unterminated string escape");
+      if (next === "\n" || next === "\r")
+        throw new StringScanError(i, "literal newline in string escape");
+      raw += c + next;
+      i += 2;
+      continue;
+    }
+    if (c === '"') return { raw, end: i + 1 };
+    if (c === "\n" || c === "\r")
+      throw new StringScanError(i, "literal newline in string");
+    raw += c;
+    i += 1;
+  }
+  throw new StringScanError(start, "unterminated string");
+}
+
+function interpretEscapes(str: string): string {
+  const escapes: Record<string, string> = {
     b: "\b",
     f: "\f",
     n: "\n",
     r: "\r",
     t: "\t",
   };
-  return str.replace(/\\(u[0-9a-fA-F]{4}|[^u])/g, (_, escape) => {
+  return str.replace(/\\(u[0-9a-fA-F]{4}|[^u])/g, (_, escape: string) => {
     const type = escape.charAt(0);
     const hex = escape.slice(1);
     if (type === "u") return String.fromCharCode(parseInt(hex, 16));
 
-    if (escapes.hasOwnProperty(type)) return escapes[type];
+    if (Object.hasOwn(escapes, type)) return escapes[type];
 
     return type;
   });
@@ -157,8 +209,18 @@ const lang = parsimmon.createLanguage({
       .desc("string");
   },
   StringValueJs: function () {
-    return parsimmon
-      .regexp(/"((?:\\.|.)*?)"/, 1)
+    return parsimmon((input: string, i: number) => {
+      if (input[i] !== '"') return parsimmon.makeFailure(i, "string");
+      try {
+        const { raw, end } = readQuotedJsString(input, i);
+        return parsimmon.makeSuccess(end, raw);
+      } catch (err) {
+        return parsimmon.makeFailure(
+          err instanceof StringScanError ? err.index : i,
+          "string",
+        );
+      }
+    })
       .skip(parsimmon.optWhitespace)
       .map(interpretEscapes)
       .desc("string");
@@ -347,7 +409,7 @@ export function parseList(str: string): Expression[] {
 export function stringify(exp: Expression, level = 0): string {
   if (!Array.isArray(exp)) return JSON.stringify(exp);
 
-  const opLevels = {
+  const opLevels: Record<string, number> = {
     OR: 10,
     AND: 11,
     NOT: 12,
@@ -371,7 +433,7 @@ export function stringify(exp: Expression, level = 0): string {
 
   const op = exp[0].toUpperCase();
 
-  function wrap(e): string {
+  function wrap(e: string): string {
     if (opLevels[op] <= level) return `(${e})`;
     else return e;
   }
@@ -440,20 +502,53 @@ export function stringify(exp: Expression, level = 0): string {
   }
 }
 
-export function parseLikePattern(pat: string, esc: string): string[] {
-  const chars = pat.split("");
+// LIKE tokenizer: literal characters stay RAW (escaping happens in
+// likePatternToRegExp, fixing the old mapping of a literal backslash to
+// a slash); tokens "\\%" and "\\_" mark the SQL wildcards. Consecutive %
+// collapse into one wildcard. Budgets fail with a controlled error.
+export const LIKE_PATTERN_MAX = 4096;
+export const LIKE_WILDCARDS_MAX = 32;
 
-  for (let i = 0; i < chars.length; ++i) {
-    const c = chars[i];
-    if (c === esc) {
-      chars[i] = chars[i + 1] || "";
-      chars[i + 1] = "";
-    } else if (c === "_") {
-      chars[i] = "\\_";
-    } else if (c === "%") {
-      chars[i] = "\\%";
-      while (chars[i + 1] === "%") chars[++i] = "";
+export function parseLikePattern(pat: string, esc: string): string[] {
+  if (pat.length > LIKE_PATTERN_MAX)
+    throw new Error(
+      `VALIDATION LIKE pattern exceeds ${LIKE_PATTERN_MAX} characters`,
+    );
+
+  const tokens: string[] = [];
+  let wildcards = 0;
+  for (let i = 0; i < pat.length; ++i) {
+    const c = pat[i];
+    if (esc && c === esc) {
+      const next = pat[i + 1];
+      if (next === undefined)
+        throw new Error(
+          `VALIDATION LIKE pattern has a dangling escape at index ${i}`,
+        );
+      // The escaped character is always literal — including % and _.
+      tokens.push(next);
+      i += 1;
+      continue;
     }
+    if (c === "%") {
+      wildcards += 1;
+      if (wildcards > LIKE_WILDCARDS_MAX)
+        throw new Error(
+          `VALIDATION LIKE pattern exceeds ${LIKE_WILDCARDS_MAX} wildcards`,
+        );
+      if (tokens[tokens.length - 1] !== "\\%") tokens.push("\\%");
+      continue;
+    }
+    if (c === "_") {
+      wildcards += 1;
+      if (wildcards > LIKE_WILDCARDS_MAX)
+        throw new Error(
+          `VALIDATION LIKE pattern exceeds ${LIKE_WILDCARDS_MAX} wildcards`,
+        );
+      tokens.push("\\_");
+      continue;
+    }
+    tokens.push(c);
   }
-  return chars.filter((c) => c);
+  return tokens;
 }

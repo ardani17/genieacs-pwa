@@ -54,6 +54,10 @@ const options = {
   UI_SSL_KEY: { type: "string", default: "" },
   UI_LOG_FILE: { type: "path", default: "" },
   UI_ACCESS_LOG_FILE: { type: "path", default: "" },
+  // Structured app-log sink (NDJSON -> shared volume -> Vector ->
+  // VictoriaLogs). Empty = DISABLED: the engine stays on the legacy
+  // logger only, byte-identical to upstream CLI behavior.
+  UI_APP_LOG_FILE: { type: "path", default: "" },
   UI_JWT_SECRET: { type: "string", default: "" },
 
   UDP_CONNECTION_REQUEST_PORT: { type: "int", default: 0 },
@@ -85,6 +89,13 @@ const options = {
 
   XMPP_JID: { type: "string", default: "" },
   XMPP_PASSWORD: { type: "string", default: "" },
+  // Legacy XMPP SASL fallbacks — both default OFF. Enabling either is an
+  // explicit admin risk decision (see
+  // docs/operations/legacy-protocol-crypto.md); TLS stays mandatory
+  // regardless. Server-side deployment configuration only, never browser
+  // input.
+  XMPP_ALLOW_LEGACY_SHA1: { type: "bool", default: false },
+  XMPP_ALLOW_PLAIN: { type: "bool", default: false },
 };
 
 const allConfig: { [name: string]: string | number } = {};

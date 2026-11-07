@@ -1,0 +1,32 @@
+{
+  "password": "Fixture-Only-2026!",
+  "roles": {
+    "fixtureAdmin": {
+      "resources": [
+        "devices",
+        "faults",
+        "files",
+        "presets",
+        "provisions",
+        "config",
+        "permissions",
+        "users",
+        "virtualParameters"
+      ],
+      "access": 3
+    },
+    "fixtureOperator": {
+      "resources": ["devices", "faults", "files"],
+      "access": 2
+    },
+    "fixtureRestricted": {
+      "resources": ["devices"],
+      "access": 2
+    }
+  },
+  "users": {
+    "admin": "fixtureAdmin",
+    "operator": "fixtureOperator",
+    "restricted": "fixtureRestricted"
+  }
+}

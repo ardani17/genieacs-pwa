@@ -1,5 +1,6 @@
 import { map, mapAsync, parseLikePattern } from "./parser.ts";
 import { Expression } from "../../types.ts";
+import { escapeRegExp } from "../../util.ts";
 
 const isArray = Array.isArray;
 
@@ -23,34 +24,29 @@ function reduce(exp, callback): Expression {
   return exp;
 }
 
+// Builds a RegExp from parseLikePattern tokens. Every literal token is
+// escaped through the standard regex escaper (the old hand-rolled table
+// mapped a literal backslash to a slash and missed nothing else by
+// accident), so LIKE input can never inject alternation or quantifiers.
+// Flags are limited to i/m/u.
 export function likePatternToRegExp(pat: string, esc = "", flags = ""): RegExp {
-  const convChars = {
-    "-": "\\-",
-    "/": "\\/",
-    "\\": "\\/",
-    "^": "\\^",
-    $: "\\$",
-    "*": "\\*",
-    "+": "\\+",
-    "?": "\\?",
-    ".": "\\.",
-    "(": "\\(",
-    ")": "\\)",
-    "|": "\\|",
-    "[": "\\[",
-    "]": "\\]",
-    "{": "\\{",
-    "}": "\\}",
-    "\\%": ".*",
-    "\\_": ".",
-  };
-  let chars = parseLikePattern(pat, esc);
+  if (flags !== "" && !/^[imu]*$/.test(flags))
+    throw new Error('VALIDATION LIKE flags allowlist is "imu"');
+
+  const chars = parseLikePattern(pat, esc);
   if (!chars.length) return new RegExp("^$", flags);
-  chars = chars.map((c) => convChars[c] || c);
-  chars[0] = chars[0] === ".*" ? "" : "^" + chars[0];
-  const l = chars.length - 1;
-  chars[l] = [".*", ""].includes(chars[l]) ? "" : chars[l] + "$";
-  return new RegExp(chars.join(""), flags);
+
+  let source = "";
+  for (const token of chars) {
+    if (token === "\\%") source += ".*";
+    else if (token === "\\_") source += ".";
+    else source += escapeRegExp(token);
+  }
+
+  // Leading/trailing % keep their unanchored semantics.
+  if (chars[0] !== "\\%") source = "^" + source;
+  if (chars[chars.length - 1] !== "\\%") source = source + "$";
+  return new RegExp(source, flags);
 }
 
 function compare(

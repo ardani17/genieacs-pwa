@@ -10,6 +10,7 @@ import * as config from "./config.ts";
 import { generateDeviceId, once, setTimeoutPromise } from "./util.ts";
 import * as soap from "./soap.ts";
 import * as session from "./session.ts";
+import { getCwmpSessionId } from "./cwmp-cookie.ts";
 import {
   evaluateAsync,
   evaluate,
@@ -134,6 +135,9 @@ async function authenticate(
             }
 
             if (authentication["method"] === "Digest") {
+              const algorithm =
+                (authentication["algorithm"] as auth.DigestAlgorithm) ?? "MD5";
+              if (!auth.isDigestAlgorithm(algorithm)) return false;
               const expected = auth.digest(
                 username,
                 REALM,
@@ -145,6 +149,7 @@ async function authenticate(
                 authentication["body"],
                 authentication["cnonce"],
                 authentication["nc"],
+                algorithm,
               );
               return expected === authentication["response"];
             }
@@ -1334,12 +1339,24 @@ async function listenerAsync(
   }
 
   let sessionId;
-  // Separation by comma is important as some devices don't comform to standard
-  const COOKIE_REGEX =
-    /\s*([a-zA-Z0-9\-_]+?)\s*=\s*"?([a-zA-Z0-9\-_]*?)"?\s*(,|;|$)/g;
-  let match;
-  while ((match = COOKIE_REGEX.exec(httpRequest.headers.cookie)))
-    if (match[1] === "session") sessionId = match[2];
+  // Single-pass cookie scan (some devices separate cookies with commas
+  // instead of semicolons; the last valid session pair wins).
+  try {
+    sessionId = getCwmpSessionId(
+      httpRequest.headers.cookie as string | undefined,
+    );
+  } catch (err) {
+    if ((err as { code?: string }).code === "CWMP_COOKIE") {
+      // The status line already carries the code; the body stays a
+      // fixed string so no exception-derived text reaches the CPE.
+      httpResponse.writeHead((err as { exposeStatus: number }).exposeStatus, {
+        Connection: "close",
+      });
+      httpResponse.end("Request Header Fields Too Large");
+      return;
+    }
+    throw err;
+  }
 
   // If overloaded, ask CPE to retry in 60 seconds
   if (!sessionId && stats.concurrentRequests > MAX_CONCURRENT_REQUESTS) {

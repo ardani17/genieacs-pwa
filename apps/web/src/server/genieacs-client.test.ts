@@ -1,0 +1,133 @@
+import { describe, expect, it } from "vitest";
+import {
+  APP_COOKIE_NAME,
+  clientIpForRateLimit,
+  nativeCookieFrom,
+} from "./genieacs-client";
+
+function requestWith(headers: Record<string, string>): Request {
+  return new Request("http://localhost:3000/api/app/login", {
+    method: "POST",
+    headers,
+  });
+}
+
+describe("clientIpForRateLimit", () => {
+  it("discards client-supplied X-Forwarded-For by default (0 hops)", () => {
+    delete process.env.TRUSTED_PROXY_HOPS;
+    const ip = clientIpForRateLimit(
+      requestWith({ "X-Forwarded-For": "1.2.3.4, 5.6.7.8" }),
+    );
+    expect(ip).toBe("direct");
+  });
+
+  it("uses the entry N trusted hops from the right", () => {
+    process.env.TRUSTED_PROXY_HOPS = "1";
+    try {
+      // Caddy appends the real peer: the LAST entry is the client.
+      const ip = clientIpForRateLimit(
+        requestWith({ "X-Forwarded-For": "9.9.9.9, 10.0.0.1" }),
+      );
+      expect(ip).toBe("10.0.0.1");
+      // A single entry behind one proxy IS the appended client.
+      expect(
+        clientIpForRateLimit(requestWith({ "X-Forwarded-For": "9.9.9.9" })),
+      ).toBe("9.9.9.9");
+      // Fewer entries than configured hops: nothing trustworthy remains.
+      process.env.TRUSTED_PROXY_HOPS = "2";
+      expect(
+        clientIpForRateLimit(requestWith({ "X-Forwarded-For": "9.9.9.9" })),
+      ).toBe("direct");
+    } finally {
+      delete process.env.TRUSTED_PROXY_HOPS;
+    }
+  });
+
+  it("ignores invalid hop configuration", () => {
+    process.env.TRUSTED_PROXY_HOPS = "many";
+    try {
+      expect(
+        clientIpForRateLimit(requestWith({ "X-Forwarded-For": "1.2.3.4" })),
+      ).toBe("direct");
+    } finally {
+      delete process.env.TRUSTED_PROXY_HOPS;
+    }
+  });
+
+  it("keys on the server-injected peer ONLY with the proxy marker (RE-STD-08)", () => {
+    delete process.env.TRUSTED_PROXY_HOPS;
+    try {
+      // Marker + server-derived XFF (the proxy stripped the client chain
+      // and Next injected the socket peer): separate buckets per peer.
+      expect(
+        clientIpForRateLimit(
+          requestWith({
+            "x-app-client-addr": "1",
+            "X-Forwarded-For": "203.0.113.7",
+          }),
+        ),
+      ).toBe("203.0.113.7");
+      // ::ffff: IPv6-mapped normalization keys consistently.
+      expect(
+        clientIpForRateLimit(
+          requestWith({
+            "x-app-client-addr": "1",
+            "X-Forwarded-For": "::ffff:203.0.113.7",
+          }),
+        ),
+      ).toBe("203.0.113.7");
+      // Marker without an XFF value falls back to "direct".
+      expect(
+        clientIpForRateLimit(requestWith({ "x-app-client-addr": "1" })),
+      ).toBe("direct");
+      // Spoofed XFF WITHOUT the marker is still discarded: one shared
+      // bucket, rotating the header cannot open a new one.
+      expect(
+        clientIpForRateLimit(requestWith({ "X-Forwarded-For": "203.0.113.7" })),
+      ).toBe("direct");
+      // A forged marker value other than "1" is not the proxy's.
+      expect(
+        clientIpForRateLimit(
+          requestWith({
+            "x-app-client-addr": "yes",
+            "X-Forwarded-For": "203.0.113.7",
+          }),
+        ),
+      ).toBe("direct");
+    } finally {
+      delete process.env.TRUSTED_PROXY_HOPS;
+    }
+  });
+
+  it("ignores the marker entirely behind trusted proxies (hops>0)", () => {
+    process.env.TRUSTED_PROXY_HOPS = "1";
+    try {
+      // The edge chain is authoritative; a stray marker changes nothing.
+      expect(
+        clientIpForRateLimit(
+          requestWith({
+            "x-app-client-addr": "1",
+            "X-Forwarded-For": "spoofed, 10.0.0.9",
+          }),
+        ),
+      ).toBe("10.0.0.9");
+      expect(
+        clientIpForRateLimit(requestWith({ "x-app-client-addr": "1" })),
+      ).toBe("direct");
+    } finally {
+      delete process.env.TRUSTED_PROXY_HOPS;
+    }
+  });
+});
+
+describe("cookie contract", () => {
+  it("uses the native cookie name end to end", () => {
+    expect(APP_COOKIE_NAME).toBe("genieacs-ui-jwt");
+  });
+
+  it("reads the session token only under the contract name", () => {
+    expect(nativeCookieFrom("other=tok; genieacs-ui-jwt=abc; x=1")).toBe("abc");
+    expect(nativeCookieFrom("app-session=abc")).toBeNull();
+    expect(nativeCookieFrom(null)).toBeNull();
+  });
+});

@@ -1,0 +1,84 @@
+name: Security alerts gate
+
+# CodeQL analysis (JavaScript/TypeScript + Actions) followed by the
+# alert gate. The gate reads alert/analysis snapshots with paginated
+# authenticated reads; any API failure, stale SHA or open unreviewed
+# alert blocks — a green analysis job alone never passes it. Fork PRs
+# get no token; the token never reaches logs or browsers.
+
+on:
+  push:
+    branches: [main, development]
+  pull_request:
+    branches: [main, development]
+  schedule:
+    - cron: "30 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  codeql:
+    runs-on: ubuntu-latest
+    # Advanced setup replaces default setup; see docs/testing/README.md.
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [javascript-typescript, actions]
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: github/codeql-action/init@793b778da9c9275a0f276522b27cb5fc14bba279 # v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+          queries: security-extended
+      - uses: github/codeql-action/analyze@793b778da9c9275a0f276522b27cb5fc14bba279 # v4
+        with:
+          category: "/language:${{ matrix.language }}"
+
+  gate:
+    needs: codeql
+    runs-on: ubuntu-latest
+    if:
+      always() && (github.event_name != 'pull_request' ||
+      github.event.pull_request.head.repo.full_name == github.repository)
+    permissions:
+      security-events: read
+      vulnerability-alerts: read
+      contents: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          # Analysis must match this exact ref and SHA — never a green
+          # job on a stale commit.
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24.22.2"
+      - name: Require both analysis jobs to succeed
+        env:
+          ANALYSIS_RESULT: ${{ needs.codeql.result }}
+        run: test "$ANALYSIS_RESULT" = success
+      - name: Evaluate real GitHub evidence on this exact ref
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EXPECTED_REF: ${{ github.ref }}
+          EXPECTED_SHA: ${{ github.sha }}
+        run: node scripts/security/github-security-check-cli.mjs
+      - name: Retain the gate report
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: github-security-evidence-${{ github.sha }}
+          path: artifacts/security/github-alert-report.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Gate failed
+        if: failure()
+        run: |
+          echo "Security alert gate BLOCKED the ref. Review docs/testing/github-security-evidence.json"
+          exit 1

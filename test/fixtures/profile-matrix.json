@@ -1,0 +1,78 @@
+{
+  "schemaVersion": 1,
+  "note": "Expected resolution matrix for the fixture devices (TEST- IDs only).",
+  "cases": [
+    {
+      "id": "TEST-ZTE-F609",
+      "expect": {
+        "id": "zte-f609-V5.2.10P5T13",
+        "verified": true,
+        "wan": true,
+        "wifiWritable": false
+      }
+    },
+    {
+      "id": "TEST-ZTE-F670-1",
+      "expect": {
+        "id": "zte-f670-V6.0.10P3N19",
+        "verified": true,
+        "wan": true,
+        "wifiWritable": true
+      }
+    },
+    {
+      "id": "TEST-ZTE-F670-2",
+      "expect": {
+        "id": "zte-f670-V6.0.10P3N3",
+        "verified": true,
+        "wan": true,
+        "wifiWritable": true
+      }
+    },
+    {
+      "id": "TEST-ZTE-F660",
+      "expect": {
+        "id": "zte-f660-V5.2.10P1T2",
+        "verified": true,
+        "wan": true,
+        "wifiWritable": false
+      }
+    },
+    {
+      "id": "TEST-ZTE-UNKNOWN",
+      "expect": {
+        "id": "zte-f670-generic",
+        "verified": false,
+        "wan": false,
+        "wifiWritable": false
+      }
+    },
+    {
+      "id": "TEST-HUAWEI",
+      "expect": {
+        "id": "generic-tr181",
+        "verified": false,
+        "wan": false,
+        "wifiWritable": false
+      }
+    },
+    {
+      "id": "TEST-FIBERHOME",
+      "expect": {
+        "id": "generic-tr181",
+        "verified": false,
+        "wan": false,
+        "wifiWritable": false
+      }
+    },
+    {
+      "id": "TEST-TR181",
+      "expect": {
+        "id": "generic-tr181",
+        "verified": false,
+        "wan": false,
+        "wifiWritable": false
+      }
+    }
+  ]
+}

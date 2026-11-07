@@ -1,10 +1,36 @@
 import test from "node:test";
 import assert from "node:assert";
-import { EJSON } from "bson";
-import { Filter } from "mongodb";
+import { BSON, MongoClient, Filter } from "mongodb";
 import { stringify, parse } from "../lib/common/expression/parser.ts";
 import { convertOldPrecondition } from "../lib/db/util.ts";
 import { toMongoQuery } from "../lib/db/synth.ts";
+
+const { EJSON } = BSON;
+
+// Runs only inside the genieacs-pwa-check harness, where compose.test.yaml
+// sets MONGO_URL to the throwaway genieacs_plan_test fixture database.
+void test(
+  "driver metadata and BSON have one compatible identity",
+  { skip: !process.env.MONGO_URL },
+  async () => {
+    const c = new MongoClient(process.env.MONGO_URL!);
+    await c.connect();
+    try {
+      const t = c.db().collection("compat");
+      await t.deleteMany({});
+      await t.insertOne({ _id: "cache", value: "stored" } as any);
+      const r = await t.findOneAndDelete({ _id: "cache" } as any, {
+        includeResultMetadata: true,
+      });
+      assert.equal(r.value?.value, "stored");
+      const x = BSON.EJSON.parse('{"_id":{"$oid":"507f1f77bcf86cd799439011"}}');
+      await t.insertOne(x);
+      assert.ok(await t.findOne({ _id: x._id }));
+    } finally {
+      await c.close();
+    }
+  },
+);
 
 void test("convertOldPrecondition", () => {
   const tests = [

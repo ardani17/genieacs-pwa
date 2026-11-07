@@ -1,4 +1,4 @@
-import { Script } from "node:vm";
+import { validateAdminScript } from "./script-validation.ts";
 import { Readable } from "node:stream";
 import { Collection, ObjectId, WithoutId } from "mongodb";
 import { encodeTag } from "../util.ts";
@@ -451,19 +451,7 @@ export async function putProvision(
   object: { script: string },
 ): Promise<void> {
   if (!object.script) object.script = "";
-  try {
-    new Script(`"use strict";(function(){\n${object.script}\n})();`, {
-      filename: id,
-      lineOffset: -1,
-    });
-  } catch (err) {
-    if (err.stack?.startsWith(`${id}:`)) {
-      return Promise.reject(
-        new Error(`${err.name} at ${err.stack.split("\n", 1)[0]}`),
-      );
-    }
-    return Promise.reject(err);
-  }
+  validateAdminScript(object.script, id);
   await collections.provisions.replaceOne({ _id: id }, object, {
     upsert: true,
   });
@@ -478,19 +466,7 @@ export async function putVirtualParameter(
   object: { script: string },
 ): Promise<void> {
   if (!object.script) object.script = "";
-  try {
-    new Script(`"use strict";(function(){\n${object.script}\n})();`, {
-      filename: id,
-      lineOffset: -1,
-    });
-  } catch (err) {
-    if (err.stack?.startsWith(`${id}:`)) {
-      return Promise.reject(
-        new Error(`${err.name} at ${err.stack.split("\n", 1)[0]}`),
-      );
-    }
-    return Promise.reject(err);
-  }
+  validateAdminScript(object.script, id);
   await collections.virtualParameters.replaceOne({ _id: id }, object, {
     upsert: true,
   });

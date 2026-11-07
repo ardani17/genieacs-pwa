@@ -6,6 +6,7 @@ import * as apiFunctions from "../api-functions.ts";
 import { evaluate, and, extractParams } from "../common/expression/util.ts";
 import { parse } from "../common/expression/parser.ts";
 import * as logger from "../logger.ts";
+import { emitPermissionDenied } from "../engine-app-logger.ts";
 import { getConfig } from "../ui/local-cache.ts";
 import { Expression, Task } from "../types.ts";
 import { generateSalt, hashPassword } from "../auth.ts";
@@ -17,13 +18,21 @@ import { stringify as yamlStringify } from "../common/yaml.ts";
 import { ResourceLockedError } from "../common/errors.ts";
 import { acquireLock, releaseLock } from "../lock.ts";
 import { collections } from "../db/db.ts";
+import { quoteCsvCell, sendSafeLegacyError } from "./safe-error.ts";
 
 const router = new Router();
 export default router;
 
 function logUnauthorizedWarning(log): void {
+  const action = log.message;
+  // Captured BEFORE the legacy call: lib/logger.ts's flatten MUTATES
+  // the log object (and deletes .context) while building its record.
+  const ctx = log.context;
   log.message += " not authorized";
   logger.accessWarn(log);
+  // Structured pipeline event IN PARALLEL (no-op unless
+  // UI_APP_LOG_FILE is configured); the legacy warn above is untouched.
+  emitPermissionDenied(ctx, action);
 }
 
 const RESOURCE_DELETE = 1 << 0;
@@ -109,7 +118,7 @@ router.get(`/devices/:id.csv`, async (ctx) => {
       new Date(p.objectTimestamp).toJSON(),
       p.writable,
       new Date(p.writableTimestamp).toJSON(),
-      `"${String(value).replace(/"/g, '""')}"`,
+      quoteCsvCell(value),
       type,
       new Date(p.valueTimestamp).toJSON(),
       p.notification,
@@ -268,8 +277,9 @@ for (const [resource, flags] of Object.entries(resources)) {
 
     ctx.body = Readable.from(
       (async function* () {
-        yield Object.keys(columns).map((k) => `"${k.replace(/"/, '""')}"`) +
-          "\n";
+        yield Object.keys(columns)
+          .map((k) => quoteCsvCell(k))
+          .join(",") + "\n";
         for await (const obj of db.query(resource, filter, options)) {
           const arr = Object.values(columns).map((exp) => {
             const v = evaluate(exp, obj, null, (e) => {
@@ -309,7 +319,7 @@ for (const [resource, flags] of Object.entries(resources)) {
             });
 
             if (Array.isArray(v) || v == null) return "";
-            if (typeof v === "string") return `"${v.replace(/"/g, '""')}"`;
+            if (typeof v === "string") return quoteCsvCell(v);
             return v;
           });
           yield arr.join(",") + "\n";
@@ -403,8 +413,12 @@ for (const [resource, flags] of Object.entries(resources)) {
         if (err instanceof ResourceLockedError) {
           log.message += " failed";
           logger.accessWarn(log);
-          ctx.status = 503;
-          ctx.body = err.message;
+          sendSafeLegacyError(
+            ctx,
+            503,
+            "resource_locked",
+            "The resource is locked by another operation; retry shortly.",
+          );
           return;
         }
         throw err;
@@ -445,8 +459,29 @@ for (const [resource, flags] of Object.entries(resources)) {
       } catch (err) {
         log.message += " failed";
         logger.accessWarn(log);
-        ctx.body = `${err.name}: ${err.message}`;
-        return void (ctx.status = 400);
+        // Parse-only script validation failures already carry a safe
+        // message (code + position/size only); every other failure gets a
+        // fixed allowlisted text. The response is text/plain with nosniff
+        // so reflected text is never rendered as HTML.
+        if (
+          err instanceof Error &&
+          (err as { code?: string }).code === "VALIDATION"
+        ) {
+          sendSafeLegacyError(
+            ctx,
+            (err as { exposeStatus?: number }).exposeStatus ?? 400,
+            "validation_failed",
+            err.message,
+          );
+        } else {
+          sendSafeLegacyError(
+            ctx,
+            400,
+            "put_failed",
+            "The resource could not be updated.",
+          );
+        }
+        return;
       }
 
       logger.accessInfo(log);
@@ -575,7 +610,7 @@ router.post("/devices/:id/tasks", async (ctx) => {
     if (!device) return void (ctx.status = 404);
 
     const validate = authorizer.getValidator("devices", device);
-    for (const t of ctx.request.body) {
+    for (const t of ctx.request.body as unknown[]) {
       if (!validate("task", t)) {
         logUnauthorizedWarning(log);
         return void (ctx.status = 403);
@@ -686,12 +721,20 @@ router.post("/devices/:id/tags", async (ctx) => {
   }
 
   try {
-    await db.updateDeviceTags(ctx.params.id, ctx.request.body);
+    await db.updateDeviceTags(
+      ctx.params.id,
+      ctx.request.body as Record<string, boolean>,
+    );
   } catch (error) {
     log.message += " failed";
     logger.accessWarn(log);
-    ctx.body = error.message;
-    return void (ctx.status = 400);
+    sendSafeLegacyError(
+      ctx,
+      400,
+      "tags_update_failed",
+      "The device tags could not be updated.",
+    );
+    return;
   }
 
   logger.accessInfo(log);
@@ -729,7 +772,7 @@ router.put("/users/:id/password", async (ctx) => {
       !(await apiFunctions.authLocal(
         ctx.state.configSnapshot,
         username,
-        ctx.request.body.authPassword,
+        (ctx.request.body as { authPassword?: string }).authPassword,
       ))
     ) {
       logUnauthorizedWarning(log);
@@ -742,7 +785,8 @@ router.put("/users/:id/password", async (ctx) => {
     return void (ctx.status = 403);
   }
 
-  const newPassword = ctx.request.body.newPassword;
+  const newPassword = (ctx.request.body as { newPassword?: string })
+    .newPassword;
 
   if (ctx.state.user) {
     const filter = and(authorizer.getFilter("users", 3), [

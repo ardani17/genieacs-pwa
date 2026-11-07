@@ -5,6 +5,13 @@ import { getRevision, getConfig } from "./ui/local-cache.ts";
 import { filesBucket, collections } from "./db/db.ts";
 import { optimizeProjection } from "./db/util.ts";
 import * as query from "./query.ts";
+import {
+  NbiQueryError,
+  parseNbiListOptions,
+  validateNbiQuery,
+  LIMIT_DEFAULT,
+  QUERY_MAX_TIME_MS,
+} from "./nbi-query.ts";
 import * as apiFunctions from "./api-functions.ts";
 import * as cache from "./cache.ts";
 import { version as VERSION } from "../package.json";
@@ -605,24 +612,31 @@ async function handler(
       return;
     }
 
-    const collection = collections[collectionName] as Collection<unknown>;
-    if (!collection) {
+    // Collection allowlist by own-property: never resolve through the
+    // prototype chain.
+    if (!Object.hasOwn(collections, collectionName)) {
       response.writeHead(404);
       response.end("404 Not Found");
       return;
     }
+    const collection = collections[collectionName] as Collection<unknown>;
 
-    let q = {};
-    if (url.searchParams.has("query")) {
-      try {
-        q = JSON.parse(url.searchParams.get("query") as string);
-      } catch (err) {
-        response.writeHead(400);
+    // Closed-grammar validation happens BEFORE expand/sanitize and again
+    // on the expanded result, so nothing but the allowed subset can reach
+    // the driver.
+    let listOptions: import("./nbi-query.ts").NbiListOptions;
+    try {
+      listOptions = parseNbiListOptions(url.searchParams);
+    } catch (err) {
+      if (err instanceof NbiQueryError) {
+        response.writeHead(err.exposeStatus);
         response.end(`${err.name}: ${err.message}`);
         return;
       }
+      throw err;
     }
 
+    let q: Record<string, unknown> = listOptions.filter ?? {};
     switch (collectionName) {
       case "devices":
         q = query.expand(q);
@@ -641,27 +655,36 @@ async function handler(
         });
     }
 
-    let projection = null;
-    if (url.searchParams.has("projection")) {
-      projection = {};
-      for (const p of (url.searchParams.get("projection") as string).split(","))
-        projection[p.trim()] = 1;
-      projection = optimizeProjection(projection);
-    }
-
-    const cur = collection.find(q, { projection: projection });
-
-    if (url.searchParams.has("sort")) {
-      let s;
-      try {
-        s = JSON.parse(url.searchParams.get("sort") as string);
-      } catch (err) {
-        response.writeHead(400);
+    try {
+      validateNbiQuery(q, {
+        // Expansion nests dotted device paths one level per segment, so
+        // the re-validation allows deeper trees than the wire format.
+        maxDepth: 64,
+      });
+    } catch (err) {
+      if (err instanceof NbiQueryError) {
+        response.writeHead(err.exposeStatus);
         response.end(`${err.name}: ${err.message}`);
         return;
       }
-      const sort = {};
-      for (const [k, v] of Object.entries(s)) {
+      throw err;
+    }
+
+    let projection: Record<string, number> | null = null;
+    if (listOptions.projection) {
+      projection = optimizeProjection(
+        listOptions.projection as unknown as { [path: string]: 1 },
+      );
+    }
+
+    const cur = collection.find(q, {
+      projection: projection,
+      maxTimeMS: QUERY_MAX_TIME_MS,
+    });
+
+    if (listOptions.sort) {
+      const sort: Record<string, 1 | -1> = {};
+      for (const [k, v] of Object.entries(listOptions.sort)) {
         if (k[k.lastIndexOf(".") + 1] !== "_" && collectionName === "devices")
           sort[`${k}._value`] = v;
         else sort[k] = v;
@@ -670,7 +693,19 @@ async function handler(
       cur.sort(sort);
     }
 
-    const total = await collection.countDocuments(q);
+    let total: number;
+    try {
+      total = await collection.countDocuments(q, {
+        maxTimeMS: QUERY_MAX_TIME_MS,
+      });
+    } catch (err) {
+      if ((err as { code?: number }).code === 50) {
+        response.writeHead(503);
+        response.end("503 Query time budget exceeded");
+        return;
+      }
+      throw err;
+    }
 
     response.writeHead(200, {
       "Content-Type": "application/json",
@@ -682,11 +717,10 @@ async function handler(
       return;
     }
 
-    if (url.searchParams.has("skip"))
-      cur.skip(parseInt(url.searchParams.get("skip") as string));
-
-    if (url.searchParams.has("limit"))
-      cur.limit(parseInt(url.searchParams.get("limit") as string));
+    // Migration note: an absent limit used to stream unboundedly; the
+    // closed grammar now caps it at LIMIT_DEFAULT.
+    if (listOptions.skip !== undefined) cur.skip(listOptions.skip);
+    cur.limit(listOptions.limit ?? LIMIT_DEFAULT);
 
     response.write("[\n");
     i = 0;

@@ -30,6 +30,9 @@ export async function set(
 }
 
 export async function pop(key: string): Promise<string> {
-  const res = await collections.cache.findOneAndDelete({ _id: key });
+  const res = await collections.cache.findOneAndDelete(
+    { _id: key },
+    { includeResultMetadata: true },
+  );
   return res.value?.value;
 }

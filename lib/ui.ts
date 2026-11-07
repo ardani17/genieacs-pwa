@@ -1,17 +1,25 @@
 import { constants } from "node:zlib";
 import Koa from "koa";
 import Router from "@koa/router";
-import * as jwt from "jsonwebtoken";
 import koaSend from "koa-send";
 import koaCompress from "koa-compress";
 import koaBodyParser from "@koa/bodyparser";
 import koaJwt from "koa-jwt";
 import * as config from "./config.ts";
 import api from "./ui/api.ts";
+import appApi from "./ui/app-api.ts";
+import { sendSafeLegacyError } from "./ui/safe-error.ts";
+import {
+  issueSession,
+  SESSION_MAX_AGE_SECONDS,
+  validateSessionClaims,
+} from "./ui/session.ts";
 import Authorizer from "./common/authorizer.ts";
 import * as logger from "./logger.ts";
+import { emitLoginOutcome } from "./engine-app-logger.ts";
 import * as localCache from "./ui/local-cache.ts";
 import { PermissionSet } from "./types.ts";
+import type { SessionClaims } from "./ui/session.ts";
 import { authLocal } from "./api-functions.ts";
 import * as init from "./init.ts";
 import { version as VERSION } from "../package.json";
@@ -61,6 +69,13 @@ koa.use(
     passthrough: true,
     cookie: JWT_COOKIE,
     isRevoked: async (ctx, token) => {
+      // The middleware is the enforcement point for the session
+      // lifetime contract: tokens without finite iat/exp or with a
+      // lifetime beyond the 8h absolute cap are revoked here (signature
+      // alone is not enough).
+      const claims = validateSessionClaims(token as SessionClaims);
+      if (!claims) return true;
+
       if (token["authMethod"] === "local") {
         return !localCache.getUsers(ctx.state.configSnapshot)[
           token["username"]
@@ -103,8 +118,11 @@ router.post("/login", async (ctx) => {
     return;
   }
 
-  const username = ctx.request.body.username;
-  const password = ctx.request.body.password;
+  // @koa/bodyparser 6 types the parsed body as unknown; the login payload
+  // is a plain JSON object.
+  const body = ctx.request.body as { username?: string; password?: string };
+  const username = body.username;
+  const password = body.password;
 
   const log = {
     message: "Log in",
@@ -115,10 +133,19 @@ router.post("/login", async (ctx) => {
 
   function success(authMethod): void {
     log.method = authMethod;
-    const token = jwt.sign({ username, authMethod }, JWT_SECRET);
-    ctx.cookies.set(JWT_COOKIE, token, { sameSite: "lax" });
+    const token = issueSession(username, authMethod, JWT_SECRET);
+    ctx.cookies.set(JWT_COOKIE, token, {
+      sameSite: "lax",
+      httpOnly: true,
+      maxAge: SESSION_MAX_AGE_SECONDS * 1000,
+      secure: ctx.request.origin.startsWith("https://"),
+      path: "/",
+    });
     ctx.body = JSON.stringify(token);
     logger.accessInfo(log);
+    // Structured pipeline event IN PARALLEL (no-op unless
+    // UI_APP_LOG_FILE is configured); legacy stdout above is untouched.
+    emitLoginOutcome(ctx, true, username);
   }
 
   function failure(): void {
@@ -126,6 +153,7 @@ router.post("/login", async (ctx) => {
     ctx.body = "Incorrect username or password";
     log.message += " failed";
     logger.accessWarn(log);
+    emitLoginOutcome(ctx, false, username);
   }
 
   if (await authLocal(ctx.state.configSnapshot, username, password))
@@ -152,7 +180,13 @@ koa.use(async (ctx, next) => {
 });
 
 koa.use(koaBodyParser());
-router.use("/api", api.routes(), api.allowedMethods());
+router.use(
+  "/api",
+  appApi.routes(),
+  appApi.allowedMethods(),
+  api.routes(),
+  api.allowedMethods(),
+);
 
 router.get("/status", (ctx) => {
   ctx.body = "OK";
@@ -180,7 +214,7 @@ router.get("/init", async (ctx) => {
 });
 
 router.post("/init", async (ctx) => {
-  const status = ctx.request.body;
+  const status = ctx.request.body as Record<string, boolean>;
   if (Object.keys(localCache.getUsers(ctx.state.configSnapshot)).length) {
     if (!ctx.state.authorizer.hasAccess("users", 3)) status["users"] = false;
     if (!ctx.state.authorizer.hasAccess("permissions", 3))
@@ -196,7 +230,17 @@ router.post("/init", async (ctx) => {
     if (!ctx.state.authorizer.hasAccess("provisions", 3))
       status["presets"] = false;
   }
-  await init.seed(status);
+  try {
+    await init.seed(status);
+  } catch (err) {
+    if (err instanceof init.InitValidationError) {
+      // Koa serves plain string bodies as text/html; the validation
+      // message must go through the safe text/plain + nosniff envelope.
+      sendSafeLegacyError(ctx, 400, "init_validation_failed", err.message);
+      return;
+    }
+    throw err;
+  }
   ctx.body = "";
 });
 

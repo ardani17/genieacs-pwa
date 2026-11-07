@@ -1,8 +1,15 @@
 import * as net from "node:net";
 import * as tls from "node:tls";
 import { EventEmitter } from "node:events";
-import { createHash, createHmac, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { parseXml, Element, parseAttrs } from "./xml-parser.ts";
+import {
+  selectSasl,
+  scramProof,
+  timingSafeEqualWithLength,
+  validateServerNonce,
+} from "./xmpp-scram.ts";
+import * as config from "./config.ts";
 
 function encodeBase64(str: string): string {
   return Buffer.from(str).toString("base64");
@@ -75,43 +82,6 @@ function xmppStream<T>(
   });
 }
 
-const INT_1 = Buffer.from([0, 0, 0, 1]);
-const saltedPasswordCache = {
-  password: "",
-  iterationCount: 0,
-  saltBase64: "",
-  salted: Buffer.allocUnsafe(0),
-};
-
-function saltPassword(
-  password: string,
-  saltBase64: string,
-  iteractionCount: number,
-): Buffer {
-  if (
-    password === saltedPasswordCache.password &&
-    saltBase64 === saltedPasswordCache.saltBase64 &&
-    iteractionCount === saltedPasswordCache.iterationCount
-  )
-    return saltedPasswordCache.salted;
-
-  const hi = createHmac("sha1", password)
-    .update(Buffer.concat([Buffer.from(saltBase64, "base64"), INT_1]))
-    .digest();
-  let hi2: Buffer = hi;
-  for (let i = 1; i < iteractionCount; ++i) {
-    hi2 = createHmac("sha1", password).update(hi2).digest();
-    for (const [j, b] of hi2.entries()) hi[j] ^= b;
-  }
-
-  saltedPasswordCache.saltBase64 = saltBase64;
-  saltedPasswordCache.password = password;
-  saltedPasswordCache.iterationCount = iteractionCount;
-  saltedPasswordCache.salted = hi;
-
-  return hi;
-}
-
 function* loginPlain(
   socket: net.Socket,
   username: string,
@@ -138,13 +108,15 @@ function* loginScram(
   socket: net.Socket,
   username: string,
   password: string,
+  mechanism: "SCRAM-SHA-1" | "SCRAM-SHA-256",
 ): Generator<void, void, Element> {
-  const cnonce = randomBytes(8).toString("base64");
+  const hash = mechanism === "SCRAM-SHA-256" ? "sha256" : "sha1";
+  const cnonce = randomBytes(16).toString("base64");
   const gs2Header = "n,,";
   const clientFirstMessageBare = `n=${username},r=${cnonce}`;
   const clientFirstMessage = gs2Header + clientFirstMessageBare;
   socket.write(
-    `<auth xmlns="urn:ietf:params:xml:ns:xmpp-sasl" mechanism="SCRAM-SHA-1">${encodeBase64(
+    `<auth xmlns="urn:ietf:params:xml:ns:xmpp-sasl" mechanism="${mechanism}">${encodeBase64(
       clientFirstMessage,
     )}</auth>`,
   );
@@ -165,25 +137,22 @@ function* loginScram(
     throw new Error("Invalid iteration count");
   if (saltBase64 == null) throw new Error("Missing salt");
   if (nonce == null) throw new Error("Missing nonce");
-
-  const saltedPassword = saltPassword(password, saltBase64, iterationCount);
-  const clientKey = createHmac("sha1", saltedPassword)
-    .update("Client Key")
-    .digest();
-  const storedKey = createHash("sha1").update(clientKey).digest();
+  validateServerNonce(cnonce, nonce);
 
   const clientFinalMessageWithoutProof = `c=${encodeBase64(
     gs2Header,
   )},r=${nonce}`;
   const authMessage = `${clientFirstMessageBare},${serverFirstMessage},${clientFinalMessageWithoutProof}`;
-  const clientSignature = createHmac("sha1", storedKey)
-    .update(authMessage)
-    .digest();
 
-  const clientProof = Buffer.from(clientKey);
-  for (const [i, b] of clientSignature.entries()) clientProof[i] ^= b;
+  const { proof, serverSignature } = scramProof({
+    hash,
+    password,
+    salt: Buffer.from(saltBase64, "base64"),
+    iterationCount,
+    authMessage,
+  });
 
-  const clientFinalMessage = `${clientFinalMessageWithoutProof},p=${clientProof.toString(
+  const clientFinalMessage = `${clientFinalMessageWithoutProof},p=${proof.toString(
     "base64",
   )}`;
   socket.write(
@@ -202,14 +171,12 @@ function* loginScram(
   if (res2.name !== "success")
     throw new Error(`Unexpected response ${res2.name}`);
 
-  const serverKey = createHmac("sha1", saltedPassword)
-    .update("Server Key")
-    .digest();
-  const serverSignature = createHmac("sha1", serverKey)
-    .update(authMessage)
-    .digest("base64");
-
-  if (!decodeBase64(res2.text).endsWith(serverSignature))
+  // Verify the server's v= signature (constant-time, length-checked).
+  const serverFinal = decodeBase64(res2.text);
+  const vField = serverFinal.split(",").find((s) => s.startsWith("v="));
+  if (!vField) throw new Error("Missing server signature");
+  const received = Buffer.from(vField.slice(2), "base64");
+  if (!timingSafeEqualWithLength(received, serverSignature))
     throw new Error("Invalid server signature");
 }
 
@@ -258,23 +225,32 @@ function* init(
     throw new Error(`Unexpected element ${features.name}`);
   for (const feature of features.children) {
     if (feature.name === "starttls") {
-      if (feature.children.some((c) => c.name === "required")) {
-        yield* starttls(socket);
-        return STATUS_STARTTLS;
-      }
+      // Always upgrade when the server offers it — credentials are only
+      // ever sent over a verified TLS stream.
+      yield* starttls(socket);
+      return STATUS_STARTTLS;
     } else if (feature.name === "mechanisms") {
+      // Mechanisms advertised without a TLS upgrade: refuse. No
+      // automatic downgrade, no certificate-check bypass.
+      if (!(socket instanceof tls.TLSSocket))
+        throw new Error(
+          "TLS: XMPP credentials require a verified TLS stream (STARTTLS unavailable)",
+        );
       const mechanisms: Set<string> = new Set(
         feature.children.map((c) => c.text),
       );
-      if (mechanisms.has("PLAIN")) {
+      const mechanism = selectSasl(
+        mechanisms,
+        true,
+        config.get("XMPP_ALLOW_LEGACY_SHA1") as boolean,
+        config.get("XMPP_ALLOW_PLAIN") as boolean,
+      );
+      if (mechanism === "PLAIN") {
         yield* loginPlain(socket, username, password);
-        return STATUS_RESTART_STREAM;
-      } else if (mechanisms.has("SCRAM-SHA-1")) {
-        yield* loginScram(socket, username, password);
-        return STATUS_RESTART_STREAM;
       } else {
-        throw new Error("No supported SASL method");
+        yield* loginScram(socket, username, password, mechanism);
       }
+      return STATUS_RESTART_STREAM;
     } else if (feature.name === "bind") {
       yield* bind(socket, resource);
       return 0;

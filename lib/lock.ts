@@ -18,7 +18,11 @@ export async function acquireLock(
         },
         $currentDate: { timestamp: true },
       },
-      { upsert: true, returnDocument: "after" },
+      {
+        upsert: true,
+        returnDocument: "after",
+        includeResultMetadata: true,
+      },
     );
     if (Math.abs(r.value.timestamp.getTime() - now) > CLOCK_SKEW_TOLERANCE)
       throw new Error("Database clock skew too great");

@@ -1,5 +1,9 @@
 import { Filter } from "mongodb";
-import { EJSON } from "bson";
+// EJSON lives on the driver's BSON re-export; the standalone bson@4 package
+// is no longer a direct dependency. Referenced as BSON.EJSON (not a
+// module-level destructure) so the browser bundle can tree-shake the
+// driver import away from ui/filter-component's validQuery usage.
+import { BSON } from "mongodb";
 import { parseLikePattern } from "../common/expression/parser.ts";
 import { Expression } from "../types.ts";
 import { decodeTag } from "../util.ts";
@@ -33,6 +37,10 @@ function getParam(exp: Expression, collection: string): string {
     else if (p === "Events.Registered") return "_registered";
     else if (p === "Events.0_BOOTSTRAP") return "_lastBootstrap";
     else if (p === "Events.1_BOOT") return "_lastBoot";
+    else if (p === "_tags")
+      // The raw tag ARRAY (search LIKEs over tag names); without this
+      // the generic branch points queries at a nonexistent _tags._value.
+      return "_tags";
     else if (!p.endsWith("._value") && !p.startsWith("Tags."))
       return `${p}._value`;
   }
@@ -218,7 +226,7 @@ class MongoClauseLike extends MongoClause {
     const convChars = {
       "-": "\\-",
       "/": "\\/",
-      "\\": "\\/",
+      "\\": "\\\\",
       "^": "\\^",
       $: "\\$",
       "*": "\\*",
@@ -644,7 +652,7 @@ export function toMongoQuery(
   const minterms = clause.true(context);
   const minimized = context.minimize(minterms);
   if (!minimized.length) return false;
-  return EJSON.deserialize(context.toQuery(minimized));
+  return BSON.EJSON.deserialize(context.toQuery(minimized));
 }
 
 export function validQuery(exp: Expression, resource: string): void {

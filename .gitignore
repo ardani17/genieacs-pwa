@@ -10,3 +10,22 @@ coverage
 .next
 test/*.js
 test/*.js.map
+
+# Verification evidence is regenerated per run, never committed.
+artifacts/
+
+# Playwright reports and auth state (test outputs, contain session data).
+playwright-report/
+test-results/
+apps/web/playwright-report/
+apps/web/test-results/
+
+# Frontend workspace build output and dependencies.
+apps/web/node_modules/
+apps/web/.next/
+
+# Deployment secrets stay outside version control.
+secrets/
+*.secret
+docker/deployment/*.env
+apps/web/tsconfig.tsbuildinfo

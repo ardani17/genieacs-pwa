@@ -1,0 +1,92 @@
+name: Dependency security
+
+# Daily dependency/advisory snapshot. Check-only by design: it never
+# merges, patches or dismisses anything. The scan job has read-only
+# permissions; only the triage job may write issues, and it writes one
+# issue per advisory (create-or-update, no duplicates).
+
+on:
+  schedule:
+    - cron: "30 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: "24.22.2"
+      - name: Dependency inventory and advisory scan
+        run: node scripts/security/inventory.mjs
+      - name: Upload security artifacts
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: security-artifacts
+          path: artifacts/security/
+          retention-days: 30
+
+  triage:
+    needs: audit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: security-artifacts
+          path: artifacts/security
+      - name: Open or update one issue per advisory
+        uses: actions/github-script@d746ffe35508b191735878b479e04febd2b8f71 # v9.0.0
+        with:
+          script: |
+            const fs = require("node:fs");
+            const report = JSON.parse(
+              fs.readFileSync("artifacts/security/advisory-response.json", "utf8"),
+            );
+            const existing = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: "open",
+              per_page: 100,
+            });
+            for (const [name, advisories] of Object.entries(report.findings || {})) {
+              for (const advisory of advisories) {
+                const ghsa = (advisory.url || "").split("/").pop() || String(advisory.id);
+                const title = `security: ${ghsa} ${name} (${advisory.severity || "unknown"})`;
+                const body = [
+                  `Advisory: ${advisory.url || advisory.id}`,
+                  `Package: ${name}`,
+                  `Severity: ${advisory.severity || "unknown"}`,
+                  `Vulnerable versions: ${advisory.vulnerable_versions || "unknown"}`,
+                  `Detected at: ${report.checkedAt}`,
+                  "",
+                  "Opened by the dependency-security workflow. Snapshot metadata only,",
+                  "not an exploit confirmation. Remediation follows the security",
+                  "upgrade plan; this issue is closed after the resolved graph is",
+                  "re-audited on the patched ref.",
+                ].join("\n");
+                const match = existing.find((issue) => issue.title === title);
+                if (match) {
+                  await github.rest.issues.update({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    issue_number: match.number,
+                    body,
+                  });
+                } else {
+                  await github.rest.issues.create({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    title,
+                    body,
+                  });
+                }
+              }
+            }

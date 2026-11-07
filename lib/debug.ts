@@ -7,6 +7,14 @@ import { getSocketEndpoints } from "./server.ts";
 
 const DEBUG_FILE = "" + config.get("DEBUG_FILE");
 const DEBUG_FORMAT = "" + config.get("DEBUG_FORMAT");
+// The raw debug sink (full request/response bodies) is OFF by default:
+// it persists unredacted protocol payloads. Opting in via
+// GENIEACS_DEBUG_RAW=1 is an explicit operator decision for an
+// authorized device/window (max 5 minutes; see operations docs); the
+// structured application logger (lib/app-logger.ts) redacts at field
+// level and is the default record.
+const DEBUG_RAW_ENABLED =
+  DEBUG_FILE !== "" && process.env["GENIEACS_DEBUG_RAW"] === "1";
 
 const connectionTimestamps = new WeakMap<Socket, Date>();
 
@@ -24,7 +32,9 @@ export function incomingHttpRequest(
   deviceId: string,
   body: string,
 ): void {
-  if (!DEBUG_FILE) return;
+  // Raw protocol payloads (bodies/headers) persist ONLY behind the
+  // explicit GENIEACS_DEBUG_RAW=1 operator opt-in.
+  if (!DEBUG_RAW_ENABLED) return;
   const now = new Date();
   const con = httpRequest.socket;
   const socketEndpoints = getSocketEndpoints(con);
@@ -53,7 +63,9 @@ export function outgoingHttpResponse(
   deviceId: string,
   body: string,
 ): void {
-  if (!DEBUG_FILE) return;
+  // Raw protocol payloads (bodies/headers) persist ONLY behind the
+  // explicit GENIEACS_DEBUG_RAW=1 operator opt-in.
+  if (!DEBUG_RAW_ENABLED) return;
   const now = new Date();
   const con = httpResponse.socket;
   const socketEndpoints = getSocketEndpoints(con);
@@ -82,7 +94,9 @@ export function outgoingHttpRequest(
   url: URL,
   body: string,
 ): void {
-  if (!DEBUG_FILE) return;
+  // Raw protocol payloads (bodies/headers) persist ONLY behind the
+  // explicit GENIEACS_DEBUG_RAW=1 operator opt-in.
+  if (!DEBUG_RAW_ENABLED) return;
   const now = new Date();
   const con = httpRequest.socket;
   const msg = {
@@ -112,7 +126,9 @@ export function outgoingHttpRequestError(
   url: URL,
   err: Error,
 ): void {
-  if (!DEBUG_FILE) return;
+  // Raw protocol payloads (bodies/headers) persist ONLY behind the
+  // explicit GENIEACS_DEBUG_RAW=1 operator opt-in.
+  if (!DEBUG_RAW_ENABLED) return;
   const now = new Date();
   const msg = {
     event: "outgoing HTTP request",
@@ -139,7 +155,9 @@ export function incomingHttpResponse(
   deviceId: string,
   body: string,
 ): void {
-  if (!DEBUG_FILE) return;
+  // Raw protocol payloads (bodies/headers) persist ONLY behind the
+  // explicit GENIEACS_DEBUG_RAW=1 operator opt-in.
+  if (!DEBUG_RAW_ENABLED) return;
   const now = new Date();
   const con = httpResponse.socket;
   const msg = {
@@ -166,7 +184,9 @@ export function outgoingUdpMessage(
   remotePort: number,
   body: string,
 ): void {
-  if (!DEBUG_FILE) return;
+  // Raw protocol payloads (bodies/headers) persist ONLY behind the
+  // explicit GENIEACS_DEBUG_RAW=1 operator opt-in.
+  if (!DEBUG_RAW_ENABLED) return;
   const now = new Date();
   const msg = {
     event: "outgoing UDP message",
@@ -185,7 +205,9 @@ export function outgoingUdpMessage(
 }
 
 export function clientError(remoteAddress: string, err: Error): void {
-  if (!DEBUG_FILE) return;
+  // Raw protocol payloads (bodies/headers) persist ONLY behind the
+  // explicit GENIEACS_DEBUG_RAW=1 operator opt-in.
+  if (!DEBUG_RAW_ENABLED) return;
   const now = new Date();
   const msg = {
     event: "client error",
@@ -202,7 +224,9 @@ export function clientError(remoteAddress: string, err: Error): void {
 }
 
 export function outgoingXmppStanza(deviceId: string, body: string): void {
-  if (!DEBUG_FILE) return;
+  // Raw protocol payloads (bodies/headers) persist ONLY behind the
+  // explicit GENIEACS_DEBUG_RAW=1 operator opt-in.
+  if (!DEBUG_RAW_ENABLED) return;
   const now = new Date();
   const msg = {
     event: "outgoing XMPP stanza",
@@ -219,7 +243,9 @@ export function outgoingXmppStanza(deviceId: string, body: string): void {
 }
 
 export function incomingXmppStanza(deviceId: string, body: string): void {
-  if (!DEBUG_FILE) return;
+  // Raw protocol payloads (bodies/headers) persist ONLY behind the
+  // explicit GENIEACS_DEBUG_RAW=1 operator opt-in.
+  if (!DEBUG_RAW_ENABLED) return;
   const now = new Date();
   const msg = {
     event: "incoming XMPP stanza",

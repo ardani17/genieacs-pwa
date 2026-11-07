@@ -204,6 +204,16 @@ export function flatten(
     ).remoteAddress;
     if (details.context["state"].user)
       details.user = details.context["state"].user.username;
+    // Correlation: the BFF forwards a UUID request id; only valid UUIDs
+    // are recorded so ids cannot smuggle arbitrary text into logs.
+    const requestId = details.context["get"]?.("x-request-id");
+    if (
+      typeof requestId === "string" &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        requestId,
+      )
+    )
+      details.requestId = requestId;
     delete details.context;
   }
 

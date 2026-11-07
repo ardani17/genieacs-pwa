@@ -1,0 +1,219 @@
+# Deployment stack: dashboard/application on the `app` bridge; the L2TP
+# VPN carries only CWMP/FS traffic. cwmp and fs share the vpn service's
+# network namespace so CPE sessions originate from the tunnel; ports
+# 7547/7567 are published on the vpn service only. NBI, UI, Mongo and the
+# web app never receive host ports. Web stays healthy independently of
+# the VPN state.
+
+name: genieacs-pwa
+
+x-engine: &engine
+  build:
+    context: .
+    dockerfile: docker/engine/Dockerfile
+    args:
+      APP_VERSION: ${APP_VERSION:-dev}
+      SOURCE_COMMIT: ${SOURCE_COMMIT:-unknown}
+  image: genieacs-pwa-engine:local
+  user: "10001:10001"
+  init: true
+  restart: unless-stopped
+  logging: &logging
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: "3"
+  environment: &engine-env
+    GENIEACS_MONGODB_CONNECTION_URL: mongodb://${MONGO_USERNAME}:${MONGO_PASSWORD}@mongo:27017/${MONGO_DATABASE:-genieacs}?authSource=admin
+    GENIEACS_UI_JWT_SECRET: ${GENIEACS_UI_JWT_SECRET}
+    GENIEACS_UI_PORT: "7583"
+    GENIEACS_NBI_PORT: "7557"
+    GENIEACS_FS_PORT: "7567"
+    GENIEACS_CWMP_PORT: "7547"
+    GENIEACS_UI_WORKER_PROCESSES: "0"
+    GENIEACS_CWMP_WORKER_PROCESSES: "0"
+  depends_on:
+    mongo:
+      condition: service_healthy
+
+services:
+  mongo:
+    image: mongo:8.0.34@sha256:b9924c330a8bbc5800fe9c69f04a84e221eca7b28fd049a0354147d9908fa142
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USERNAME}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
+      MONGO_INITDB_DATABASE: ${MONGO_DATABASE:-genieacs}
+    volumes:
+      - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+    networks:
+      - app
+
+  ui:
+    <<: *engine
+    command: ["node", "dist/bin/genieacs-ui"]
+    # Structured app logs (auth/permission events) flow on the shared
+    # volume Vector reads; per-service file so four engine processes
+    # never share one rotation (WORKER_PROCESSES=0 keeps each single).
+    environment:
+      <<: *engine-env
+      GENIEACS_UI_APP_LOG_FILE: /logs/ui/app.ndjson
+    volumes:
+      - app_logs:/logs
+    healthcheck:
+      test: ["CMD", "node", "docker/health.mjs", "7583"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - app
+
+  nbi:
+    <<: *engine
+    command: ["node", "dist/bin/genieacs-nbi"]
+    networks:
+      - app
+
+  # CWMP joins the vpn namespace: CPE sessions originate from the tunnel.
+  cwmp:
+    <<: *engine
+    command: ["node", "dist/bin/genieacs-cwmp"]
+    network_mode: service:vpn
+    depends_on:
+      mongo:
+        condition: service_healthy
+      vpn:
+        condition: service_started
+
+  # FS also serves CPEs (file downloads) and shares the vpn namespace.
+  fs:
+    <<: *engine
+    command: ["node", "dist/bin/genieacs-fs"]
+    network_mode: service:vpn
+    depends_on:
+      mongo:
+        condition: service_healthy
+      vpn:
+        condition: service_started
+
+  # L2TP stage 1: bootstrap profile only (M07-A adds persistent
+  # management). Without a profile it idles "not-configured" and the
+  # healthcheck says so — it never claims the ONT network is up.
+  vpn:
+    build:
+      context: .
+      dockerfile: docker/vpn/Dockerfile
+    image: genieacs-pwa-vpn:local
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/ppp:/dev/ppp
+    init: true
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      VPN_PROFILE: ${VPN_PROFILE:-}
+    # CWMP/FS ports live on the vpn namespace (their shared network).
+    ports:
+      - "${CWMP_BIND:-7547}:7547"
+      - "${FS_BIND:-7567}:7567"
+    healthcheck:
+      test: ["CMD", "/entrypoint.sh", "--health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  victorialogs:
+    image: victoriametrics/victoria-logs:v1.53.0@sha256:251121fa882af99b95ba0c230a4a2f412ea602d2698c64a96c58dc9842bb755d
+    restart: unless-stopped
+    logging: *logging
+    command:
+      - -retentionPeriod=14d
+      - -retention.maxDiskSpaceUsageBytes=10000000000
+      - -storage.minFreeDiskSpaceBytes=2147483648
+      - -httpListenAddr=:9428
+    volumes:
+      - victoria_logs_data:/storage
+    # No healthcheck CLI in the image and no shell: the external probe
+    # (scripts/log-smoke.mjs) reads GET /health; 9428 stays internal.
+    networks:
+      - app
+
+  vector:
+    image: timberio/vector:0.61.0-debian@sha256:f6c23b5a7e16fb2838d33619ef7acf4bad2289a7cf22bc90efc2371f520c4ea2
+    restart: unless-stopped
+    logging: *logging
+    # Runs as the image default user: uid 10001 cannot create checkpoint
+    # subdirectories or the disk-buffer ledger on fresh named volumes.
+    read_only: true
+    volumes:
+      # Application NDJSON logs: read-only source.
+      - app_logs:/logs:ro
+      # Separate writable volume for checkpoints + the 1GiB disk buffer.
+      - vector_buffer:/var/lib/vector
+    configs:
+      - source: vector_config
+        target: /etc/vector/vector.yaml
+    # Ordered AFTER the log writers: on a FRESH named volume Docker
+    # copies the mount point's content/permissions from the first
+    # container to mount it — the writers' images bake /logs/{web,ui}
+    # as uid 10001, and vector (image-default user) must not be that
+    # first mounter.
+    depends_on:
+      - victorialogs
+      - ui
+      - web
+    networks:
+      - app
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/web/Dockerfile
+    image: genieacs-pwa-web:local
+    read_only: true
+    tmpfs:
+      - /app/.next/cache:size=134217728
+      - /tmp:size=67108864
+    init: true
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      NODE_ENV: production
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-http://localhost:3000}
+      ENGINE_STATUS_URL: http://ui:7583/status
+      APP_LOG_FILE: /logs/web/app.ndjson
+    volumes:
+      - app_logs:/logs
+    # Web must NOT depend on vpn health: the dashboard stays up when the
+    # tunnel is down.
+    depends_on:
+      ui:
+        condition: service_started
+    ports:
+      - "${WEB_BIND:-127.0.0.1:3000}:3000"
+    networks:
+      - app
+
+configs:
+  vector_config:
+    file: ./docker/vector/vector.yaml
+
+networks:
+  app:
+    driver: bridge
+
+volumes:
+  mongo_data:
+  app_logs:
+  vector_buffer:
+  victoria_logs_data:

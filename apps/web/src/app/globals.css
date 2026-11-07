@@ -1,0 +1,72 @@
+/* Mobile-first blue/white design tokens — exact contract values
+   (docs/design/contracts.md): background #F5F9FF, surface #FFFFFF,
+   primary #1D4ED8, primaryHover #1E40AF, text #0F172A, muted #475569,
+   border #CBD5E1, success #166534, warning #92400E, danger #B91C1C.
+   System font stack only; no iconfont/network assets. Touch targets
+   >=44px; radius 12px. */
+:root {
+  --color-background: #f5f9ff;
+  --color-surface: #ffffff;
+  --color-primary: #1d4ed8;
+  --color-primary-hover: #1e40af;
+  --color-primary-contrast: #ffffff;
+  --color-text: #0f172a;
+  --color-muted: #475569;
+  --color-border: #cbd5e1;
+  --color-success: #166534;
+  --color-warning: #92400e;
+  --color-danger: #b91c1c;
+
+  --space-4: 4px;
+  --space-8: 8px;
+  --space-12: 12px;
+  --space-16: 16px;
+  --space-24: 24px;
+  --space-32: 32px;
+
+  --radius: 12px;
+  --touch-target: 44px;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--color-background);
+  color: var(--color-text);
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+  line-height: 1.5;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-primary);
+  outline-offset: 2px;
+}
+
+.app-shell {
+  max-width: 60rem;
+  margin: 0 auto;
+  padding: var(--space-16);
+}
+
+h1 {
+  color: var(--color-primary);
+  font-size: 1.5rem;
+  margin: 0 0 var(--space-8);
+}
+
+small {
+  color: var(--color-muted);
+}

@@ -1,0 +1,157 @@
+# Isolated verification stack for the genieacs-pwa check project.
+#
+# Everything mutating or verifying runs under project name
+# `genieacs-pwa-check` with its own volumes; the Mongo instance is a
+# throwaway fixture (dummy credentials below are intentionally not secrets)
+# and never publishes ports to the host. The verify service reuses the
+# pinned tooling image and targets database `genieacs_plan_test`, enforced
+# again by scripts/check.mjs's MONGO_URL guard.
+
+name: genieacs-pwa-check
+
+services:
+  mongo:
+    image: mongo:9.0.4@sha256:ce91889f87a369d312e50ecbc6c0b7f960e915bc4b69c4f6662402fa7011d242
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: check_fixture
+      MONGO_INITDB_ROOT_PASSWORD: check-fixture-only
+      MONGO_INITDB_DATABASE: genieacs_plan_test
+    volumes:
+      - verify_mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 10s
+    restart: unless-stopped
+
+  verify:
+    build:
+      context: .
+      dockerfile: docker/development/Dockerfile
+    image: genieacs-pwa-verify:local
+    init: true
+    working_dir: /workspace
+    environment:
+      GIT_CONFIG_COUNT: "1"
+      GIT_CONFIG_KEY_0: safe.directory
+      GIT_CONFIG_VALUE_0: /workspace
+      MONGO_URL: mongodb://check_fixture:check-fixture-only@mongo:27017/genieacs_plan_test?authSource=admin
+      # The engine reads GENIEACS_* at module load, so the harness pins the
+      # test database and a dummy JWT secret here (values are fixtures, not
+      # secrets).
+      GENIEACS_MONGODB_CONNECTION_URL: mongodb://check_fixture:check-fixture-only@mongo:27017/genieacs_plan_test?authSource=admin
+      GENIEACS_UI_JWT_SECRET: check-fixture-jwt-secret
+      LOG_URL: http://victorialogs:9428
+      SEED_HOST: mongo:27017
+      # Fixture-only credentials for the auth-enabled check Mongo (same
+      # values as MONGO_URL above; intentionally not secrets).
+      SEED_USER: check_fixture
+      SEED_PASSWORD: check-fixture-only
+    volumes:
+      - .:/workspace
+      - verify_modules:/workspace/node_modules
+      - npm_cache:/root/.npm
+      - app_logs_test:/logs
+    depends_on:
+      mongo:
+        condition: service_healthy
+    command: ["node", "scripts/check.mjs", "all"]
+
+  # PWA under test: standalone Next runtime, unprivileged, read-only root
+  # with tmpfs for Next's cache/tmp dirs. No ports published —
+  # browser-tests shares this service's network namespace and reaches it
+  # on loopback (a valid secure context, no browser security disabled).
+  victorialogs:
+    image: victoriametrics/victoria-logs:v1.53.0@sha256:251121fa882af99b95ba0c230a4a2f412ea602d2698c64a96c58dc9842bb755d
+    # Test settings: short retention + tiny quota; still no published port.
+    command:
+      - -retentionPeriod=1d
+      - -retention.maxDiskSpaceUsageBytes=100000000
+      - -storage.minFreeDiskSpaceBytes=10000000
+      - -httpListenAddr=:9428
+    volumes:
+      - victoria_logs_test:/storage
+
+  vector:
+    image: timberio/vector:0.61.0-debian@sha256:f6c23b5a7e16fb2838d33619ef7acf4bad2289a7cf22bc90efc2371f520c4ea2
+    read_only: true
+    # Small test buffer so the buffering fault scenario needs no real
+    # disk fill.
+    volumes:
+      - app_logs_test:/logs:ro
+      - vector_buffer_test:/var/lib/vector
+    configs:
+      - source: vector_config
+        target: /etc/vector/vector.yaml
+    depends_on:
+      - victorialogs
+      # The web image bakes /logs/web (uid 10001) into the shared volume
+      # on FIRST initialization; vector mounting the empty volume first
+      # would skip that, leaving web unable to create its directory on a
+      # read-only root. Start after web. (The e2e overlay adds the ui
+      # writer the same way — this base stack is deliberately
+      # engine-free.)
+      - web
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/web/Dockerfile
+    image: genieacs-pwa-web:local
+    read_only: true
+    tmpfs:
+      - /app/.next/cache:size=134217728
+      - /tmp:size=67108864
+    environment:
+      PUBLIC_ORIGIN: http://localhost:3000
+      NODE_ENV: production
+      # No engine UI in this stack: the health route must report
+      # backendReachable:false and still return 200 — that IS the
+      # VPN-independent-dashboard acceptance.
+      ENGINE_STATUS_URL: http://127.0.0.1:1/status
+      APP_LOG_FILE: /logs/web/app.ndjson
+    ports:
+      # Host-side loopback probe port for the M01-D acceptance.
+      - "127.0.0.1:5300:3000"
+    depends_on:
+      mongo:
+        condition: service_healthy
+    volumes:
+      - app_logs_test:/logs
+    command: ["node", "server.js"]
+
+  browser-tests:
+    build:
+      context: .
+      dockerfile: docker/testing/Dockerfile
+    image: genieacs-pwa-browser-tests:local
+    init: true
+    working_dir: /workspace/apps/web
+    network_mode: service:web
+    environment:
+      PW_BASE_URL: http://localhost:3000
+      CI: "1"
+    volumes:
+      - .:/workspace
+      - browser_test_modules:/workspace/apps/web/node_modules
+    # The Playwright global setup logs the fixture identities in through
+    # the REAL BFF, which needs the engine UI: run this service with the
+    # compose.e2e.yaml overlay (engine + fixture seed), e.g.
+    #   docker compose -f compose.test.yaml -f compose.e2e.yaml up \
+    #     --abort-on-container-exit --exit-code-from browser-tests
+    command: ["npx", "playwright", "test"]
+
+configs:
+  vector_config:
+    file: ./docker/vector/vector.yaml
+
+volumes:
+  verify_mongo_data:
+  app_logs_test:
+  vector_buffer_test:
+  victoria_logs_test:
+  verify_modules:
+  browser_test_modules:
+  npm_cache:
