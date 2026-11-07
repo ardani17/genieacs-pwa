@@ -80,6 +80,14 @@ async function proxy(
       cookie,
       requestId: reqCtx.requestId,
       body: verb === "PUT" ? await request.text() : undefined,
+      // Config secret reveal is a per-request EXPLICIT action the
+      // engine authorizes (config:3 + header); the BFF only forwards
+      // the fixed header name (M06-B).
+      ...(verb === "GET" &&
+      resource === "config" &&
+      new URL(request.url).searchParams.get("reveal") === "1"
+        ? { headers: { "X-Reveal-Secrets": "1" } }
+        : {}),
     });
     if (verb === "DELETE" && upstream.status === 200)
       return NextResponse.json(

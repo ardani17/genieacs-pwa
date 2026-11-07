@@ -28,7 +28,12 @@ import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import type { ApiResult } from "@contracts/api.ts";
 import { CodeEditor, type CodeLanguage } from "./code-editor";
-import { maskValue, type ResourceEditorConfig } from "./resource-editor-shared";
+import {
+  SECRET_MASK,
+  isCredentialId,
+  isMaskedValue,
+  type ResourceEditorConfig,
+} from "./resource-editor-shared";
 
 // Left pane: the resource entry list. Each entry is a faux link (same
 // page section) that opens the editor in place.
@@ -141,6 +146,8 @@ function ResourceEditorPane({
           language={language}
           readOnly={!revealed && masked}
           onChange={onSourceChange}
+          // Ctrl+S shares the Simpan handler; a clean/busy form ignores it.
+          onSave={dirty && !busy ? onSave : undefined}
         />
         {error ? <Status tone="warning">{error}</Status> : null}
         <div className="flex flex-wrap gap-2">
@@ -275,6 +282,41 @@ async function saveResource(overwrite: boolean, deps: SaveDeps): Promise<void> {
   }
 }
 
+// Explicit reveal round trip (M06-B): config:3 + the per-request
+// X-Reveal-Secrets header are enforced ENGINE-side — the raw value must
+// never have crossed before this action (PR #8 review).
+async function revealResource(
+  resource: string,
+  id: string,
+  onRevealed: (doc: Record<string, unknown>) => void,
+  onFailed: (message: string) => void,
+): Promise<void> {
+  try {
+    const res = await fetch(
+      `/api/app/resources/${resource}/${encodeURIComponent(id)}?reveal=1`,
+      { cache: "no-store" },
+    );
+    if (!res.ok) {
+      onFailed(
+        "Nilai tidak dapat ditampilkan (izin hilang atau entri berubah).",
+      );
+      return;
+    }
+    const body = (await res.json()) as ApiResult<Record<string, unknown>>;
+    if (body.ok !== true) {
+      onFailed(
+        body.error.code === "FORBIDDEN"
+          ? "Anda tidak memiliki izin menampilkan nilai ini."
+          : "Nilai tidak dapat ditampilkan (izin hilang atau entri berubah).",
+      );
+      return;
+    }
+    onRevealed(body.data);
+  } catch {
+    onFailed("Nilai tidak dapat ditampilkan — koneksi terputus.");
+  }
+}
+
 export function ResourceEditor({
   config,
   canRevealSecrets = false,
@@ -342,9 +384,10 @@ export function ResourceEditor({
 
   const fetchOne = async (
     id: string,
+    reveal = false,
   ): Promise<Record<string, unknown> | null> => {
     const res = await fetch(
-      `/api/app/resources/${resource}/${encodeURIComponent(id)}`,
+      `/api/app/resources/${resource}/${encodeURIComponent(id)}${reveal ? "?reveal=1" : ""}`,
       { cache: "no-store" },
     );
     if (!res.ok) return null;
@@ -361,10 +404,10 @@ export function ResourceEditor({
       "Perubahan belum disimpan. Buang perubahan dan buka entri lain?",
     );
 
-  const open = async (id: string | null): Promise<void> => {
+  const open = async (id: string | null, reveal = false): Promise<void> => {
     if (!confirmDiscard()) return;
     setError(null);
-    setRevealed(false);
+    setRevealed(reveal);
     if (id == null) {
       const blank = config.blankDocument();
       setSelected(blank);
@@ -373,7 +416,7 @@ export function ResourceEditor({
       setDirty(false);
       return;
     }
-    const doc = await fetchOne(id);
+    const doc = await fetchOne(id, reveal);
     if (!doc) {
       setError("Resource tidak dapat dibaca.");
       return;
@@ -394,7 +437,10 @@ export function ResourceEditor({
       draft,
       selected,
       source,
-      fetchOne,
+      // The revision re-check must compare against the SAME reveal
+      // state as the loaded view — a masked fresh read would otherwise
+      // flag a spurious conflict on a revealed credential row.
+      fetchOne: (id) => fetchOne(id, revealed),
       conflictRef,
       setBusy,
       setError,
@@ -402,7 +448,8 @@ export function ResourceEditor({
       setDirty,
       reload: async (id) => {
         await load();
-        await open(id);
+        // A revealed credential row stays revealed across its own save.
+        await open(id, revealed);
       },
       retryOverwrite: () => void put(true),
     });
@@ -435,10 +482,19 @@ export function ResourceEditor({
     }
   };
 
+  // The mask is now SERVER-side: a masked source carries the sentinel
+  // until an explicit, permission-checked reveal refetch (M06-B). The
+  // local heuristic stays as the hide-toggle without a second round
+  // trip.
+  const credentialId = selected
+    ? isCredentialId(String(selected["_id"] ?? ""))
+    : false;
+  const masked = !revealed && (credentialId || isMaskedValue(source));
   const maskedSource = useMemo(() => {
+    if (revealed) return source;
     if (!selected) return source;
-    return revealed ? source : maskValue(String(selected["_id"]), source);
-  }, [selected, source, revealed]);
+    return masked ? SECRET_MASK : source;
+  }, [selected, source, revealed, masked]);
 
   if (state === "forbidden")
     return (
@@ -473,7 +529,29 @@ export function ResourceEditor({
             setDraft({ ...draft, _id: value });
             setDirty(true);
           }}
-          onToggleReveal={() => setRevealed((r) => !r)}
+          onToggleReveal={() => {
+            if (revealed) {
+              setRevealed(false);
+              return;
+            }
+            if (!selected?.["_id"]) return;
+            setBusy(true);
+            void revealResource(
+              resource,
+              String(selected["_id"]),
+              (doc) => {
+                setSelected(doc);
+                setDraft(doc);
+                setSource(
+                  config.serialize
+                    ? config.serialize(doc)
+                    : String(doc[sourceField] ?? ""),
+                );
+                setRevealed(true);
+              },
+              setError,
+            ).finally(() => setBusy(false));
+          }}
           onSourceChange={(next) => {
             setSource(next);
             setDirty(true);

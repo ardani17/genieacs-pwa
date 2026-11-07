@@ -7,6 +7,18 @@ import type { FlatDeviceLike } from "../../../../../packages/device-profiles/src
 export interface RenderContext {
   device: FlatDeviceLike;
   now: number;
+  // Overview charts (native ui.overview) for chart-joined components
+  // like overview-dot; optional so pure tests can omit it.
+  charts?: {
+    key: string;
+    label: string;
+    slices: {
+      key: string;
+      label: string;
+      filter: string | null;
+      color: string | null;
+    }[];
+  }[];
 }
 
 export interface ConfigNode {

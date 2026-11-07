@@ -5,11 +5,13 @@
 // unmount; value changes sync into the document without touching
 // history/selection. The contenteditable editing surface carries the
 // accessible textbox semantics (aria-label "Kode" by default), so tests
-// and assistive tech drive the VISIBLE editor. Find/replace, undo/redo,
-// JS/YAML highlighting and indent come from the CodeMirror keymap —
-// provision code is NEVER executed in the browser.
+// and assistive tech drive the VISIBLE editor. The search/dialog addons
+// register the native find/replace keymap (Ctrl+F / Ctrl+G /
+// Shift+Ctrl+F) and Ctrl+S runs the caller's save handler — provision
+// code is NEVER executed in the browser.
 import { useEffect, useRef, useState } from "react";
 import type { Editor, EditorConfiguration } from "codemirror";
+import "codemirror/addon/dialog/dialog.css";
 
 export type CodeLanguage = "javascript" | "yaml" | "expression";
 
@@ -23,17 +25,20 @@ export function CodeEditor({
   language,
   readOnly,
   onChange,
+  onSave,
   label = "Kode",
 }: {
   value: string;
   language: CodeLanguage;
   readOnly?: boolean;
   onChange?: (next: string) => void;
+  onSave?: () => void;
   label?: string;
 }) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<Editor | null>(null);
   const onChangeRef = useRef(onChange);
+  const onSaveRef = useRef(onSave);
   const [ready, setReady] = useState(false);
   // The CodeMirror factory arrives through a dynamic, client-only
   // import (CodeMirror touches window at import time).
@@ -46,6 +51,10 @@ export function CodeEditor({
   }, [onChange]);
 
   useEffect(() => {
+    onSaveRef.current = onSave;
+  }, [onSave]);
+
+  useEffect(() => {
     let disposed = false;
     void Promise.all([
       import("codemirror"),
@@ -53,6 +62,13 @@ export function CodeEditor({
       import("codemirror/mode/yaml/yaml.js"),
       import("codemirror/addon/edit/closebrackets.js"),
       import("codemirror/addon/edit/matchbrackets.js"),
+      // search.js registers find/replace (Ctrl+F, Ctrl+G, Shift+Ctrl+F)
+      // and needs searchcursor + the dialog UI addon (M06-B spec).
+      import("codemirror/addon/search/searchcursor.js"),
+      import("codemirror/addon/search/search.js"),
+      import("codemirror/addon/search/jump-to-line.js"),
+      import("codemirror/addon/dialog/dialog.js"),
+      import("codemirror/addon/scroll/annotatescrollbar.js"),
     ])
       .then(([cm]) => {
         if (disposed) return;
@@ -93,6 +109,19 @@ export function CodeEditor({
       matchBrackets: true,
       indentUnit: 2,
       tabSize: 2,
+      // The search addon registers the find/replace COMMANDS but no
+      // default bindings — wire the native keymap here. Keyboard save
+      // runs the SAME handler as the Simpan button; CM prevents the
+      // browser save dialog for handled bindings.
+      extraKeys: {
+        "Ctrl-F": "findPersistent",
+        "Ctrl-G": "findNext",
+        "Shift-Ctrl-G": "findPrev",
+        "Shift-Ctrl-F": "replace",
+        "Shift-Ctrl-R": "replaceAll",
+        "Ctrl-S": () => onSaveRef.current?.(),
+        "Cmd-S": () => onSaveRef.current?.(),
+      },
     });
     // The editable input surface carries the accessible textbox
     // semantics (role+aria-label on the contenteditable itself, so

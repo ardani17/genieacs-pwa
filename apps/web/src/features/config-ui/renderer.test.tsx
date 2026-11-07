@@ -174,6 +174,149 @@ describe("expression evaluator", () => {
   });
 });
 
+describe("native bootstrap DTO", () => {
+  // The engine's local-cache walk materializes ui.* rows as
+  // NUMERIC-KEYED objects whose expression values arrive EVALUATED —
+  // literals stay strings, parameter references stay ASTs (see
+  // lib/ui/local-cache.ts getUiConfig). This is the shape bootstrap
+  // seeds and the SessionDTO carries (PR #8 review).
+  const nativeDevice = {
+    "DeviceID.ID": { value: ["TEST-1", "xsd:string"] },
+    "InternetGatewayDevice.DeviceInfo.SoftwareVersion": {
+      value: ["V1", "xsd:string"],
+    },
+    // The bare collection object node — upstream parameter-table renders
+    // nothing without it.
+    "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection":
+      {
+        value: [
+          "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection",
+          "xsd:string",
+        ],
+      },
+    "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.MACAddress":
+      {
+        value: ["aa:bb", "xsd:string"],
+      },
+    "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.IPAddress":
+      {
+        value: ["192.0.2.1", "xsd:string"],
+      },
+    "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.2.MACAddress":
+      {
+        value: ["cc:dd", "xsd:string"],
+      },
+    "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.2.IPAddress":
+      {
+        value: ["192.0.2.2", "xsd:string"],
+      },
+  } as never;
+  const nativeCtx = { device: nativeDevice, now: 1730000000000 };
+  const WAN_IP =
+    "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection";
+
+  it("renders keyed components with AST parameters and children", () => {
+    render(
+      <ConfigRenderer
+        node={
+          {
+            type: "parameter-list",
+            parameters: {
+              "0": {
+                type: "container",
+                label: "Last inform",
+                components: {
+                  "0": {
+                    type: "parameter",
+                    parameter: [
+                      "PARAM",
+                      "InternetGatewayDevice.DeviceInfo.SoftwareVersion",
+                    ],
+                  },
+                },
+              },
+              "1": { label: "Serial", parameter: ["PARAM", "DeviceID.ID"] },
+            },
+          } as never
+        }
+        context={nativeCtx}
+      />,
+    );
+    expect(screen.getByText("Last inform")).toBeVisible();
+    expect(screen.getByText("V1")).toBeVisible();
+    expect(screen.getByText("TEST-1")).toBeVisible();
+  });
+
+  it("enumerates instances for parameter-table childParameters", () => {
+    render(
+      <ConfigRenderer
+        node={
+          {
+            type: "parameter-table",
+            parameter: ["PARAM", WAN_IP],
+            childParameters: {
+              "0": { label: "MAC", parameter: ["PARAM", "MACAddress"] },
+              "1": { label: "IP", parameter: "IPAddress" },
+            },
+          } as never
+        }
+        context={nativeCtx}
+      />,
+    );
+    expect(screen.getByRole("columnheader", { name: "MAC" })).toBeVisible();
+    expect(screen.getByRole("columnheader", { name: "IP" })).toBeVisible();
+    expect(screen.getAllByText("aa:bb").length).toBe(1);
+    expect(screen.getAllByText("cc:dd").length).toBe(1);
+    expect(screen.getAllByText("192.0.2.2").length).toBe(1);
+    // Both instances enumerate with their full path as the row header.
+    expect(
+      screen.getByRole("rowheader", { name: `${WAN_IP}.2` }),
+    ).toBeVisible();
+  });
+
+  it("renders chart-joined overview dots from the overview config", () => {
+    const charts = [
+      {
+        key: "online",
+        label: "Online",
+        slices: [
+          {
+            key: "offline",
+            label: "Offline",
+            filter: 'DeviceID.ID = "OTHER"',
+            color: "#ef4444",
+            count: null,
+          },
+          {
+            key: "online",
+            label: "Online",
+            filter: 'DeviceID.ID = "TEST-1"',
+            color: "#22c55e",
+            count: null,
+          },
+        ],
+      },
+    ];
+    const { container } = render(
+      <ConfigRenderer
+        node={{ type: "overview-dot", chart: "online" } as never}
+        context={{ ...nativeCtx, charts }}
+      />,
+    );
+    expect(screen.getByText("Online")).toBeVisible();
+    const dot = container.querySelector("span[style]") as HTMLElement | null;
+    expect(dot?.style.backgroundColor).toBe("rgb(34, 197, 94)");
+    // A chart with no matching slice renders nothing (upstream null).
+    const { container: missing } = render(
+      <ConfigRenderer
+        node={{ type: "overview-dot", chart: "missing" } as never}
+        context={{ ...nativeCtx, charts }}
+      />,
+    );
+    expect(missing.textContent).toBe("");
+  });
+});
+
 describe("config round-trip", () => {
   it("serialize → edit → save → load keeps semantic equality including unknowns", () => {
     const original = {

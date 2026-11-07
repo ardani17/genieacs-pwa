@@ -19,8 +19,9 @@ import { WifiManager } from "../wifi/wifi-manager";
 import { TagEditor } from "./tag-editor";
 import { ParameterActions } from "./parameter-actions";
 import { ConfigRenderer } from "../config-ui/renderer";
+import { componentList } from "../config-ui/config-tree";
 import { configChildKey } from "../config-ui/config-node";
-import type { ConfigNode } from "../config-ui/config-node";
+import { readOverviewConfig } from "../overview/overview-config";
 import { useSession } from "@/components/session-provider";
 import type { ApiResult } from "@contracts/api.ts";
 
@@ -48,14 +49,15 @@ export function DeviceDetail({ deviceId }: { deviceId: string }) {
     useState<DataViewProps<FlatDevice>["state"]>("loading");
   const [reload, setReload] = useState(0);
   const [device, setDevice] = useState<FlatDevice | null>(null);
-  const customConfig =
+  // Native ui.device IS the components map (numeric-keyed object from
+  // the engine's config walk) — reading `.components` never matched the
+  // native DTO and dropped the whole custom section (PR #8 review).
+  const uiConfig =
     session.phase === "authenticated"
-      ? (
-          (session.session.uiConfig as Record<string, unknown> | undefined)?.[
-            "device"
-          ] as { components?: ConfigNode[] } | undefined
-        )?.components
+      ? (session.session.uiConfig as Record<string, unknown> | undefined)
       : undefined;
+  const customConfig = componentList(uiConfig?.["device"]);
+  const overviewCharts = readOverviewConfig(uiConfig);
   const [paramTarget, setParamTarget] = useState<{
     path: string;
     entry: { value?: [unknown, string]; writable?: boolean };
@@ -281,6 +283,7 @@ export function DeviceDetail({ deviceId }: { deviceId: string }) {
                             context={{
                               device: device as never,
                               now: Date.now(),
+                              charts: overviewCharts,
                             }}
                           />
                         ))}
