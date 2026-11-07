@@ -343,6 +343,10 @@ export async function executeWanOperation(
     );
     const writeFault = write.statuses.find((t) => t.faultCode)?.faultCode;
     if (writeFault) phases[phases.length - 1].faultCode = writeFault;
+    // Persist the write phase IMMEDIATELY: a crash during the (long)
+    // refresh session must leave the write evidence on the record, not
+    // only in the finally-never-reached local array (PR #8 review).
+    await recordPhases(operationId, phases);
     if (write.state === "failed" || write.state === "unknown") {
       return await finish(operationId, deviceId, write.state, phases, warnings);
     }
@@ -435,8 +439,26 @@ export async function executeWanOperation(
           "",
       );
       if (desiredBind && currentBind !== desiredBind) {
+        // Permission is re-checked from the CURRENT snapshot before
+        // EVERY mutating follow-up phase — the pre-refresh snapshot can
+        // be minutes stale across the refresh session, and a revocation
+        // during refresh must stop the reapply (PR #8 review).
+        const reauthApply = await reauthorize(ctx);
+        if (!reauthApply || !reauthApply.hasAccess("devices", 3)) {
+          warnings.push(
+            "Izin berubah selama refresh; reapply binding dihentikan (partial).",
+          );
+          return await finish(
+            operationId,
+            deviceId,
+            "partial",
+            phases,
+            warnings,
+            observedInstance,
+          );
+        }
         if (!(await renewLease())) ensureLease();
-        const reapply = await run(reauth, [
+        const reapply = await run(reauthApply, [
           {
             name: "setParameterValues",
             parameterValues: [
@@ -468,7 +490,10 @@ export async function executeWanOperation(
     }
 
     // --- phase: verify on a fresh read ---
-    const verifyDevice = await fetchAuthorizedDevice(reauth, deviceId);
+    const verifyDevice = await fetchAuthorizedDevice(
+      (await reauthorize(ctx)) ?? reauth,
+      deviceId,
+    );
     const verified =
       verifyDevice != null &&
       verifyTaskApplied(verifyDevice, effectiveInstance!, task) &&
@@ -501,9 +526,21 @@ export async function executeWanOperation(
     }
 
     // --- superseded 9003 fault cleanup (scoped, permission-gated) ---
-    // Fault cleanup re-checks permission with the REHYDRATED
-    // authorizer (permission may have changed mid-operation).
-    await cleanupSupersededFaults(reauth, deviceId, phases, warnings, log);
+    // Fault cleanup re-checks permission with a FRESH rehydrated
+    // authorizer — permission may have changed during ANY earlier
+    // phase, and cleanup is itself a mutation (PR #8 review).
+    const reauthCleanup = await reauthorize(ctx);
+    if (reauthCleanup) {
+      await cleanupSupersededFaults(
+        reauthCleanup,
+        deviceId,
+        phases,
+        warnings,
+        log,
+      );
+    } else {
+      warnings.push("Fault 9003 tersisa tidak dibersihkan (izin berubah).");
+    }
 
     return await finish(
       operationId,

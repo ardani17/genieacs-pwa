@@ -466,6 +466,105 @@ void test("wan operations: phases, partials, guards, idempotency", async (t) => 
       },
     );
 
+    await t.test(
+      "write phase is durably recorded while the refresh session hangs",
+      async () => {
+        await seedDevices();
+        const fake = fakeCwmpDeps({ deviceId: "TEST-WAN-1" });
+        // Hold the REFRESH session open (second awaitSessionEnd call)
+        // while the operation is in flight.
+        const original = fake.deps.awaitSessionEnd.bind(fake.deps);
+        let calls = 0;
+        let release: (() => void) | null = null;
+        fake.deps.awaitSessionEnd = async (deviceId, timeout) => {
+          if (++calls === 2)
+            await new Promise<void>((resolve) => {
+              release = resolve;
+            });
+          return original(deviceId, timeout);
+        };
+        const request = wanRequest(40, "TEST-WAN-1", {
+          settings: bridgeSettings(),
+        });
+        const pending = executeWanOperation(ctx, request, {
+          deps: fake.deps,
+        });
+        // Poll until the refresh session is HELD (the deferred captured)
+        // AND the write phase is visible on the stored record — a crash
+        // mid-refresh must leave the write evidence behind (PR #8
+        // review). Waiting for BOTH avoids releasing before the deferred
+        // exists, which would hang the operation forever.
+        let during: Awaited<ReturnType<typeof getOperation>> = null;
+        for (let i = 0; i < 100 && !(during && release); ++i) {
+          const op = await getOperation(request.operationId);
+          if (op && (op.phases as unknown[]).length) during = op;
+          if (!(during && release)) await new Promise((r) => setTimeout(r, 50));
+        }
+        assert.ok(during, "write phase never became visible");
+        assert.ok(release, "refresh session was never held");
+        assert.equal(during.state, "in_progress");
+        assert.deepEqual(
+          (during.phases as { name: string }[]).map((p) => p.name),
+          ["write"],
+        );
+        release();
+        const outcome = await pending;
+        assert.equal(outcome.state, "succeeded");
+      },
+    );
+
+    await t.test(
+      "permission revoked during refresh stops the binding reapply",
+      async () => {
+        await seedDevices();
+        const fake = fakeCwmpDeps({
+          deviceId: "TEST-WAN-2",
+          dropOnFirstWrite: ["X_ZTE-COM_LanInterface"],
+        });
+        const original = fake.deps.awaitSessionEnd.bind(fake.deps);
+        let calls = 0;
+        fake.deps.awaitSessionEnd = async (deviceId, timeout) => {
+          if (++calls === 2) {
+            // Revoke devices:3 while the refresh session is still held.
+            await collections.permissions.deleteOne({
+              _id: "fixtureWanOnly:devices:3",
+            });
+            await app.refreshSnapshot();
+          }
+          return original(deviceId, timeout);
+        };
+        try {
+          const outcome = await executeWanOperation(
+            ctx,
+            wanRequest(41, "TEST-WAN-2", { settings: bridgeSettings() }),
+            { deps: fake.deps },
+          );
+          assert.equal(outcome.state, "partial");
+          assert.deepEqual(
+            outcome.phases.map((p) => p.name),
+            ["write", "refresh"],
+          );
+          assert.ok(outcome.warnings.some((w) => /reapply/i.test(w)));
+          // Only write + refresh ran — no binding or cleanup mutation.
+          assert.equal(fake.calls.insert, 2);
+        } finally {
+          await collections.permissions.updateOne(
+            { _id: "fixtureWanOnly:devices:3" },
+            {
+              $set: {
+                role: "fixtureWanOnly",
+                resource: "devices",
+                access: 3,
+                validate: "true",
+              },
+            },
+            { upsert: true },
+          );
+          await app.refreshSnapshot();
+        }
+      },
+    );
+
     await t.test("verify mismatch is partial", async () => {
       await seedDevices();
       const fake = fakeCwmpDeps({
