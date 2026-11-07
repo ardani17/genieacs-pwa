@@ -23,17 +23,13 @@
       "package": "M01-S3",
       "ticket": "ARD-200",
       "state": "needs_validation",
-      "tests": [
-        "test/security/escaping.ts"
-      ]
+      "tests": ["test/security/escaping.ts"]
     },
     "2": {
       "package": "M01-S3",
       "ticket": "ARD-200",
       "state": "needs_validation",
-      "tests": [
-        "test/security/escaping.ts"
-      ]
+      "tests": ["test/security/escaping.ts"]
     },
     "3": {
       "package": "M01-S4",
@@ -48,43 +44,31 @@
       "package": "M01-S3",
       "ticket": "ARD-200",
       "state": "needs_validation",
-      "tests": [
-        "test/security/error-response.ts"
-      ]
+      "tests": ["test/security/error-response.ts"]
     },
     "5": {
       "package": "M01-S3",
       "ticket": "ARD-200",
       "state": "needs_validation",
-      "tests": [
-        "test/security/error-response.ts"
-      ]
+      "tests": ["test/security/error-response.ts"]
     },
     "6": {
       "package": "M01-S3",
       "ticket": "ARD-200",
       "state": "needs_validation",
-      "tests": [
-        "test/security/error-response.ts"
-      ]
+      "tests": ["test/security/error-response.ts"]
     },
     "7": {
       "package": "M01-S2",
       "ticket": "ARD-199",
       "state": "needs_validation",
-      "tests": [
-        "test/security/nbi-query.ts",
-        "test/security/nbi-route.ts"
-      ]
+      "tests": ["test/security/nbi-query.ts", "test/security/nbi-route.ts"]
     },
     "8": {
       "package": "M01-S2",
       "ticket": "ARD-199",
       "state": "needs_validation",
-      "tests": [
-        "test/security/nbi-query.ts",
-        "test/security/nbi-route.ts"
-      ]
+      "tests": ["test/security/nbi-query.ts", "test/security/nbi-route.ts"]
     },
     "9": {
       "package": "M01-S1",
@@ -99,17 +83,13 @@
       "package": "M01-S1",
       "ticket": "ARD-198",
       "state": "needs_validation",
-      "tests": [
-        "test/security/script-validation.ts"
-      ]
+      "tests": ["test/security/script-validation.ts"]
     },
     "11": {
       "package": "M01-S6",
       "ticket": "ARD-203",
       "state": "risk_accepted_pending_scan",
-      "tests": [
-        "test/security/http-digest.ts"
-      ],
+      "tests": ["test/security/http-digest.ts"],
       "exception": {
         "reviewStatus": "pending_human_review",
         "reason": "HTTP Digest MD5 is a TR-069 wire requirement; removal needs a CPE lab",
@@ -124,9 +104,7 @@
       "package": "M01-S7",
       "ticket": "ARD-204",
       "state": "risk_accepted_pending_scan",
-      "tests": [
-        "test/security/udp-cr-auth.ts"
-      ],
+      "tests": ["test/security/udp-cr-auth.ts"],
       "exception": {
         "reviewStatus": "pending_human_review",
         "reason": "UDP Connection Request HMAC-SHA1 fixed by TR-069 Annex G",
@@ -141,9 +119,7 @@
       "package": "M01-S8",
       "ticket": "ARD-205",
       "state": "risk_accepted_pending_scan",
-      "tests": [
-        "test/security/xmpp-scram.ts"
-      ],
+      "tests": ["test/security/xmpp-scram.ts"],
       "exception": {
         "reviewStatus": "pending_human_review",
         "reason": "SCRAM-SHA-1 legacy path behind explicit XMPP_ALLOW_LEGACY_SHA1",
@@ -167,17 +143,13 @@
       "package": "M01-S4",
       "ticket": "ARD-201",
       "state": "needs_validation",
-      "tests": [
-        "test/security/expression-parser.ts"
-      ]
+      "tests": ["test/security/expression-parser.ts"]
     },
     "16": {
       "package": "M01-S5",
       "ticket": "ARD-202",
       "state": "needs_validation",
-      "tests": [
-        "test/security/cwmp-cookie.ts"
-      ]
+      "tests": ["test/security/cwmp-cookie.ts"]
     },
     "17": {
       "package": "M01-S5",
@@ -187,9 +159,7 @@
       "rule": "js/xss-through-exception",
       "location": "lib/cwmp.ts:1354",
       "disposition": "code_fixed_in_pr: the numeric status echo is removed from the cookie-error body; the status line already carries the code and no exception-derived text reaches the CPE",
-      "tests": [
-        "test/security/cwmp-cookie.ts"
-      ]
+      "tests": ["test/security/cwmp-cookie.ts"]
     },
     "18": {
       "package": "M01-S3",
@@ -198,9 +168,7 @@
       "pr": true,
       "rule": "js/xss-through-exception",
       "location": "lib/ui/safe-error.ts:40",
-      "tests": [
-        "test/security/error-response.ts"
-      ],
+      "tests": ["test/security/error-response.ts"],
       "exception": {
         "reviewStatus": "approved",
         "reason": "Safe error envelope echoes a bounded validation message by design; CodeQL flags any exception-to-body flow, but the response is text/plain charset utf-8 with nosniff so reflected text is never rendered as HTML",
@@ -221,9 +189,7 @@
       "rule": "js/xss-through-exception",
       "location": "lib/ui.ts:237",
       "disposition": "code_fixed_in_pr: InitValidationError on POST /init no longer sets a bare string body (koa serves those as text/html); it goes through sendSafeLegacyError (text/plain + nosniff)",
-      "tests": [
-        "test/integration/init-install.ts"
-      ]
+      "tests": ["test/integration/init-install.ts"]
     },
     "20": {
       "package": "M01-S2",
@@ -232,10 +198,7 @@
       "pr": true,
       "rule": "js/sql-injection",
       "location": "lib/nbi.ts:680 (collection.find)",
-      "tests": [
-        "test/security/nbi-query.ts",
-        "test/security/nbi-route.ts"
-      ],
+      "tests": ["test/security/nbi-query.ts", "test/security/nbi-route.ts"],
       "exception": {
         "reviewStatus": "approved",
         "reason": "The MongoDB filter for collection.find is built from the authenticated NBI query parameter and structurally validated by the closed-grammar validator (M01-S2) before reaching the driver; CodeQL's whole-object taint model cannot see that validator",
@@ -255,10 +218,7 @@
       "pr": true,
       "rule": "js/sql-injection",
       "location": "lib/nbi.ts:698 (countDocuments)",
-      "tests": [
-        "test/security/nbi-query.ts",
-        "test/security/nbi-route.ts"
-      ],
+      "tests": ["test/security/nbi-query.ts", "test/security/nbi-route.ts"],
       "exception": {
         "reviewStatus": "approved",
         "reason": "Same validated filter object as alert 20 reaching countDocuments; the taint model cannot see the closed-grammar validator between the request and the driver",
@@ -278,9 +238,7 @@
       "pr": true,
       "rule": "js/weak-cryptographic-algorithm",
       "location": "lib/udp-cr-auth.ts:36",
-      "tests": [
-        "test/security/udp-cr-auth.ts"
-      ],
+      "tests": ["test/security/udp-cr-auth.ts"],
       "exception": {
         "reviewStatus": "approved",
         "reason": "UDP Connection Request signature is HMAC-SHA1 fixed by TR-069 Annex G; the CPE-side verifier requires exactly this construction (same residual as snapshot alert 12, seen again on the PR merge ref)",
@@ -300,9 +258,7 @@
       "pr": true,
       "rule": "js/http-to-file-access",
       "location": "lib/app-logger.ts:301",
-      "tests": [
-        "test/app-logger.ts"
-      ],
+      "tests": ["test/app-logger.ts"],
       "exception": {
         "reviewStatus": "approved",
         "reason": "An application log is request-derived by design; the flagged flow is the already-serialized event line reaching the configured log file",
@@ -322,9 +278,7 @@
       "pr": true,
       "rule": "js/http-to-file-access",
       "location": "lib/app-logger.ts:309",
-      "tests": [
-        "test/app-logger.ts"
-      ],
+      "tests": ["test/app-logger.ts"],
       "exception": {
         "reviewStatus": "approved",
         "reason": "Same sink as alert 23 on the ENOENT retry path (directory recreated after storage loss, then the identical serialized line)",
@@ -344,9 +298,7 @@
       "pr": true,
       "rule": "js/http-to-file-access",
       "location": "lib/logger.ts:319",
-      "tests": [
-        "test/app-logger.ts"
-      ],
+      "tests": ["test/app-logger.ts"],
       "exception": {
         "reviewStatus": "approved",
         "reason": "Access-log records contain request metadata by design; the flagged flow is the serialized record reaching the configured access-log file",
@@ -366,9 +318,7 @@
       "pr": true,
       "rule": "js/http-to-file-access",
       "location": "scripts/security/inventory.mjs:167",
-      "tests": [
-        "scripts/security/inventory.test.mjs"
-      ],
+      "tests": ["scripts/security/inventory.test.mjs"],
       "exception": {
         "reviewStatus": "approved",
         "reason": "The dependency-inventory scanner persists the npm bulk-advisory response as evidence; persisting that response is its function",
@@ -389,9 +339,7 @@
       "rule": "js/remote-property-injection",
       "location": "lib/nbi-query.ts:325 (projection)",
       "disposition": "code_fixed_in_pr: projection fields are collected in a Map and converted at the boundary — no request-derived string is used as a computed property key; PROTOTYPE_KEYS/length guards unchanged",
-      "tests": [
-        "test/security/nbi-query.ts"
-      ]
+      "tests": ["test/security/nbi-query.ts"]
     },
     "28": {
       "package": "M01-S2",
@@ -401,9 +349,7 @@
       "rule": "js/remote-property-injection",
       "location": "lib/nbi-query.ts:348 (sort)",
       "disposition": "code_fixed_in_pr: same Map pattern for sort keys",
-      "tests": [
-        "test/security/nbi-query.ts"
-      ]
+      "tests": ["test/security/nbi-query.ts"]
     },
     "29": {
       "package": "M01-E",
@@ -413,9 +359,7 @@
       "rule": "js/insecure-temporary-file",
       "location": "test/engine-app-logger-broken-dir.ts:17",
       "disposition": "code_fixed_in_pr: the blocker now lives under a unique mkdtempSync directory with cleanup — no predictable shared tmp path",
-      "tests": [
-        "test/engine-app-logger-broken-dir.ts"
-      ]
+      "tests": ["test/engine-app-logger-broken-dir.ts"]
     },
     "dependabot1": {
       "package": "M01-B",
@@ -423,10 +367,7 @@
       "state": "needs_validation",
       "advisory": "GHSA-g7r4-m6w7-qqqr",
       "resolution": "esbuild 0.28.2 exact in npm-shrinkwrap (>= min fixed 0.28.1); resolved graph audited in genieacs-pwa-check; GitHub alert closes on main after release",
-      "tests": [
-        "test/db.ts",
-        "test/security-compat.ts"
-      ]
+      "tests": ["test/db.ts", "test/security-compat.ts"]
     }
   },
   "gate": {
