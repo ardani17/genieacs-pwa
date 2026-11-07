@@ -94,16 +94,20 @@ export function ParameterActions({
         },
       );
       if (!res.ok) {
-        // Non-2xx still carries the typed envelope; unparseable bodies
-        // fall through to the catch below (same as before).
+        // Non-2xx STILL carries the typed envelope; unparseable bodies
+        // throw into the catch below. No early return — busy is always
+        // released in the finally (PR #8 review).
         apply((await res.json()) as ApiResult<WanOutcome>);
-        return;
+      } else {
+        apply((await res.json()) as ApiResult<WanOutcome>);
       }
-      apply((await res.json()) as ApiResult<WanOutcome>);
     } catch {
       setError("Hasil belum terkonfirmasi — koneksi terputus.");
+    } finally {
+      // HTTP errors must release the control too — the early return
+      // used to leave the form permanently busy (PR #8 review).
+      setBusy(false);
     }
-    setBusy(false);
   };
 
   const typedValue = (): string | number | boolean => {

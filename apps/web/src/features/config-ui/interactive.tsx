@@ -64,16 +64,24 @@ export function SummonButtonView({
         },
       );
       if (!res.ok) {
-        setError("Perintah tidak dapat dijalankan.");
-        return;
+        // Non-2xx STILL carries the typed envelope; unparseable bodies
+        // throw into the catch below. No early return — busy is always
+        // released in the finally (PR #8 review).
+        const body = (await res.json()) as ApiResult<WanOutcome>;
+        if (body.ok !== true) setError(body.error.message);
+        else setOutcome(body.data);
+      } else {
+        const body = (await res.json()) as ApiResult<WanOutcome>;
+        if (body.ok !== true) setError(body.error.message);
+        else setOutcome(body.data);
       }
-      const body = (await res.json()) as ApiResult<WanOutcome>;
-      if (body.ok !== true) setError(body.error.message);
-      else setOutcome(body.data);
     } catch {
       setError("Hasil belum terkonfirmasi — koneksi terputus.");
+    } finally {
+      // HTTP errors must release the control too — the early return
+      // used to leave the button permanently busy (PR #8 review).
+      setBusy(false);
     }
-    setBusy(false);
   };
 
   return (

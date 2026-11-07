@@ -20,9 +20,9 @@ export interface AppHarness {
   appRequest(
     target: string,
     init?: { method?: string; body?: string; headers?: Record<string, string> },
-    identity?: "admin" | "operator" | "restricted",
+    identity?: string,
   ): Promise<Response>;
-  cookieFor(identity: "admin" | "operator" | "restricted"): Promise<string>;
+  cookieFor(identity: string): Promise<string>;
   stop(): Promise<void>;
   refreshSnapshot(): Promise<void>;
 }
@@ -93,9 +93,7 @@ export async function startApp(): Promise<AppHarness> {
 
   const cookieCache = new Map<string, string>();
 
-  const cookieFor = async (
-    identity: "admin" | "operator" | "restricted",
-  ): Promise<string> => {
+  const cookieFor = async (identity: string): Promise<string> => {
     const cached = cookieCache.get(identity);
     if (cached) return cached;
     const res = await fetch(`${baseUrl}/login`, {
@@ -119,7 +117,10 @@ export async function startApp(): Promise<AppHarness> {
       const headers: Record<string, string> = {
         ...(init.headers ?? {}),
       };
-      if (init.body !== undefined) headers["Content-Type"] = "application/json";
+      // JSON by default, but an explicit content type (e.g. octet-stream
+      // file uploads) always wins.
+      if (init.body !== undefined && !headers["Content-Type"])
+        headers["Content-Type"] = "application/json";
       if (identity) headers["Cookie"] = await cookieFor(identity);
       return fetch(`${baseUrl}${target}`, {
         method: init.method ?? "GET",

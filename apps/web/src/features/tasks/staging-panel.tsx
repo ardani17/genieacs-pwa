@@ -110,7 +110,12 @@ export function StagingPanel() {
   const [busy, setBusy] = useState(false);
   const [offline, setOffline] = useState(false);
   const [results, setResults] = useState<
-    { id: string; outcome?: WanOutcome; error?: string }[]
+    {
+      id: string;
+      operationId?: string;
+      outcome?: WanOutcome;
+      error?: string;
+    }[]
   >([]);
   // /tasks?operation=<id>: look a stored outcome up by id (the link the
   // OperationResult surface renders) — no resubmission, ever.
@@ -163,9 +168,17 @@ export function StagingPanel() {
   const commit = async () => {
     setBusy(true);
     const staged = stagingStore().list();
-    const outcomes: { id: string; outcome?: WanOutcome; error?: string }[] = [];
+    const outcomes: {
+      id: string;
+      operationId?: string;
+      outcome?: WanOutcome;
+      error?: string;
+    }[] = [];
     for (const entry of staged) {
-      // One operationId per entry, minted exactly once at commit.
+      // One operationId per entry, minted exactly once at commit. The
+      // id travels with the RESULT so a broken response never loses
+      // the recovery handle — the server may still have executed the
+      // operation (PR #8 review: operation-id recovery).
       const operationId = crypto.randomUUID();
       const result =
         entry.kind === "wan"
@@ -188,8 +201,12 @@ export function StagingPanel() {
               },
             );
       if (result.ok !== true)
-        outcomes.push({ id: entry.id, error: apiErrorText(result.error) });
-      else outcomes.push({ id: entry.id, outcome: result.data });
+        outcomes.push({
+          id: entry.id,
+          operationId,
+          error: apiErrorText(result.error),
+        });
+      else outcomes.push({ id: entry.id, operationId, outcome: result.data });
     }
     // Committed entries leave staging regardless of outcome; their
     // results (or unknowns) stay visible below.
@@ -276,11 +293,21 @@ export function StagingPanel() {
       </Card>
       {results.map((r) => (
         <Card key={r.id}>
-          <CardContent>
+          <CardContent className="space-y-2">
             {r.outcome ? (
               <OperationResult outcome={r.outcome} />
             ) : (
-              <Status tone="warning">{r.error}</Status>
+              <>
+                <Status tone="warning">{r.error}</Status>
+                {r.operationId ? (
+                  <Link
+                    href={`/tasks?operation=${encodeURIComponent(r.operationId)}`}
+                    className="inline-flex min-h-11 items-center text-sm text-primary hover:underline"
+                  >
+                    Lihat hasil operasi berdasarkan ID
+                  </Link>
+                ) : null}
+              </>
             )}
           </CardContent>
         </Card>
