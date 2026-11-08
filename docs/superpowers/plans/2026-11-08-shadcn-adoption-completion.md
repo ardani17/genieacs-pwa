@@ -62,8 +62,8 @@ Files: this plan.
 
 - [x] Create ARD-240…ARD-245 in Linear with blocking relations before any UI
       source changes.
-- [ ] Commit this plan to development through `chore/shadcn-adoption-plan`
-      (branch policy allows feature/\*, fix/\*, chore/\* only).
+- [x] Commit this plan to development through `chore/shadcn-adoption-plan`
+      (branch policy allows feature/\*, fix/\*, chore/\* only). PR #11 merged.
 
 ## Task 2: Package A — primitives (ARD-241)
 
@@ -71,14 +71,14 @@ Files: create `apps/web/src/components/ui/checkbox.tsx`, `textarea.tsx`,
 `alert-dialog.tsx` and `dropdown-menu.tsx`; extend
 `apps/web/src/components/ui/ui.test.tsx`.
 
-- [ ] Add `checkbox.tsx` (Radix Checkbox, CheckIcon indicator, 44 px target),
+- [x] Add `checkbox.tsx` (Radix Checkbox, CheckIcon indicator, 44 px target),
       `textarea.tsx` (same styling family as `input.tsx`, `min-h-11`),
       `alert-dialog.tsx` (same styling family as `dialog.tsx`) and
       `dropdown-menu.tsx` (items `min-h-11`).
-- [ ] Add unit tests: render, basic interaction (toggle, open/cancel/confirm,
+- [x] Add unit tests: render, basic interaction (toggle, open/cancel/confirm,
       menu item selection) and ARIA roles.
-- [ ] Verify the four checks below plus the standalone artifact; confirm the
-      lockfile diff is empty.
+- [x] Verify the four checks below plus the standalone artifact; confirm the
+      lockfile diff is empty. PR #12 merged; ARD-241 Done.
 
 ## Task 3: Package B — form controls (ARD-242)
 
@@ -87,42 +87,43 @@ Files: `apps/web/src/features/devices/device-list.tsx`,
 `apps/web/src/features/vpn/profile-form.tsx`,
 `apps/web/src/features/admin/files.tsx`.
 
-- [ ] Replace the raw bulk-tag input and raw checkboxes in `device-list.tsx`
+- [x] Replace the raw bulk-tag input and raw checkboxes in `device-list.tsx`
       with `Input` and `Checkbox` (linked labels, indeterminate preserved).
-- [ ] Replace the raw `<select>` in `log-search.tsx` and the three in
+- [x] Replace the raw `<select>` in `log-search.tsx` and the three in
       `profile-form.tsx` with the `Select` primitives (controlled value via
       `value`/`onValueChange`); replace the raw `<textarea>` with `Textarea`.
-- [ ] Replace the improvised file input in `files.tsx` with the shadcn pattern:
+- [x] Replace the improvised file input in `files.tsx` with the shadcn pattern:
       a `sr-only` `<input type="file">` wrapped by a `Button` label.
-- [ ] Run the checks plus the `device-list`, `vpn-logs` and `admin-users-files`
+- [x] Run the checks plus the `device-list`, `vpn-logs` and `admin-users-files`
       e2e specs; spot-check the three viewports and keyboard/focus behavior on
-      migrated controls.
+      migrated controls. PR #14 merged; ARD-242 Done.
 
 ## Task 4: Package C — tables (ARD-243)
 
 Files: `apps/web/src/features/config-ui/components.tsx`,
 `apps/web/src/features/admin/permissions.tsx`.
 
-- [ ] Rebuild the parameter/instance tables and the permission list with
+- [x] Rebuild the parameter/instance tables and the permission list with
       `Table/TableHeader/TableRow/TableHead/TableBody/TableCell`, keeping the
       labeled scroll areas, density and existing loading/empty/error states.
-- [ ] Row rendering logic stays unchanged; only markup/structure moves.
-- [ ] Run the checks plus the `admin-config` e2e spec; spot-check the three
-      viewports.
+- [x] Row rendering logic stays unchanged; only markup/structure moves.
+- [x] Run the checks plus the `admin-config` e2e spec; spot-check the three
+      viewports. PR #13 merged; ARD-243 Done.
 
 ## Task 5: Package D — AlertDialog and DropdownMenu in real use (ARD-244)
 
 Files: admin views (`users`, `presets`, `provisions`, `files`, `permissions`)
 and device action components, decided by the audit.
 
-- [ ] Audit destructive confirmations; migrate delete/reset confirmations that
+- [x] Audit destructive confirmations; migrate delete/reset confirmations that
       use plain `Dialog` or improvised patterns to `AlertDialog` (focus on the
       cancel/destructive action, busy/disabled prevents double submits).
-- [ ] Apply `DropdownMenu` only where row actions genuinely overflow (mobile
+- [x] Apply `DropdownMenu` only where row actions genuinely overflow (mobile
       stacking or crowded desktop rows); if no site truly needs it, record the
-      audit result instead of forcing a change.
-- [ ] Business flows, permissions and endpoints stay unchanged.
-- [ ] Run the checks plus the admin and `device-commands` e2e specs; record the
+      audit result instead of forcing a change. Audit result: no overflowing row
+      actions yet, so no forced consumer (recorded on ARD-244/PR #15).
+- [x] Business flows, permissions and endpoints stay unchanged.
+- [x] Run the checks plus the admin and `device-commands` e2e specs; record the
       audit (migrated/skipped sites with reasons) in the PR and on ARD-244.
 
 ## Task 6: Package E — wrap-up (ARD-245)
@@ -130,12 +131,12 @@ and device action components, decided by the audit.
 Files: `docs/design/ui-design-system.md`, `docs/DEVELOPMENT.md`,
 `scripts/check-suites.json`, `docs/testing/`.
 
-- [ ] Add the revision note to `ui-design-system.md` (complete primitive set,
+- [x] Add the revision note to `ui-design-system.md` (complete primitive set,
       raw elements migrated) and fix the stale Mithril sentence in
       `docs/DEVELOPMENT.md`.
-- [ ] Register per-package suites in `scripts/check-suites.json` following the
+- [x] Register per-package suites in `scripts/check-suites.json` following the
       existing M07 entries and write the testing evidence note.
-- [ ] Record PR/evidence links on ARD-241…ARD-244, move them to Done and close
+- [x] Record PR/evidence links on ARD-241…ARD-244, move them to Done and close
       ARD-240.
 
 ## Verification commands

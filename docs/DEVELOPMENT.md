@@ -2,9 +2,10 @@
 
 Repository ini adalah fork `ardani17/genieacs-pwa`. Baseline backend awal
 memakai tag upstream `v1.2.16`, commit
-`38e9dfd0e6dcac51087d11040784fda76ad2460a`. Frontend Next.js/PWA akan
-dikembangkan setelah desainnya ditetapkan. UI saat ini masih UI Mithril dari
-GenieACS stable.
+`38e9dfd0e6dcac51087d11040784fda76ad2460a`. UI utama adalah aplikasi Next.js di
+`apps/web` (shadcn/ui + Tailwind CSS 4, M03–M07 sudah merge); UI Mithril
+upstream di `ui/` tetap dibangun untuk kebutuhan engine dan tidak diekspos ke
+host pada compose produksi.
 
 ## Alur branch
 

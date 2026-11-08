@@ -647,5 +647,16 @@
       "args": ["run", "build"],
       "artifacts": ["apps/web/.next/BUILD_ID"]
     }
+  ],
+  "SHADCN-UI": [
+    { "cwd": "apps/web", "command": "npm", "args": ["run", "lint"] },
+    { "cwd": "apps/web", "command": "npm", "args": ["run", "typecheck"] },
+    { "cwd": "apps/web", "command": "npm", "args": ["run", "test"] },
+    {
+      "cwd": "apps/web",
+      "command": "npm",
+      "args": ["run", "build"],
+      "artifacts": ["apps/web/.next/BUILD_ID"]
+    }
   ]
 }

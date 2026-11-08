@@ -5,6 +5,16 @@ meninjau preview M04. Rencana ini dicatat sebelum refactor. Penyelesaian fungsi
 M03–M04 sebelumnya tetap menjadi riwayat; migrasi visual berikut adalah scope
 tambahan.
 
+Pembaruan 9 November 2026 (penyelesaian adopsi, ARD-240…ARD-245): set primitive
+kini lengkap — `AlertDialog`, `DropdownMenu`, `Checkbox`, dan `Textarea`
+ditambahkan di `apps/web/src/components/ui` dan seluruh elemen mentah tersisa
+(select/input/textarea/tabel hand-rolled pada device-list, log-search,
+vpn/profile-form, admin/files, config-ui, admin/permissions) telah dimigrasikan
+ke primitive bersama. Konfirmasi destruktif memakai AlertDialog dengan aksi
+destruktif dan fokus awal pada tombol batal. DropdownMenu tersedia tanpa
+konsumen paksaan karena belum ada aksi baris yang benar-benar meluap. Tabel
+sr-only pada overview dipertahankan sebagai alternatif pembaca layar.
+
 ## Keputusan dan batas arsitektur
 
 - Frontend tetap Next.js App Router, React dan TypeScript pada apps/web.
