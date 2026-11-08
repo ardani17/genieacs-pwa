@@ -5,13 +5,15 @@ import { createAppLogger, type AppLogger } from "../../../lib/app-logger.ts";
 
 let vpnLogger: AppLogger | null = null;
 
-export function getVpnLogger(): AppLogger {
+export function getVpnLogger(installationId?: string): AppLogger {
   if (!vpnLogger) {
     vpnLogger = createAppLogger({
       service: "vpn-controller",
       appVersion: process.env.APP_VERSION ?? "dev",
       installationId:
-        process.env.INSTALLATION_ID ?? "00000000-0000-0000-0000-000000000000",
+        installationId ??
+        process.env.INSTALLATION_ID ??
+        "00000000-0000-0000-0000-000000000000",
       environment:
         process.env.NODE_ENV === "production" ? "production" : "test",
       filePath: process.env.APP_LOG_FILE ?? "/tmp/app-vpn.log",

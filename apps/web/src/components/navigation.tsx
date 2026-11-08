@@ -39,6 +39,7 @@ const icons = {
   "/tasks": ListChecks,
   "/faults": Activity,
   "/diagnostics/logs": ScrollText,
+  "/settings/vpn": Network,
   "/account/password": CircleUserRound,
   "/admin/config": Settings,
 };

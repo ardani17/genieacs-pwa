@@ -17,6 +17,10 @@ const VPN_TEXT: Record<string, { tone: StatusTone; text: string }> = {
   },
   unavailable: { tone: "warning", text: "VPN tidak tersedia" },
   unconfigured: { tone: "muted", text: "VPN belum dikonfigurasi" },
+  retry_wait: { tone: "warning", text: "VPN menunggu percobaan ulang" },
+  route_error: { tone: "warning", text: "Rute VPN perlu diperbaiki" },
+  host_unsupported: { tone: "warning", text: "Host VPN belum mendukung PPP" },
+  stopped: { tone: "muted", text: "VPN dihentikan" },
 };
 
 // Locale formatting lives outside the render path (id-ID output is

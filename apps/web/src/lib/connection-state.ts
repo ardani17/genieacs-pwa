@@ -15,7 +15,11 @@ export interface ConnectionState {
     | "connecting"
     | "connected"
     | "degraded"
-    | "auth_failed";
+    | "auth_failed"
+    | "retry_wait"
+    | "route_error"
+    | "host_unsupported"
+    | "stopped";
   lastSuccessAt: string | null;
 }
 

@@ -1,0 +1,2 @@
+#!/bin/sh
+exec node /app/controller.cjs --ppp-event up "$@"

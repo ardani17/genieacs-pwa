@@ -52,6 +52,7 @@ services:
     volumes:
       - .:/workspace
       - verify_modules:/workspace/node_modules
+      - verify_web_modules:/workspace/apps/web/node_modules
       - npm_cache:/root/.npm
       - app_logs_test:/logs
     depends_on:
@@ -68,6 +69,7 @@ services:
     # Test settings: short retention + tiny quota; still no published port.
     command:
       - -retentionPeriod=1d
+      - -storageDataPath=/storage
       - -retention.maxDiskSpaceUsageBytes=100000000
       - -storage.minFreeDiskSpaceBytes=10000000
       - -httpListenAddr=:9428
@@ -143,6 +145,13 @@ services:
     #     --abort-on-container-exit --exit-code-from browser-tests
     command: ["npx", "playwright", "test"]
 
+  vpn-build:
+    profiles: ["vpn-build"]
+    build:
+      context: .
+      dockerfile: docker/vpn/Dockerfile
+    image: genieacs-pwa-vpn-check:local
+
 configs:
   vector_config:
     file: ./docker/vector/vector.yaml
@@ -153,5 +162,6 @@ volumes:
   vector_buffer_test:
   victoria_logs_test:
   verify_modules:
+  verify_web_modules:
   browser_test_modules:
   npm_cache:

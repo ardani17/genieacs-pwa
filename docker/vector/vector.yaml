@@ -8,6 +8,9 @@
 data_dir: /var/lib/vector
 
 sources:
+  internal_metrics:
+    type: internal_metrics
+    scrape_interval_secs: 5
   app_logs:
     type: file
     include:
@@ -57,6 +60,10 @@ transforms:
       }
 
 sinks:
+  metrics:
+    type: prometheus_exporter
+    inputs: [internal_metrics]
+    address: 0.0.0.0:9598
   victorialogs:
     inputs: [validate_and_redact]
     type: http

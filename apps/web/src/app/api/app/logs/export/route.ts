@@ -55,7 +55,18 @@ export async function POST(request: Request): Promise<NextResponse> {
   try {
     body = await request.json();
   } catch {
-    body = {};
+    return NextResponse.json(
+      {
+        ok: false,
+        error: {
+          code: "VALIDATION",
+          message: "Malformed body",
+          retryable: false,
+        },
+        requestId: ctx.requestId,
+      },
+      { status: 400, headers: correlationHeaders(ctx) },
+    );
   }
 
   try {
@@ -63,7 +74,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     // the engine rebuilds through its own closed builder with the
     // export limit profile (10k) — no prebuilt query string travels
     // the wire, mirroring the search route.
-    buildLogQuery(body as never);
+    buildLogQuery(body as never, { limitMax: 10000 });
     const upstream = await engineFetch("/api/app/logs/export", {
       method: "POST",
       cookie,
@@ -71,18 +82,18 @@ export async function POST(request: Request): Promise<NextResponse> {
       body: JSON.stringify(body),
       timeoutMs: 32_000,
     });
-    if (upstream.status === 403)
+    if (upstream.status === 403 || upstream.status === 401)
       return NextResponse.json(
         {
           ok: false,
           error: {
-            code: "FORBIDDEN",
+            code: upstream.status === 401 ? "UNAUTHENTICATED" : "FORBIDDEN",
             message: "No log access",
             retryable: false,
           },
           requestId: ctx.requestId,
         },
-        { status: 403, headers: correlationHeaders(ctx) },
+        { status: upstream.status, headers: correlationHeaders(ctx) },
       );
     if (!upstream.ok)
       return NextResponse.json(

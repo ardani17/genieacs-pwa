@@ -43,6 +43,29 @@ import {
 import { del as cacheDel } from "../cache.ts";
 import * as db from "./db.ts";
 import { buildLogQuery } from "./log-query.ts";
+import { readLogResults } from "./log-results.ts";
+import { loggingStatus } from "./logging-status.ts";
+import {
+  appSettingsCollection,
+  bootstrapSettings,
+  getAcsAddress,
+  getDecryptedProfile,
+  getSettingsView,
+  loadEngineSettingsSecrets,
+  resetBootstrap,
+  settingsEnvFromProcess,
+  updateSettings,
+  SettingsError,
+  type AppSettingsDeps,
+} from "./app-settings.ts";
+import { validateVpnProfileInput } from "../../packages/app-contracts/src/settings.ts";
+import { timingSafeEqualWithLength } from "../xmpp-scram.ts";
+import {
+  applySavedSettings,
+  controllerRequest,
+  diagnoseVpn,
+  ControllerError,
+} from "./vpn-controller.ts";
 
 interface ErrorCtx {
   status: number;
@@ -56,9 +79,14 @@ interface ErrorCtx {
 function errorRequestId(ctx: ErrorCtx): string {
   // The BFF proxy mints a UUID per request; accept it when valid,
   // otherwise mint one (contracts.md ApiResult requestId).
+  const uuid = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
+  if (ctx.state?.requestId && uuid.test(ctx.state.requestId))
+    return ctx.state.requestId;
   const inbound = ctx.get?.("x-request-id");
-  if (inbound && /^[0-9a-f-]{36}$/i.test(inbound)) return inbound;
-  return cryptoRandomUUID();
+  const requestId =
+    inbound && uuid.test(inbound) ? inbound : cryptoRandomUUID();
+  (ctx.state ??= {}).requestId = requestId;
+  return requestId;
 }
 
 function appError(
@@ -67,6 +95,7 @@ function appError(
   code: string,
   message: string,
   retryable: boolean,
+  fieldErrors?: Record<string, string>,
 ): void {
   ctx.status = status;
   ctx.type = "application/json";
@@ -76,12 +105,39 @@ function appError(
   ctx.set("X-Content-Type-Options", "nosniff");
   ctx.body = JSON.stringify({
     ok: false,
-    error: { code, message, retryable },
+    error: {
+      code,
+      message,
+      retryable,
+      ...(fieldErrors == null ? {} : { fieldErrors }),
+    },
     requestId: errorRequestId(ctx),
   });
 }
 
 const router = new Router();
+router.get("/app/logs/status", async (ctx) => {
+  if (!ctx.state.user?.username) return void (ctx.status = 401);
+  try {
+    authorizeAppResource(
+      ctx.state.authorizer,
+      "logs",
+      2,
+      await settingsResource(),
+    );
+  } catch {
+    return void appError(ctx, 403, "FORBIDDEN", "Tidak ada izin log", false);
+  }
+  const requestId = errorRequestId(ctx);
+  ctx.status = 200;
+  ctx.type = "application/json";
+  ctx.set("Cache-Control", "private, no-store");
+  ctx.body = JSON.stringify({
+    ok: true,
+    data: await loggingStatus(requestId),
+    requestId,
+  });
+});
 
 // GET /api/session — the authenticated user's safe session DTO.
 router.get("/session", async (ctx) => {
@@ -151,7 +207,12 @@ router.post("/password", async (ctx) => {
 router.post("/app/logs", async (ctx) => {
   if (!ctx.state.user?.username) return void (ctx.status = 401);
   try {
-    authorizeAppResource(ctx.state.authorizer, "logs", 3);
+    authorizeAppResource(
+      ctx.state.authorizer,
+      "logs",
+      2,
+      await settingsResource(),
+    );
   } catch {
     return void (ctx.status = 403);
   }
@@ -204,7 +265,12 @@ router.post("/app/logs", async (ctx) => {
   ctx.status = 200;
   ctx.type = "application/x-ndjson";
   ctx.set("Cache-Control", "private, no-store");
-  ctx.body = await response.text();
+  try {
+    ctx.body = await readLogResults(response, q.limit);
+  } catch {
+    appError(ctx, 503, "LOGGING_DEGRADED", "Log store unavailable", true);
+    return;
+  }
   // Audit: filter FIELD NAMES only (never values/results) per contract.
   getEngineAppLogger().emit({
     event: "logs.query",
@@ -225,7 +291,12 @@ router.post("/app/logs", async (ctx) => {
 router.post("/app/logs/export", async (ctx) => {
   if (!ctx.state.user?.username) return void (ctx.status = 401);
   try {
-    authorizeAppResource(ctx.state.authorizer, "logs", 3);
+    authorizeAppResource(
+      ctx.state.authorizer,
+      "logs",
+      3,
+      await settingsResource(),
+    );
   } catch {
     return void (ctx.status = 403);
   }
@@ -272,7 +343,13 @@ router.post("/app/logs/export", async (ctx) => {
     return;
   }
 
-  const body = await response.text();
+  let body: string;
+  try {
+    body = await readLogResults(response, q.limit);
+  } catch {
+    appError(ctx, 503, "LOGGING_DEGRADED", "Log store unavailable", true);
+    return;
+  }
   const rows = body ? body.split("\n").filter(Boolean).length : 0;
   getEngineAppLogger().emit({
     event: "logs.export",
@@ -294,21 +371,399 @@ router.post("/app/logs/export", async (ctx) => {
 router.get("/app/vpn/status", async (ctx) => {
   if (!ctx.state.user?.username) return void (ctx.status = 401);
   try {
-    authorizeAppResource(ctx.state.authorizer, "vpn", 1);
+    authorizeAppResource(
+      ctx.state.authorizer,
+      "vpn",
+      1,
+      await settingsResource(),
+    );
   } catch {
     return void (ctx.status = 403);
   }
 
-  ctx.status = 200;
-  ctx.type = "application/json";
-  ctx.set("Cache-Control", "private, no-store");
-  ctx.body = JSON.stringify({
-    state: "unconfigured",
-    reason: "vpn controller management not deployed yet",
-    observedAt: new Date().toISOString(),
-    controllerReachable: false,
-    lastSuccessAt: null,
+  try {
+    const status = await controllerRequest("/status", errorRequestId(ctx));
+    ctx.status = 200;
+    ctx.type = "application/json";
+    ctx.set("Cache-Control", "private, no-store");
+    ctx.body = JSON.stringify(status);
+  } catch {
+    appError(
+      ctx,
+      503,
+      "VPN_UNAVAILABLE",
+      "Controller VPN tidak terjangkau",
+      true,
+    );
+  }
+});
+
+for (const action of ["reconnect", "diagnose"] as const) {
+  router.post(`/app/vpn/${action}`, async (ctx) => {
+    if (!ctx.state.user?.username) return void (ctx.status = 401);
+    try {
+      authorizeAppResource(
+        ctx.state.authorizer,
+        "vpn",
+        action === "diagnose" ? 1 : 3,
+        await settingsResource(),
+        action === "diagnose" ? undefined : { type: "reconnect", args: {} },
+      );
+    } catch {
+      emitPermissionDenied(ctx, `VPN ${action}`);
+      return void appError(ctx, 403, "FORBIDDEN", "Tidak ada izin VPN", false);
+    }
+    const body = ctx.request.body;
+    if (
+      body != null &&
+      (typeof body !== "object" ||
+        Array.isArray(body) ||
+        Object.keys(body).length)
+    )
+      return void appError(
+        ctx,
+        400,
+        "VALIDATION",
+        "Body harus objek kosong",
+        false,
+      );
+    try {
+      const requestId = errorRequestId(ctx);
+      const data =
+        action === "diagnose"
+          ? await diagnoseVpn(settingsDeps(), requestId)
+          : await controllerRequest("/reconnect", requestId);
+      ctx.status = 200;
+      ctx.type = "application/json";
+      ctx.set("Cache-Control", "private, no-store");
+      ctx.body = JSON.stringify({ ok: true, data, requestId });
+    } catch (err) {
+      appError(
+        ctx,
+        err instanceof ControllerError ? err.status : 503,
+        err instanceof ControllerError ? err.code : "VPN_UNAVAILABLE",
+        "Operasi VPN belum berhasil",
+        true,
+      );
+    }
   });
+}
+
+// --- Saved installation settings (M07-A) ---------------------------------
+//
+// app_settings singleton, revision CAS, AES-256-GCM secret. Readback is
+// view-only (passwordConfigured). Bootstrap from .env runs lazily and
+// only when the singleton is missing — a saved UI profile always wins
+// over later env changes.
+
+function settingsDeps(): AppSettingsDeps {
+  return {
+    collection: appSettingsCollection(),
+    key: loadEngineSettingsSecrets().key,
+  };
+}
+
+async function settingsResource(): Promise<object> {
+  const doc = await appSettingsCollection().findOne({ _id: "installation" });
+  return {
+    _id: "installation",
+    installationId: doc?.installationId ?? null,
+    revision: doc?.revision ?? 0,
+  };
+}
+
+/** SettingsError → ApiResult. STORAGE_ERROR keeps the stored profile
+ * untouched and is retryable (mounting the right key fixes it). */
+function settingsErrorResponse(ctx: ErrorCtx, err: unknown): void {
+  if (err instanceof SettingsError) {
+    const message = err.message.replace(/^[A-Z_]+: /, "");
+    const fieldErrors = err.fieldErrors;
+    if (err.code === "CONFLICT")
+      return void appError(ctx, 409, "CONFLICT", message, false, fieldErrors);
+    if (err.code === "VALIDATION")
+      return void appError(ctx, 400, "VALIDATION", message, false, fieldErrors);
+    if (err.code === "UNCONFIGURED")
+      return void appError(ctx, 404, "NOT_FOUND", message, false, fieldErrors);
+    return void appError(ctx, 500, err.code, message, true, fieldErrors);
+  }
+  throw err;
+}
+
+/** Create-if-missing from deployment env; idempotent and race-safe, so
+ * running it on every settings access is cheap and keeps restart
+ * semantics exact (existing document ⇒ env ignored). */
+async function ensureSettingsBootstrapped(): Promise<void> {
+  try {
+    const result = await bootstrapSettings(
+      settingsDeps(),
+      settingsEnvFromProcess(),
+    );
+    if (result.error)
+      getEngineAppLogger().emit({
+        event: "settings.bootstrap_failed",
+        level: "warn",
+        message: `settings bootstrap skipped: ${result.error.message}`,
+        details: { code: result.error.code },
+      });
+  } catch (err) {
+    getEngineAppLogger().emit({
+      event: "settings.bootstrap_failed",
+      level: "warn",
+      message: `settings bootstrap error: ${(err as Error).message}`,
+    });
+  }
+}
+
+// GET /api/app/settings — vpn:3 (contracts.md API table). The view never
+// contains secret material.
+router.get("/app/settings", async (ctx) => {
+  if (!ctx.state.user?.username) return void (ctx.status = 401);
+  try {
+    authorizeAppResource(
+      ctx.state.authorizer,
+      "vpn",
+      3,
+      await settingsResource(),
+    );
+  } catch {
+    emitPermissionDenied(ctx, "Read settings");
+    return void (ctx.status = 403);
+  }
+  try {
+    await ensureSettingsBootstrapped();
+    const status = await getSettingsView(settingsDeps());
+    ctx.status = 200;
+    ctx.type = "application/json";
+    ctx.set("Cache-Control", "private, no-store");
+    ctx.body = JSON.stringify({ ok: true, data: status });
+  } catch (err) {
+    settingsErrorResponse(ctx, err);
+  }
+});
+
+// PUT /api/app/settings — vpn:3 + validator; strict DTO validation, then
+// atomic CAS update (stale revision ⇒ 409, nothing applied). Persist
+// first, apply later: the response reports desiredRevision with
+// applyState "pending" until the controller exists (M07-B).
+router.put("/app/settings", async (ctx) => {
+  if (!ctx.state.user?.username) return void (ctx.status = 401);
+  try {
+    authorizeAppResource(
+      ctx.state.authorizer,
+      "vpn",
+      3,
+      await settingsResource(),
+      {
+        type: "put",
+        args: ctx.request.body,
+      },
+    );
+  } catch {
+    emitPermissionDenied(ctx, "Update settings");
+    appError(ctx, 403, "FORBIDDEN", "Tidak ada izin vpn:3", false);
+    return;
+  }
+  const validation = validateVpnProfileInput(ctx.request.body);
+  if (validation.ok === false) {
+    appError(
+      ctx,
+      400,
+      "VALIDATION",
+      "Profil settings tidak valid",
+      false,
+      validation.fieldErrors,
+    );
+    return;
+  }
+  try {
+    await ensureSettingsBootstrapped();
+    const result = await updateSettings(settingsDeps(), validation.value, {
+      actor: ctx.state.user.username,
+    });
+    const apply = await applySavedSettings(
+      settingsDeps(),
+      result,
+      errorRequestId(ctx),
+    );
+    // Audit: field NAMES and revisions only — never values, never the
+    // password (contracts.md redaksi + settings audit rule).
+    getEngineAppLogger().emit({
+      event: "settings.updated",
+      level: "info",
+      message: "settings updated",
+      requestId: errorRequestId(ctx),
+      actorId: ctx.state.user.username,
+      details: {
+        fields: [
+          "server",
+          "username",
+          "passwordAction",
+          "routes",
+          "mtu",
+          "acs",
+        ],
+        revisionBefore: result.revisionBefore,
+        revisionAfter: result.desiredRevision,
+      },
+    });
+    ctx.status = 200;
+    ctx.type = "application/json";
+    ctx.set("Cache-Control", "private, no-store");
+    ctx.body = JSON.stringify({
+      ok: true,
+      data: {
+        view: result.view,
+        desiredRevision: result.desiredRevision,
+        ...apply,
+      },
+    });
+  } catch (err) {
+    settingsErrorResponse(ctx, err);
+  }
+});
+
+// POST /api/app/vpn/reset-bootstrap — vpn:3 + validator; explicit reset to
+// the deployment (.env) configuration. Literal confirmation and the
+// current revision are required; a failed reset keeps the stored profile.
+router.post("/app/vpn/reset-bootstrap", async (ctx) => {
+  if (!ctx.state.user?.username) return void (ctx.status = 401);
+  try {
+    authorizeAppResource(
+      ctx.state.authorizer,
+      "vpn",
+      3,
+      await settingsResource(),
+      {
+        type: "reset_bootstrap",
+        args: ctx.request.body,
+      },
+    );
+  } catch {
+    emitPermissionDenied(ctx, "Reset settings bootstrap");
+    appError(ctx, 403, "FORBIDDEN", "Tidak ada izin vpn:3", false);
+    return;
+  }
+  const body = ctx.request.body as { revision?: unknown; confirm?: unknown };
+  const revision = body?.revision;
+  if (
+    typeof revision !== "number" ||
+    !Number.isSafeInteger(revision) ||
+    revision < 0 ||
+    revision >= Number.MAX_SAFE_INTEGER ||
+    body?.confirm !== "RESET" ||
+    Object.keys(body ?? {}).some(
+      (key) => !["revision", "confirm"].includes(key),
+    )
+  ) {
+    appError(ctx, 400, "VALIDATION", "revision wajib integer >= 0", false, {
+      revision: "must be a non-negative integer",
+    });
+    return;
+  }
+  try {
+    const result = await resetBootstrap(
+      settingsDeps(),
+      { revision, confirm: body.confirm },
+      settingsEnvFromProcess(),
+      { actor: ctx.state.user.username },
+    );
+    const apply = await applySavedSettings(
+      settingsDeps(),
+      result,
+      errorRequestId(ctx),
+    );
+    getEngineAppLogger().emit({
+      event: "settings.updated",
+      level: "info",
+      message: "settings reset to deployment configuration",
+      requestId: errorRequestId(ctx),
+      actorId: ctx.state.user.username,
+      details: {
+        fields: ["reset_bootstrap"],
+        revisionBefore: result.revisionBefore,
+        revisionAfter: result.desiredRevision,
+      },
+    });
+    ctx.status = 200;
+    ctx.type = "application/json";
+    ctx.set("Cache-Control", "private, no-store");
+    ctx.body = JSON.stringify({
+      ok: true,
+      data: {
+        view: result.view,
+        desiredRevision: result.desiredRevision,
+        ...apply,
+      },
+    });
+  } catch (err) {
+    settingsErrorResponse(ctx, err);
+  }
+});
+
+// --- Internal service endpoints (M07-A) ----------------------------------
+//
+// Bearer-token ONLY and deliberately NOT under /app: the BFF allowlist
+// never proxies /api/internal/*, the ui port is not published to the
+// host, and the tokens can never act as a browser session (sessions come
+// exclusively from the JWT cookie middleware above). Defense in depth:
+// a route-scoped token per consumer.
+
+function bearerTokenFrom(ctx: {
+  get?: (name: string) => string | undefined;
+}): Buffer | null {
+  const header = ctx.get?.("authorization");
+  if (typeof header !== "string" || !header.startsWith("Bearer ")) return null;
+  const token = header.slice("Bearer ".length).trim();
+  return token.length > 0 ? Buffer.from(token, "utf8") : null;
+}
+
+function tokenMatches(
+  candidate: Buffer | null,
+  expected: Buffer | null,
+): boolean {
+  if (candidate == null || expected == null || expected.length === 0)
+    return false;
+  return timingSafeEqualWithLength(candidate, expected);
+}
+
+// GET /api/internal/vpn/profile — CONTROLLER token only: the decrypted
+// desired profile the L2TP controller fetches at startup (M07-B).
+router.get("/internal/vpn/profile", async (ctx) => {
+  const secrets = loadEngineSettingsSecrets();
+  if (!tokenMatches(bearerTokenFrom(ctx), secrets.controllerToken)) {
+    appError(ctx, 401, "UNAUTHENTICATED", "Controller token required", false);
+    return;
+  }
+  try {
+    await ensureSettingsBootstrapped();
+    const profile = await getDecryptedProfile(settingsDeps());
+    ctx.status = 200;
+    ctx.type = "application/json";
+    ctx.set("Cache-Control", "private, no-store");
+    ctx.body = JSON.stringify({ ok: true, data: profile });
+  } catch (err) {
+    settingsErrorResponse(ctx, err);
+  }
+});
+
+// GET /api/internal/acs-address — ACS-ADDRESS token (a DIFFERENT token):
+// address only, never profile or secret material.
+router.get("/internal/acs-address", async (ctx) => {
+  const secrets = loadEngineSettingsSecrets();
+  if (!tokenMatches(bearerTokenFrom(ctx), secrets.acsAddressToken)) {
+    appError(ctx, 401, "UNAUTHENTICATED", "ACS address token required", false);
+    return;
+  }
+  try {
+    await ensureSettingsBootstrapped();
+    const address = await getAcsAddress(settingsDeps());
+    ctx.status = 200;
+    ctx.type = "application/json";
+    ctx.set("Cache-Control", "private, no-store");
+    ctx.body = JSON.stringify({ ok: true, data: address });
+  } catch (err) {
+    settingsErrorResponse(ctx, err);
+  }
 });
 
 // POST /app/devices/:id/diagnostics — devices:2 + the caller's device
@@ -334,10 +789,10 @@ router.post("/app/devices/:id/diagnostics", async (ctx) => {
   const { value: device } = await db.query("devices", deviceQuery).next();
   if (!device) return void (ctx.status = 404);
 
-  const controllerAvailable = process.env["DIAGNOSTICS_CONTROLLER"] === "1";
   const result = await runDeviceDiagnostics(
     device as Record<string, unknown>,
-    controllerAvailable,
+    false,
+    (target) => controllerRequest("/probe", errorRequestId(ctx), target),
   );
 
   ctx.status = 200;
