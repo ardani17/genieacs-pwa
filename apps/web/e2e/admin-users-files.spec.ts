@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { createHash } from "node:crypto";
 
 // Admin users/permissions/files flows (M06-C): hash/salt never leave
 // the server, restricted roles see the refusal (UI and direct URL),
@@ -120,6 +121,66 @@ test("file upload streams, lists metadata and deletes", async ({ page }) => {
     .click();
   await expect(
     page.getByRole("listitem").filter({ hasText: "e2e-firmware-test" }),
+  ).toHaveCount(0);
+});
+
+test("file download serves checksums and partial content through the real endpoints", async ({
+  page,
+}, testInfo) => {
+  const fileId = `e2e-range-${testInfo.project.name}`;
+  await page.goto("/admin/files");
+  await page.getByLabel("ID file").fill(fileId);
+  await page.getByLabel("Versi").fill("V0.0.1-RANGE");
+  const chooser = page.waitForEvent("filechooser");
+  await page.getByText("Pilih file firmware").click();
+  const file = await chooser;
+  const payload = "0123456789abcdef";
+  await file.setFiles({
+    name: "e2e-range.bin",
+    mimeType: "application/octet-stream",
+    buffer: Buffer.from(payload),
+  });
+  await expect(
+    page.getByRole("listitem").filter({ hasText: fileId }),
+  ).toBeVisible({ timeout: 30_000 });
+
+  // Full download through the REAL BFF endpoint: bytes and checksum
+  // match what was uploaded (M06-C evidence).
+  const full = await page.request.get(`/api/app/files/${fileId}/content`);
+  expect(full.status()).toBe(200);
+  const body = (await full.body()) as Buffer;
+  expect(body.toString("utf8")).toBe(payload);
+  const checksum = createHash("sha1").update(body).digest("hex");
+
+  // Single range serves 206 + the exact slice; the checksum of a
+  // re-assembled pair still matches.
+  const head = await page.request.get(`/api/app/files/${fileId}/content`, {
+    headers: { Range: "bytes=0-7" },
+  });
+  expect(head.status()).toBe(206);
+  expect(head.headers()["content-range"]).toBe(`bytes 0-7/${payload.length}`);
+  const tail = await page.request.get(`/api/app/files/${fileId}/content`, {
+    headers: { Range: `bytes=8-${payload.length - 1}` },
+  });
+  expect(tail.status()).toBe(206);
+  const reassembled = Buffer.concat([
+    (await head.body()) as Buffer,
+    (await tail.body()) as Buffer,
+  ]);
+  expect(createHash("sha1").update(reassembled).digest("hex")).toBe(checksum);
+
+  // Cleanup.
+  await page
+    .getByRole("listitem")
+    .filter({ hasText: fileId })
+    .getByRole("button", { name: "Hapus" })
+    .click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Hapus", exact: true })
+    .click();
+  await expect(
+    page.getByRole("listitem").filter({ hasText: fileId }),
   ).toHaveCount(0);
 });
 

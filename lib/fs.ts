@@ -2,7 +2,8 @@ import * as url from "node:url";
 import { IncomingMessage, ServerResponse } from "node:http";
 import { PassThrough, pipeline, Readable } from "node:stream";
 import { createHash } from "node:crypto";
-import { filesBucket, collections } from "./db/db.ts";
+import { collections } from "./db/db.ts";
+import { openStoredFile } from "./file-storage.ts";
 import * as logger from "./logger.ts";
 import { getRequestOrigin } from "./forwarded.ts";
 import memoize from "./common/memoize.ts";
@@ -12,13 +13,14 @@ const getFile = memoize(
     etag: string,
     size: number,
     filename: string,
+    contentId?: string,
   ): Promise<Iterable<Buffer>> => {
     const chunks: Buffer[] = [];
     // Using for-await over the download stream can throw ERR_STREAM_PREMATURE_CLOSE
     // for very small files. Possibly a bug in MongoDB driver or Nodejs itself.
     // Using a PassThrough stream to avoid this.
     const downloadStream = pipeline(
-      filesBucket.openDownloadStreamByName(filename),
+      openStoredFile({ _id: filename, contentId }),
       new PassThrough(),
       (err) => {
         if (err) throw err;
@@ -56,11 +58,14 @@ async function* partialContent(
 
 function generateETag(file: {
   _id: string;
+  contentId?: string;
   uploadDate: Date;
   length: number;
 }): string {
   const hash = createHash("md5");
-  hash.update(`${file._id}-${file.uploadDate.getTime()}-${file.length}`);
+  hash.update(
+    `${file._id}-${file.uploadDate.getTime()}-${file.length}${file.contentId ?? ""}`,
+  );
   return hash.digest("hex");
 }
 
@@ -195,7 +200,7 @@ export async function listener(
     return;
   }
 
-  const chunks = await getFile(etag, file.length, filename);
+  const chunks = await getFile(etag, file.length, filename, file.contentId);
 
   pipeline(Readable.from(partialContent(chunks, start, end)), response, () => {
     // Ignore errors resulting from client disconnecting

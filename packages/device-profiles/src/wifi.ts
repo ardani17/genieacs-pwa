@@ -45,6 +45,33 @@ const KEY_PARAMS = [
   "WPAPreSharedKey",
 ] as const;
 
+// Resolve the paths Enable and the pre-shared key LIVE on for a WiFi
+// node. TR-098 keeps both on the WLANConfiguration instance; TR-181
+// keeps them on the JOINED AccessPoint (readWifi renders them from
+// there, so the builder must write them there too — the builder used
+// to search under the SSID node and could never write a TR-181 radio
+// it had just rendered as writable; PR #8 review).
+export function wifiWritablePaths(
+  device: FlatDevice,
+  base: string,
+): { enablePath: string | null; keyCandidates: string[] } {
+  if (!/^Device\.WiFi\.SSID\.\d+$/.test(base)) {
+    return {
+      enablePath: `${base}.Enable`,
+      keyCandidates: KEY_PARAMS.map((k) => `${base}.${k}`),
+    };
+  }
+  const apPath = findAccessPointFor(device, base);
+  if (!apPath) return { enablePath: null, keyCandidates: [] };
+  return {
+    enablePath: `${apPath}.Enable`,
+    keyCandidates: [
+      `${apPath}.Security.PreSharedKey.1.PreSharedKey`,
+      `${apPath}.Security.KeyPassphrase`,
+    ],
+  };
+}
+
 export function readWifi(device: FlatDevice): WifiRadio[] {
   const radios: WifiRadio[] = [];
   for (const key of Object.keys(device)) {
@@ -59,10 +86,12 @@ export function readWifi(device: FlatDevice): WifiRadio[] {
       const ssidWritable =
         (device[`${base}.SSID`] as { writable?: boolean } | undefined)
           ?.writable === true;
+      const { enablePath, keyCandidates } = wifiWritablePaths(device, base);
       const enableWritable =
-        (device[`${base}.Enable`] as { writable?: boolean } | undefined)
-          ?.writable === true;
-      const keyPath = KEY_PARAMS.map((k) => `${base}.${k}`).find(
+        enablePath &&
+        (device[enablePath] as { writable?: boolean } | undefined)?.writable ===
+          true;
+      const keyPath = keyCandidates.find(
         (p) =>
           (device[p] as { writable?: boolean } | undefined)?.writable === true,
       );
@@ -70,10 +99,12 @@ export function readWifi(device: FlatDevice): WifiRadio[] {
         id: base,
         ssidPath: `${base}.SSID`,
         ssid: typeof ssid === "string" ? ssid : "",
-        enabled: [true, 1, "1", "true"].includes(
-          v(device, `${base}.Enable`) as string | number | boolean,
-        ),
-        writable: ssidWritable || enableWritable,
+        enabled:
+          enablePath &&
+          [true, 1, "1", "true"].includes(
+            v(device, enablePath) as string | number | boolean,
+          ),
+        writable: ssidWritable || !!enableWritable,
         // Band comes from the device's own Radio/Standard field, never
         // from the instance number.
         band:
@@ -85,7 +116,7 @@ export function readWifi(device: FlatDevice): WifiRadio[] {
       continue;
     }
     // TR-181 SSID entries: read-only view unless a writable key map
-    // exists on the same instance.
+    // exists on the joined AccessPoint.
     const tr181 = key.match(/^(Device\.WiFi\.SSID\.\d+)\.SSID$/);
     if (tr181) {
       // Join SSID -> AccessPoint through the actual references
@@ -93,23 +124,16 @@ export function readWifi(device: FlatDevice): WifiRadio[] {
       // key resolves via the AP's Security parameters — without the
       // join every TR-181 SSID read as disabled with no key path.
       const ssidNode = tr181[1];
-      const apPath = findAccessPointFor(device, ssidNode);
-      const enablePath = apPath ? `${apPath}.Enable` : null;
-      const enabled = enablePath
-        ? [true, 1, "1", "true"].includes(
-            v(device, enablePath) as string | number | boolean,
-          )
-        : false;
-      const keyPath = apPath
-        ? [
-            `${apPath}.Security.PreSharedKey.1.PreSharedKey`,
-            `${apPath}.Security.KeyPassphrase`,
-          ].find(
-            (p) =>
-              (device[p] as { writable?: boolean } | undefined)?.writable ===
-              true,
-          )
-        : undefined;
+      const { enablePath, keyCandidates } = wifiWritablePaths(device, ssidNode);
+      const enabled =
+        enablePath &&
+        [true, 1, "1", "true"].includes(
+          v(device, enablePath) as string | number | boolean,
+        );
+      const keyPath = keyCandidates.find(
+        (p) =>
+          (device[p] as { writable?: boolean } | undefined)?.writable === true,
+      );
       radios.push({
         id: ssidNode,
         ssidPath: key,
@@ -118,10 +142,9 @@ export function readWifi(device: FlatDevice): WifiRadio[] {
         writable:
           (device[key] as { writable?: boolean } | undefined)?.writable ===
             true ||
-          (enablePath
-            ? (device[enablePath] as { writable?: boolean } | undefined)
-                ?.writable === true
-            : false),
+          (!!enablePath &&
+            (device[enablePath] as { writable?: boolean } | undefined)
+              ?.writable === true),
         keyPath,
       });
     }
@@ -160,9 +183,17 @@ function findAccessPointFor(
 function securityAcceptsPsk(device: FlatDevice, base: string): boolean {
   // Refuse key writes on modes that cannot take a PSK. Missing mode
   // info means we cannot prove support → refuse (extensible profile,
-  // not a guess).
-  const mode =
-    v(device, `${base}.BeaconType`) ?? v(device, `${base}.WPAEncryptionModes`);
+  // not a guess). TR-181 carries the mode on the joined AccessPoint.
+  let mode: unknown;
+  if (/^Device\.WiFi\.SSID\.\d+$/.test(base)) {
+    const ap = findAccessPointFor(device, base);
+    if (!ap) return false;
+    mode = v(device, `${ap}.Security.ModeEnabled`);
+  } else {
+    mode =
+      v(device, `${base}.BeaconType`) ??
+      v(device, `${base}.WPAEncryptionModes`);
+  }
   if (typeof mode !== "string" || !mode) return false;
   return /WPA/i.test(mode) || /11i/i.test(mode);
 }
@@ -201,17 +232,22 @@ export function buildWifiTask(
     ]);
   }
 
-  const enableNode = device[`${base}.Enable`] as
-    | { writable?: boolean; value?: [unknown, string] }
-    | undefined;
+  // Enable and the key live where the READER shows them from — for
+  // TR-181 that is the joined AccessPoint, not the SSID node.
+  const { enablePath, keyCandidates } = wifiWritablePaths(device, base);
+  const enableNode = enablePath
+    ? (device[enablePath] as
+        | { writable?: boolean; value?: [unknown, string] }
+        | undefined)
+    : undefined;
   if (settings.enabled != null) {
     // Absent Enable parameter: nothing to write (device keeps its
     // state); present-but-read-only is a hard refusal.
     if (enableNode && enableNode.writable !== true)
       throw new Error("Enable tidak dapat ditulis pada perangkat ini.");
-    if (enableNode?.writable === true)
+    if (enableNode?.writable === true && enablePath)
       values.push([
-        `${base}.Enable`,
+        enablePath,
         settings.enabled,
         enableNode.value?.[1] ?? "xsd:boolean",
       ]);
@@ -220,15 +256,15 @@ export function buildWifiTask(
   if (settings.passwordAction === "replace") {
     // Multiple writable key candidates on one instance = ambiguous
     // mapping: refuse rather than write the first match (spec).
-    const keyCandidates = KEY_PARAMS.map((k) => `${base}.${k}`).filter(
+    const writableKeys = keyCandidates.filter(
       (p) =>
         (device[p] as { writable?: boolean } | undefined)?.writable === true,
     );
-    if (keyCandidates.length > 1)
+    if (writableKeys.length > 1)
       throw new Error(
         "Mapping key WiFi ambigu (beberapa kunci writable) — tulis kunci tidak didukung.",
       );
-    const keyPath = keyCandidates[0];
+    const keyPath = writableKeys[0];
     if (!keyPath)
       throw new Error(
         "Mapping key WiFi tidak unik/tidak dapat ditulis pada perangkat ini.",

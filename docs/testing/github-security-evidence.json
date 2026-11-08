@@ -601,6 +601,16 @@
         "expiresAt": "2026-12-04T00:00:00.000Z"
       }
     },
+    "81": {
+      "package": "M05-C",
+      "ticket": "ARD-221",
+      "state": "needs_validation",
+      "pr": true,
+      "rule": "js/user-controlled-bypass",
+      "location": "lib/ui/wan-operations.ts:441 (post-refresh authorization inside binding condition)",
+      "disposition": "code_fixed_in_pr: reauthorize unconditionally after successful refresh, before client-selected binding/instance decisions; fetch the device under that fresh authorizer and stop on lost access or scope",
+      "tests": ["test/wan-operations.ts"]
+    },
     "dependabot1": {
       "package": "M01-B",
       "ticket": "ARD-165",

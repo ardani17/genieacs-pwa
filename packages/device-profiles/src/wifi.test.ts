@@ -164,6 +164,50 @@ test("TR-181 SSID joins its AccessPoint for Enable and key", () => {
   );
 });
 
+test("TR-181 builder writes Enable and key through the joined AccessPoint", () => {
+  const d = wifiFixture();
+  const ssidNode = "Device.WiFi.SSID.1";
+  const apNode = "Device.WiFi.AccessPoint.1";
+  d[`${ssidNode}.SSID`] = { value: ["Home181", "xsd:string"], writable: true };
+  d[`${apNode}.SSIDReference`] = { value: [ssidNode, "xsd:string"] };
+  d[`${apNode}.Enable`] = { value: [true, "xsd:boolean"], writable: true };
+  d[`${apNode}.Security.ModeEnabled`] = {
+    value: ["WPA2-PSK", "xsd:string"],
+    writable: false,
+  };
+  d[`${apNode}.Security.KeyPassphrase`] = {
+    value: ["", "xsd:string"],
+    writable: true,
+  };
+  // The builder must write the AP paths even though the input is the
+  // SSID node — the old builder searched under the SSID and could
+  // never write a TR-181 radio it had just rendered writable (PR #8
+  // review).
+  const t = buildWifiTask(d, `${ssidNode}.SSID`, {
+    enabled: false,
+    passwordAction: "replace",
+    password: "tr181-passphrase",
+  });
+  assert.deepEqual(t.parameterValues, [
+    [`${apNode}.Enable`, false, "xsd:boolean"],
+    [`${apNode}.Security.KeyPassphrase`, "tr181-passphrase", "xsd:string"],
+  ]);
+  // A TR-181 SSID with NO joined AccessPoint refuses key writes.
+  const orphan = wifiFixture();
+  orphan[`${ssidNode}.SSID`] = {
+    value: ["Orphan", "xsd:string"],
+    writable: true,
+  };
+  assert.throws(
+    () =>
+      buildWifiTask(orphan, `${ssidNode}.SSID`, {
+        passwordAction: "replace",
+        password: "valid-length-passphrase",
+      }),
+    { message: /tidak unik\/tidak dapat ditulis/ },
+  );
+});
+
 test("ambiguous writable keys refuse replacement instead of first match", () => {
   const d = wifiFixture();
   d[`${WLAN2}.WPAPreSharedKey`] = { value: ["", "xsd:string"], writable: true };

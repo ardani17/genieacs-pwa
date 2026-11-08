@@ -3,12 +3,13 @@ import userEvent from "@testing-library/user-event";
 import { expect, test, vi } from "vitest";
 import { Navigation } from "./navigation";
 import { SessionProvider } from "./session-provider";
+import type { SessionDTO } from "@contracts/api.ts";
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/devices/TEST-DEVICE-00001",
 }));
 
-function renderNavigation() {
+function renderNavigation(permissionSets: SessionDTO["permissionSets"] = []) {
   return render(
     <SessionProvider
       initial={{
@@ -16,7 +17,7 @@ function renderNavigation() {
         session: {
           username: "operator",
           roles: ["operator"],
-          permissionSets: [],
+          permissionSets,
           uiConfig: {},
           expiresAt: new Date(Date.now() + 3600000).toISOString(),
           configRevision: "test",
@@ -29,6 +30,15 @@ function renderNavigation() {
     </SessionProvider>,
   );
 }
+
+test("native nested permission sets expose the authorized Admin link", () => {
+  renderNavigation([[{ config: { access: 3, filter: true } }]]);
+  expect(
+    within(screen.getByTestId("main-nav")).getByRole("link", {
+      name: /^Admin$/,
+    }),
+  ).toBeVisible();
+});
 
 test("navigation marks the device section active and hides unavailable routes", () => {
   renderNavigation();

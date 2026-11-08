@@ -15,6 +15,7 @@ export interface OverviewSlice {
   key: string;
   label: string;
   filter: string | null;
+  color: string | null;
   count: number | null;
 }
 
@@ -86,6 +87,9 @@ export function readOverviewConfig(
         key: sliceId,
         label: labelFor(sliceRecord.label, sliceId),
         filter: filterFor(sliceRecord.filter),
+        // Dot colors are literals in the seeded config; expressions
+        // stay ASTs and degrade to null (a default color renders).
+        color: filterFor(sliceRecord.color),
         count: null,
       };
     });

@@ -20,6 +20,8 @@ export interface UpstreamInit {
   cookie?: string | null;
   timeoutMs?: number;
   requestId?: string;
+  /** Extra upstream headers (fixed names — never client-pass-through). */
+  headers?: Record<string, string>;
 }
 
 export async function engineFetch(
@@ -28,6 +30,7 @@ export async function engineFetch(
 ): Promise<Response> {
   const headers: Record<string, string> = {
     "Cache-Control": "no-store",
+    ...(init.headers ?? {}),
   };
   if (init.body !== undefined) headers["Content-Type"] = "application/json";
   if (init.cookie) headers["Cookie"] = `${NATIVE_COOKIE}=${init.cookie}`;

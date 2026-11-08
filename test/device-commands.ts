@@ -11,6 +11,8 @@ import { startApp } from "./helpers/app.ts";
 import { collections } from "../lib/db/db.ts";
 import {
   CommandExecutionError,
+  defaultExecutorDeps,
+  resolveCrurlHosts,
   executeAuthorizedTasks,
   normalizeTaskOutcome,
   type ExecutorDeps,
@@ -21,8 +23,26 @@ import {
 } from "../lib/ui/operation-store.ts";
 import Authorizer from "../lib/common/authorizer.ts";
 import { getRevision } from "../lib/ui/local-cache.ts";
+import { insertTasks } from "../lib/api-functions.ts";
 
 // ---- pure outcome normalization (no database) ----
+
+void test("TR-181 CRURL hostnames use the same server resolver", async () => {
+  const seen: string[] = [];
+  const hosts = await resolveCrurlHosts(
+    {
+      "Device.ManagementServer.ConnectionRequestURL": {
+        value: ["http://tr181.example.invalid:7547/", "xsd:string"],
+      },
+    } as never,
+    async (host) => {
+      seen.push(host);
+      return ["192.0.2.10"];
+    },
+  );
+  assert.deepEqual(seen, ["tr181.example.invalid"]);
+  assert.deepEqual(hosts, ["192.0.2.10"]);
+});
 
 void test("pending and CR failure cannot become success", () => {
   assert.equal(
@@ -59,6 +79,19 @@ void test("fault, timeout and lost confirmation map to failed/unknown", () => {
     normalizeTaskOutcome({
       status: "No contact from CPE",
       tasks: [{ status: "pending" }],
+    }).state,
+    "unknown",
+  );
+  // Expired tasks carry NO execution evidence (the CWMP session drops
+  // them silently) — they can never complete a succeeded outcome.
+  assert.equal(
+    normalizeTaskOutcome({ status: "", tasks: [{ status: "expired" }] }).state,
+    "unknown",
+  );
+  assert.equal(
+    normalizeTaskOutcome({
+      status: "",
+      tasks: [{ status: "done" }, { status: "expired" }],
     }).state,
     "unknown",
   );
@@ -152,6 +185,9 @@ function stubDeps(over: Partial<ExecutorDeps> = {}): {
     },
     async deleteTask() {
       state.delete++;
+    },
+    async taskPending() {
+      return false;
     },
     async countFaults(deviceId, taskId) {
       return state.faults.includes(`${deviceId}:task_${taskId}`) ? 1 : 0;
@@ -275,6 +311,68 @@ void test("executor: guards, idempotency, outcomes, cleanup, legacy parity", asy
         );
         assert.equal(ok.state, "succeeded");
         assert.equal(other.calls.insert, 1);
+      },
+    );
+
+    await t.test(
+      "review fixtures: unknown-identity SPV and wildcard provisions never insert",
+      async () => {
+        // Fixture 1 (PR #8 review): hostname CRURL with no resolution —
+        // the management identity is unknowable, so critical SPV on ANY
+        // WAN instance is held before insertion.
+        await collections.devices.insertOne(
+          deviceDoc(
+            "TEST-CMD-3",
+            "http://acs.example.invalid:7547/",
+            "192.0.2.10",
+          ) as never,
+        );
+        try {
+          const f1 = stubDeps({ resolveHosts: async () => [] });
+          await assert.rejects(
+            executeAuthorizedTasks(
+              base,
+              "TEST-CMD-3",
+              [
+                {
+                  name: "setParameterValues",
+                  parameterValues: [
+                    [`${WAN_IP_1}.Enable`, false, "xsd:boolean"],
+                  ],
+                },
+              ],
+              { deps: f1.deps },
+            ),
+            (err: CommandExecutionError) =>
+              err.status === 400 && /tidak dapat ditentukan/.test(err.message),
+          );
+          assert.equal(f1.calls.insert, 0);
+
+          // Fixture 2 (PR #8 review): identified management WAN — a
+          // wildcard provision that disables every instance is rejected
+          // through the LEGACY native alias too, with zero new tasks.
+          const collection = WAN_IP_1.slice(0, WAN_IP_1.lastIndexOf("."));
+          const legacy = await app.appRequest(
+            "/api/devices/TEST-CMD-1/tasks",
+            {
+              method: "POST",
+              body: JSON.stringify([
+                {
+                  name: "provisions",
+                  provisions: [["value", `${collection}.*.Enable`, false]],
+                },
+              ]),
+            },
+            "admin",
+          );
+          assert.equal(legacy.status, 400);
+          assert.equal(
+            await collections.tasks.countDocuments({ device: "TEST-CMD-1" }),
+            0,
+          );
+        } finally {
+          await collections.devices.deleteOne({ _id: "TEST-CMD-3" });
+        }
       },
     );
 
@@ -411,6 +509,155 @@ void test("executor: guards, idempotency, outcomes, cleanup, legacy parity", asy
       );
       assert.equal(t2.state, "unknown");
     });
+
+    await t.test(
+      "session end with a task still queued is unknown and cleans up without replay",
+      async () => {
+        const { deps } = stubDeps({
+          insertTasks,
+          taskPending: defaultExecutorDeps.taskPending,
+          deleteTask: (id) => collections.tasks.deleteOne({ _id: id }),
+        });
+        const result = await executeAuthorizedTasks(
+          base,
+          "TEST-CMD-1",
+          [{ name: "reboot" }],
+          { deps },
+        );
+        assert.equal(result.state, "unknown");
+        assert.equal(result.statuses[0].status, "pending");
+        assert.equal(
+          await collections.tasks.countDocuments({ device: "TEST-CMD-1" }),
+          0,
+        );
+      },
+    );
+
+    await t.test(
+      "task expired before execution is never reported succeeded",
+      async () => {
+        // PR #8 review: a 1-second expiry that lapses before the
+        // session ends must surface as expired/unknown with evidence —
+        // the old no-fault-is-done check called it "succeeded".
+        const slow = stubDeps({
+          async awaitSessionEnd() {
+            await new Promise((r) => setTimeout(r, 1100));
+            return true;
+          },
+        });
+        const result = await executeAuthorizedTasks(
+          base,
+          "TEST-CMD-1",
+          [
+            {
+              name: "setParameterValues",
+              parameterValues: [[`${WAN_PPP_2}.Name`, "x", "xsd:string"]],
+              expiry: 1,
+            },
+          ],
+          { deps: slow.deps },
+        );
+        assert.equal(result.state, "unknown");
+        assert.equal(result.statuses[0].status, "expired");
+        assert.equal(result.phases[0].errorCode, "TASK_EXPIRED");
+        assert.equal(slow.calls.delete, 1);
+        // The same shape WITHOUT an expiry still succeeds.
+        const fast = stubDeps();
+        const ok = await executeAuthorizedTasks(
+          base,
+          "TEST-CMD-1",
+          [
+            {
+              name: "setParameterValues",
+              parameterValues: [[`${WAN_PPP_2}.Name`, "x", "xsd:string"]],
+            },
+          ],
+          { deps: fast.deps },
+        );
+        assert.equal(ok.state, "succeeded");
+        assert.equal(ok.statuses[0].status, "done");
+      },
+    );
+
+    await t.test(
+      "download with a file id requires files:2 on that exact row",
+      async () => {
+        const withFiles = {
+          ...base,
+          authorizer: new Authorizer([
+            [
+              {
+                devices: { access: 3, filter: true, validate: true },
+                files: { access: 2, filter: true },
+              },
+            ],
+          ]),
+        };
+        // Caller without ANY files access: 403, nothing inserted.
+        const noFiles = stubDeps();
+        await assert.rejects(
+          executeAuthorizedTasks(
+            base,
+            "TEST-CMD-1",
+            [
+              {
+                name: "download",
+                fileType: "1 Firmware Upgrade Image",
+                fileName: "fw.bin",
+                file: "fw-ok.bin",
+              },
+            ],
+            { deps: noFiles.deps },
+          ),
+          (err: CommandExecutionError) => err.status === 403,
+        );
+        assert.equal(noFiles.calls.insert, 0);
+        // files:2 but the row does not exist under the filter: 404.
+        const none = stubDeps();
+        await assert.rejects(
+          executeAuthorizedTasks(
+            withFiles,
+            "TEST-CMD-1",
+            [
+              {
+                name: "download",
+                fileType: "1 Firmware Upgrade Image",
+                fileName: "fw.bin",
+                file: "missing-firmware.bin",
+              },
+            ],
+            { deps: none.deps },
+          ),
+          (err: CommandExecutionError) => err.status === 404,
+        );
+        assert.equal(none.calls.insert, 0);
+        // With the row visible under the caller's filter the task runs.
+        await collections.files.insertOne({
+          _id: "fw-ok.bin",
+          metadata: { fileType: "1 Firmware Upgrade Image" },
+        } as never);
+        try {
+          const ok = stubDeps();
+          const res = await executeAuthorizedTasks(
+            withFiles,
+            "TEST-CMD-1",
+            [
+              {
+                name: "download",
+                fileType: "1 Firmware Upgrade Image",
+                fileName: "fw.bin",
+                file: "fw-ok.bin",
+              },
+            ],
+            { deps: ok.deps },
+          );
+          assert.equal(res.state, "succeeded");
+          assert.equal(ok.calls.insert, 1);
+        } finally {
+          await collections.files.deleteOne({ _id: "fw-ok.bin" });
+        }
+      },
+    );
 
     await t.test(
       "cleanup runs even when the outcome probe throws",

@@ -2,7 +2,9 @@ import * as vm from "node:vm";
 import { IncomingMessage, ServerResponse } from "node:http";
 import { Collection, ObjectId } from "mongodb";
 import { getRevision, getConfig } from "./ui/local-cache.ts";
-import { filesBucket, collections } from "./db/db.ts";
+import { collections } from "./db/db.ts";
+import { Readable } from "node:stream";
+import { replaceStoredFile, deleteStoredFile } from "./file-storage.ts";
 import { optimizeProjection } from "./db/util.ts";
 import * as query from "./query.ts";
 import {
@@ -506,32 +508,12 @@ async function handler(
         productClass: request.headers.productclass,
         version: request.headers.version,
       };
-      try {
-        await filesBucket.delete(filename as unknown as ObjectId);
-      } catch (err) {
-        // Ignore error if file doesn't exist
-      }
-
-      return new Promise((resolve, reject) => {
-        const uploadStream = filesBucket.openUploadStreamWithId(
-          filename as unknown as ObjectId,
-          filename,
-          {
-            metadata: metadata,
-          },
-        );
-
-        uploadStream.on("error", reject);
-
-        uploadStream.end(body, () => {
-          response.writeHead(201);
-          response.end();
-          resolve();
-        });
-      });
+      await replaceStoredFile(filename, metadata, Readable.from([body]));
+      response.writeHead(201);
+      response.end();
     } else if (request.method === "DELETE") {
       try {
-        await filesBucket.delete(filename as unknown as ObjectId);
+        await deleteStoredFile(filename);
       } catch (err) {
         if (err.message.startsWith("FileNotFound")) {
           response.writeHead(404);

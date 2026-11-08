@@ -22,7 +22,19 @@ export interface ResourceEditorConfig {
 
 const CREDENTIAL_LOOKING = /password|secret|token|key|credential/i;
 
+export const SECRET_MASK = "••••••••";
+
+export function isCredentialId(id: string): boolean {
+  return CREDENTIAL_LOOKING.test(id);
+}
+
+// The SERVER sends this sentinel for credential-looking config values
+// (M06-B): a masked source means the real value has not been revealed.
+export function isMaskedValue(value: string): boolean {
+  return value === SECRET_MASK;
+}
+
 export function maskValue(id: string, value: string): string {
-  if (CREDENTIAL_LOOKING.test(id)) return "••••••••";
+  if (CREDENTIAL_LOOKING.test(id)) return SECRET_MASK;
   return value;
 }

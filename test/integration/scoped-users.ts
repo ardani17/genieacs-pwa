@@ -63,28 +63,25 @@ void test("scoped user mutations: filter scope, validator, last admin", async (t
     );
     await app.refreshSnapshot();
 
-    const loginScoped = async (): Promise<string> => {
-      // log in AS the scoped delegate through a dedicated account
-      await collections.users.updateOne(
-        { _id: "managed-delegate" },
-        {
-          $set: {
-            password: await hashPassword(PASSWORD, await generateSalt(16)),
-            salt:
-              (await collections.users.findOne({ _id: "managed-delegate" }))
-                ?.salt ?? "",
-            roles: "scopedAdmin",
-          },
+    // The scoped delegate REALLY logs in through /login with its own
+    // account (PR #8 review: the old test defined loginScoped without
+    // ever calling it and sent every request as admin).
+    const delegateSalt = await generateSalt(16);
+    await collections.users.updateOne(
+      { _id: "managed-delegate" },
+      {
+        $set: {
+          password: await hashPassword(PASSWORD, delegateSalt),
+          salt: delegateSalt,
+          roles: "scopedAdmin",
         },
-        { upsert: true },
-      );
-      await app.refreshSnapshot();
-      return "";
-    };
-    void loginScoped;
+      },
+      { upsert: true },
+    );
+    await app.refreshSnapshot();
 
     await t.test(
-      "in-scope password reset succeeds; out-of-scope 404s",
+      "delegate: in-scope reset succeeds; out-of-scope 404s with state intact",
       async () => {
         // admin (fixtureAdmin, no filter) resets managed-target: fine.
         const inScope = await app.appRequest(
@@ -104,10 +101,50 @@ void test("scoped user mutations: filter scope, validator, last admin", async (t
             method: "PUT",
             body: JSON.stringify({ newPassword: "Fixture-Only-2028!" }),
           },
-          "admin",
+          "managed-delegate",
         );
         assert.equal(scoped.status, 200);
-        void loginScoped;
+
+        // The delegate targets the OUT-OF-FILTER admin: 404, and the
+        // admin's hash/roles survive untouched.
+        const adminBefore = await collections.users.findOne({ _id: "admin" });
+        const outOfScope = await app.appRequest(
+          "/api/app/admin/users/admin/password",
+          {
+            method: "PUT",
+            body: JSON.stringify({ newPassword: "Delegate-Escalation-2026!" }),
+          },
+          "managed-delegate",
+        );
+        assert.equal(outOfScope.status, 404);
+        const adminAfter = await collections.users.findOne({ _id: "admin" });
+        assert.equal(adminAfter?.password, adminBefore?.password);
+        assert.equal(adminAfter?.roles, adminBefore?.roles);
+
+        // Scoped role change: in-scope allowed, out-of-scope 404 with
+        // the roles intact.
+        const roleOk = await app.appRequest(
+          "/api/app/admin/users/managed-target/roles",
+          {
+            method: "PUT",
+            body: JSON.stringify({ roles: "fixtureOperator" }),
+          },
+          "managed-delegate",
+        );
+        assert.equal(roleOk.status, 200);
+        const roleDenied = await app.appRequest(
+          "/api/app/admin/users/admin/roles",
+          {
+            method: "PUT",
+            body: JSON.stringify({ roles: "scopedAdmin" }),
+          },
+          "managed-delegate",
+        );
+        assert.equal(roleDenied.status, 404);
+        assert.equal(
+          (await collections.users.findOne({ _id: "admin" }))?.roles,
+          adminBefore?.roles,
+        );
       },
     );
 
@@ -120,6 +157,60 @@ void test("scoped user mutations: filter scope, validator, last admin", async (t
       // restricted holds users:2 — a DELETE (users:3) is refused.
       assert.ok([403, 404].includes(denied.status));
     });
+
+    await t.test(
+      "native role validators accept allowed roles and reject escalation",
+      async () => {
+        await collections.permissions.updateOne(
+          { _id: "scopedAdmin:users:3" },
+          { $set: { validate: 'object.roles = "fixtureOperator"' } },
+        );
+        await app.refreshSnapshot();
+        try {
+          const created = await app.appRequest(
+            "/api/app/admin/users",
+            {
+              method: "POST",
+              body: JSON.stringify({
+                username: "managed-created",
+                password: PASSWORD,
+                roles: ["fixtureOperator"],
+              }),
+            },
+            "managed-delegate",
+          );
+          assert.equal(created.status, 200);
+          const updated = await app.appRequest(
+            "/api/app/admin/users/managed-target/roles",
+            {
+              method: "PUT",
+              body: JSON.stringify({ roles: ["fixtureOperator"] }),
+            },
+            "managed-delegate",
+          );
+          assert.equal(updated.status, 200);
+          const denied = await app.appRequest(
+            "/api/app/admin/users/managed-target/roles",
+            {
+              method: "PUT",
+              body: JSON.stringify({ roles: ["fixtureAdmin"] }),
+            },
+            "managed-delegate",
+          );
+          assert.equal(denied.status, 403);
+          assert.equal(
+            (await collections.users.findOne({ _id: "managed-target" }))?.roles,
+            "fixtureOperator",
+          );
+        } finally {
+          await collections.permissions.updateOne(
+            { _id: "scopedAdmin:users:3" },
+            { $set: { validate: "true" } },
+          );
+          await app.refreshSnapshot();
+        }
+      },
+    );
 
     await t.test(
       "legacy PUT creates a new user (upstream create-or-update)",
@@ -147,8 +238,12 @@ void test("scoped user mutations: filter scope, validator, last admin", async (t
     );
 
     await t.test("last admin delete and demote refused", async () => {
-      // Leave exactly one admin-capable account ("admin").
+      // Leave exactly one admin-capable account ("admin"). The scoped
+      // delegate holds users:3 through scopedAdmin, so it must go too —
+      // now that the delegate is REALLY created (PR #8 review), it
+      // counts toward the admin-capable set.
       await collections.users.deleteOne({ _id: "managed-second-admin" });
+      await collections.users.deleteOne({ _id: "managed-delegate" });
       await app.refreshSnapshot();
       const attempt = await app.appRequest(
         "/api/users/admin",

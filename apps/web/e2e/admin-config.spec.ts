@@ -93,6 +93,98 @@ test("config values round-trip exactly and credential entries stay masked", asyn
   await expect(page.locator(".CodeMirror")).toContainText("nilai eksak");
 });
 
+test("credential config is masked by the server until an explicit reveal", async ({
+  page,
+}) => {
+  await page.goto("/admin/config");
+  await page.getByRole("button", { name: "Tambah", exact: true }).click();
+  await page.getByLabel("Nama", { exact: true }).fill("app.testSecret");
+  await typeInEditor(page, '"super-fixture-value"');
+  await page.getByRole("button", { name: "Simpan", exact: true }).click();
+  await page.getByRole("link", { name: "app.testSecret", exact: true }).click();
+  // The SERVER sends the sentinel — the raw value never crossed before
+  // the reveal (M06-B).
+  await expect(
+    page.getByText("Nilai tampak seperti kredensial dan disembunyikan.", {
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(page.locator(".CodeMirror")).toContainText("••••••••");
+  await expect(page.getByRole("textbox", { name: "Kode" })).toHaveAttribute(
+    "aria-readonly",
+    "true",
+  );
+  await expect(
+    page.getByRole("button", { name: "Simpan", exact: true }),
+  ).toBeDisabled();
+  // Reveal is an explicit permission-checked round trip.
+  await page.getByRole("button", { name: "Tampilkan nilai" }).click();
+  await expect(page.locator(".CodeMirror")).toContainText(
+    "super-fixture-value",
+  );
+  await expect(page.getByRole("textbox", { name: "Kode" })).toHaveAttribute(
+    "aria-readonly",
+    "false",
+  );
+  await expect(
+    page.getByRole("button", { name: "Simpan", exact: true }),
+  ).toBeDisabled();
+  await typeInEditor(page, '"edited-fixture-value"');
+  await expect(page.locator(".CodeMirror")).toContainText(
+    "edited-fixture-value",
+  );
+  await page.getByRole("button", { name: "Sembunyikan" }).click();
+  await expect(page.getByRole("textbox", { name: "Kode" })).toHaveAttribute(
+    "aria-readonly",
+    "true",
+  );
+  await page.getByRole("button", { name: "Tampilkan nilai" }).click();
+  await expect(page.locator(".CodeMirror")).toContainText(
+    "edited-fixture-value",
+  );
+  // Cleanup: delete the fixture row.
+  await page.getByRole("button", { name: "Hapus", exact: true }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Hapus", exact: true })
+    .click();
+  await expect(
+    page.getByRole("link", { name: "app.testSecret", exact: true }),
+  ).toHaveCount(0);
+});
+
+test("editor find and keyboard save work through the CodeMirror keymap", async ({
+  page,
+}) => {
+  await page.goto("/admin/provisions");
+  await page.getByRole("button", { name: "Tambah", exact: true }).click();
+  await page.getByLabel("Nama", { exact: true }).fill("fixture-findreplace");
+  await typeInEditor(page, 'declare("DeviceID.ID", {value: 1});');
+  // Ctrl+F opens the native CodeMirror search dialog.
+  await page.locator(".CodeMirror textarea").focus();
+  await page.keyboard.press("Control+f");
+  await expect(page.locator(".CodeMirror-dialog")).toBeVisible();
+  await page.keyboard.type("value");
+  await page.keyboard.press("Escape");
+  // Ctrl+S runs the SAME save handler as the Simpan button.
+  await page.keyboard.press("Control+s");
+  await expect(
+    page.getByRole("link", { name: "fixture-findreplace", exact: true }),
+  ).toBeVisible();
+  // Cleanup.
+  await page
+    .getByRole("link", { name: "fixture-findreplace", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Hapus", exact: true }).click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Hapus", exact: true })
+    .click();
+  await expect(
+    page.getByRole("link", { name: "fixture-findreplace", exact: true }),
+  ).toHaveCount(0);
+});
+
 test("deleting a provision requires confirmation", async ({ page }) => {
   await page.goto("/admin/provisions");
   await page

@@ -148,6 +148,8 @@ export interface VirtualParameter {
 
 export interface File {
   _id: string;
+  contentId?: string;
+  chunkSize?: number;
   length: number;
   filename: string;
   uploadDate: Date;

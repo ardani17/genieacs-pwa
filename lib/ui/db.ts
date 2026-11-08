@@ -4,7 +4,14 @@ import { Collection, ObjectId, WithoutId } from "mongodb";
 import { encodeTag } from "../util.ts";
 import { evaluate } from "../common/expression/util.ts";
 import { Expression, Fault, Task } from "../types.ts";
-import { collections, filesBucket } from "../db/db.ts";
+import { collections } from "../db/db.ts";
+import {
+  downloadStoredFile,
+  replaceStoredFile,
+  deleteStoredFile,
+  FILE_MAX_BYTES,
+} from "../file-storage.ts";
+export { FILE_MAX_BYTES, FileTooLargeError } from "../file-storage.ts";
 import { convertOldPrecondition, optimizeProjection } from "../db/util.ts";
 import * as MongoTypes from "../db/types.ts";
 import { parse, parseList, stringify } from "../common/expression/parser.ts";
@@ -516,8 +523,21 @@ export async function deleteUser(id: string): Promise<void> {
   await collections.users.deleteOne({ _id: id });
 }
 
-export function downloadFile(filename: string): Readable {
-  return filesBucket.openDownloadStreamByName(filename);
+export function downloadFile(
+  filename: string,
+  snapshot?: MongoTypes.File,
+): Readable {
+  return downloadStoredFile(filename, {}, snapshot);
+}
+
+// HTTP end is inclusive; GridFS end is exclusive.
+export function downloadFileRange(
+  filename: string,
+  start: number,
+  end: number,
+  snapshot?: MongoTypes.File,
+): Readable {
+  return downloadStoredFile(filename, { start, end: end + 1 }, snapshot);
 }
 
 export function putFile(
@@ -525,39 +545,19 @@ export function putFile(
   metadata: Record<string, string>,
   contentStream: Readable,
 ): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const uploadStream = filesBucket.openUploadStreamWithId(
-      filename as unknown as ObjectId,
-      filename,
-      {
-        metadata: metadata,
-      },
-    );
+  return replaceStoredFile(filename, metadata, contentStream);
+}
 
-    let readableEnded = false;
-    contentStream.on("end", () => {
-      readableEnded = true;
-    });
-    contentStream.on("close", () => {
-      // In Node versions prior to 15, the stream will not emit an error if the
-      // connection is closed before the stream is finished.
-      // For Node 12.9+ we can just use stream.readableEnded
-      if (!readableEnded)
-        uploadStream.destroy(new Error("Stream closed prematurely"));
-    });
-
-    contentStream.on("error", (err) => {
-      uploadStream.destroy(err);
-    });
-
-    uploadStream.on("error", reject);
-    uploadStream.on("finish", resolve);
-    contentStream.pipe(uploadStream);
-  });
+export function replaceFile(
+  filename: string,
+  metadata: Record<string, string>,
+  contentStream: Readable,
+): Promise<void> {
+  return replaceStoredFile(filename, metadata, contentStream, FILE_MAX_BYTES);
 }
 
 export async function deleteFile(filename: string): Promise<void> {
-  await filesBucket.delete(filename as any);
+  await deleteStoredFile(filename);
 }
 
 export async function deleteFault(id: string): Promise<void> {

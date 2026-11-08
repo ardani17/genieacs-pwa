@@ -71,6 +71,38 @@ test("staged tasks are reviewed then committed once", async ({ page }) => {
   expect(submissions).toBe(1);
 });
 
+test("a broken commit response keeps the operation id for recovery", async ({
+  page,
+}) => {
+  await page.goto(`/devices/${DEVICE}`);
+  await page.getByRole("button", { name: "Reboot", exact: true }).click();
+  await page.getByRole("button", { name: "Tahankan", exact: true }).click();
+  await page.getByRole("link", { name: "Task" }).first().click();
+  // The gateway dies mid-commit: an unparseable 502 body (PR #8 review
+  // — the operation id used to be lost with the response).
+  await page.route("**/api/app/devices/*/commands", async (route) => {
+    await route.fulfill({
+      status: 502,
+      contentType: "text/html",
+      body: "<html>gateway</html>",
+    });
+  });
+  await page.getByRole("button", { name: /Kirim \d task/ }).click();
+  await expect(
+    page.getByText("Hasil belum terkonfirmasi", { exact: false }).first(),
+  ).toBeVisible();
+  const recovery = page.getByRole("link", {
+    name: "Lihat hasil operasi berdasarkan ID",
+  });
+  await expect(recovery).toBeVisible();
+  // The link opens the id-based lookup — never a resubmission.
+  await page.unroute("**/api/app/devices/*/commands");
+  await recovery.click();
+  await expect(
+    page.getByRole("heading", { name: "Hasil operasi", exact: true }),
+  ).toBeVisible();
+});
+
 test("operator without devices:3 sees the server refusal, not success", async ({
   browser,
 }) => {

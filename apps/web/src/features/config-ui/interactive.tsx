@@ -15,6 +15,7 @@ import { OperationResult, type WanOutcome } from "../tasks/operation-result";
 import { useEffect, useRef, useState } from "react";
 import type { ApiResult } from "@contracts/api.ts";
 import { stringify } from "../../../../../lib/common/expression/parser.ts";
+import { evaluateUiExpression } from "./expression";
 
 function deviceIdOf(ctx: RenderContext): string {
   return String(
@@ -24,7 +25,7 @@ function deviceIdOf(ctx: RenderContext): string {
 }
 
 // summon-button: initiate a session + refresh basic parameters — a
-// single guarded refreshObject task on the device root, result shown
+// one guarded read of the configured native parameter paths, result shown
 // inline (never auto-retried).
 export function SummonButtonView({
   node,
@@ -41,6 +42,31 @@ export function SummonButtonView({
 
   const summon = async (): Promise<void> => {
     if (!deviceId) return;
+    const parameters = node.parameters;
+    const names =
+      parameters && typeof parameters === "object"
+        ? Object.values(parameters)
+            .map((expression: unknown) => {
+              const path =
+                Array.isArray(expression) && expression[0] === "PARAM"
+                  ? expression[1]
+                  : typeof expression === "string"
+                    ? expression
+                    : null;
+              return typeof path === "string"
+                ? path
+                : evaluateUiExpression(path as never, ctx.device, ctx.now);
+            })
+            .filter(
+              (path): path is string => typeof path === "string" && !!path,
+            )
+        : [];
+    if (!names.length)
+      names.push(
+        Object.keys(ctx.device).some((path) => path.startsWith("Device."))
+          ? "Device."
+          : "InternetGatewayDevice.",
+      );
     setBusy(true);
     setError(null);
     if (!operationId.current) operationId.current = crypto.randomUUID();
@@ -56,24 +82,26 @@ export function SummonButtonView({
           body: JSON.stringify({
             operationId: operationId.current,
             deviceId,
-            tasks: [
-              { name: "refreshObject", objectName: "InternetGatewayDevice." },
-            ],
+            tasks: [{ name: "getParameterValues", parameterNames: names }],
           }),
           cache: "no-store",
         },
       );
-      if (!res.ok) {
-        setError("Perintah tidak dapat dijalankan.");
-        return;
-      }
+      // Both success and error statuses carry the typed envelope. Parsing
+      // failures reach catch, and finally always releases the control.
       const body = (await res.json()) as ApiResult<WanOutcome>;
       if (body.ok !== true) setError(body.error.message);
-      else setOutcome(body.data);
+      else {
+        setOutcome(body.data);
+        operationId.current = null;
+      }
     } catch {
       setError("Hasil belum terkonfirmasi — koneksi terputus.");
+    } finally {
+      // HTTP errors must release the control too — the early return
+      // used to leave the button permanently busy (PR #8 review).
+      setBusy(false);
     }
-    setBusy(false);
   };
 
   return (
@@ -155,7 +183,7 @@ export function ConfigDeviceFaultsView({
       }
       void fetch(
         `/api/app/resources/faults?page=1&pageSize=10&filter=${encodeURIComponent(
-          stringify(["=", ["PARAM", "DeviceID.ID"], deviceId]),
+          stringify(["=", ["PARAM", "device"], deviceId]),
         )}`,
         { cache: "no-store", signal: controller.signal },
       )

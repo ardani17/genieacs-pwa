@@ -57,11 +57,19 @@ export async function GET(
   if (!cookie) return unauthenticated(ctx);
 
   try {
+    // Single-range requests pass through with a VALIDATED shape only
+    // (fixed header name; anything malformed is dropped and the engine
+    // serves the full body).
+    const clientRange = request.headers.get("range") ?? "";
+    const forwardRange = /^bytes=(\d*)-(\d*)$/.test(clientRange.trim())
+      ? { Range: clientRange.trim() }
+      : {};
     const upstream = await engineFetch(
       `/api/blob/files/${encodeURIComponent(id)}`,
       {
         cookie,
         requestId: ctx.requestId,
+        ...(Object.keys(forwardRange).length ? { headers: forwardRange } : {}),
         // The abort signal stays attached for the WHOLE streamed body,
         // so the budget must cover the transfer, not just the headers:
         // uploads up to 100MiB are allowed, and 100MiB over a 10 Mbps
@@ -100,6 +108,13 @@ export async function GET(
         "Content-Type":
           upstream.headers.get("content-type") ?? "application/octet-stream",
         "Content-Disposition": `attachment; filename="${safeName}"`,
+        // Range responses keep their partial-content markers.
+        ...(upstream.headers.get("content-range")
+          ? { "Content-Range": upstream.headers.get("content-range")! }
+          : {}),
+        ...(upstream.headers.get("accept-ranges")
+          ? { "Accept-Ranges": upstream.headers.get("accept-ranges")! }
+          : {}),
         ...correlationHeaders(ctx),
       },
     });

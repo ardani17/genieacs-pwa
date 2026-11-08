@@ -3,6 +3,7 @@ import { get } from "../config.ts";
 import * as MongoTypes from "./types.ts";
 
 export let filesBucket: GridFSBucket;
+export let fileContentsBucket: GridFSBucket;
 
 export const collections = {
   devices: null as Collection<MongoTypes.Device>,
@@ -19,6 +20,9 @@ export const collections = {
   config: null as Collection<MongoTypes.Config>,
   cache: null as Collection<MongoTypes.Cache>,
   locks: null as Collection<MongoTypes.Lock>,
+  // Legacy GridFS chunks, retained for cleanup after publication through
+  // lib/file-storage.ts.
+  fsChunks: null as Collection<{ files_id: unknown; n: number; data: Buffer }>,
   // App-side idempotency/diagnosis store (contracts.md "app_operations");
   // never a durable work queue — holds fingerprints and outcomes only.
   appOperations: null as Collection<AppOperationDoc>,
@@ -69,8 +73,10 @@ export async function connect(): Promise<void> {
   collections.config = db.collection("config");
   collections.cache = db.collection("cache");
   collections.locks = db.collection("locks");
+  collections.fsChunks = db.collection("fs.chunks");
   collections.appOperations = db.collection("app_operations");
   filesBucket = new GridFSBucket(db);
+  fileContentsBucket = new GridFSBucket(db, { bucketName: "file_contents" });
 
   await Promise.all([
     collections.tasks.createIndex({ device: 1, timestamp: 1 }),

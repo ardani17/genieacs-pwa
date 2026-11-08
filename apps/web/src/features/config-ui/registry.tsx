@@ -75,9 +75,21 @@ export function renderConfigNode(
     case "parameter":
       return <ParameterView node={node} ctx={ctx} />;
     case "parameter-list":
-      return <ParameterListView node={node} ctx={ctx} />;
+      return (
+        <ParameterListView
+          node={node}
+          ctx={ctx}
+          renderChild={(child, c) => renderConfigNode(child, c, childPath)}
+        />
+      );
     case "parameter-table":
-      return <ParameterTableView node={node} ctx={ctx} />;
+      return (
+        <ParameterTableView
+          node={node}
+          ctx={ctx}
+          renderChild={(child, c) => renderConfigNode(child, c, childPath)}
+        />
+      );
     case "container":
       return (
         <ContainerView
@@ -108,7 +120,11 @@ export function renderConfigNode(
         />
       );
     case "loading":
-      return <LoadingView label={node.label} />;
+      return (
+        <LoadingView
+          label={typeof node.label === "string" ? node.label : undefined}
+        />
+      );
     case "summon-button":
       return <SummonButtonView node={node} ctx={ctx} />;
     case "tags":

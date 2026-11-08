@@ -45,7 +45,7 @@ export interface SessionDTO {
       filter?: Expression;
       validate?: Expression;
     }
-  >[];
+  >[][];
   expiresAt: string; // ISO UTC
   configRevision: string;
   uiConfig: Record<string, unknown>;
