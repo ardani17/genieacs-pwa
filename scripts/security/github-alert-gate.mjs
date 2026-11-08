@@ -434,6 +434,20 @@ export const ALERT_MAPPING = {
     required: true,
     pr: true,
   },
+  96: {
+    package: "M07-B",
+    tests: ["scripts/fixtures/vpn-evidence.test.mjs"],
+    required: true,
+    pr: true,
+    renumberedFrom: 87,
+  },
+  97: {
+    package: "M07-B",
+    tests: ["test/internal-url.ts"],
+    required: true,
+    pr: true,
+    renumberedFrom: 88,
+  },
   dependabot1: {
     package: "M01-B",
     ticket: "ARD-165",

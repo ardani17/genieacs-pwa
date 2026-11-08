@@ -205,8 +205,10 @@ export function validateVpnProfileInput(raw: unknown): SettingsValidation {
   }
   for (const key of Object.keys(raw))
     if (!KNOWN_INPUT_KEYS.has(key)) {
-      errors[key] = "unknown field";
-      return { ok: false, fieldErrors: errors };
+      // Map and fromEntries create own data properties without invoking
+      // Object.prototype setters for attacker-supplied names like __proto__.
+      const unknownFields = new Map([[key, "unknown field"]]);
+      return { ok: false, fieldErrors: Object.fromEntries(unknownFields) };
     }
 
   let revision: number | undefined;

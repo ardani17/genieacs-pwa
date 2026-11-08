@@ -183,7 +183,8 @@ void test("unknown fields and bad shapes are rejected per field", () => {
     const result = validateVpnProfileInput(input);
     assert.equal(result.ok, false);
     if (!result.ok) {
-      assert.equal(Object.getPrototypeOf(result.fieldErrors), null);
+      assert.equal(Object.getPrototypeOf(result.fieldErrors), Object.prototype);
+      assert.equal(Object.hasOwn(result.fieldErrors, key), true);
       assert.equal(result.fieldErrors[key], "unknown field");
       assert.equal(
         JSON.parse(JSON.stringify(result.fieldErrors))[key],

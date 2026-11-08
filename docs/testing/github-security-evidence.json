@@ -11,7 +11,7 @@
     "approvalPolicy": "Pending exceptions below are proposals. They require named approvedBy and reviewedAt, full scope/CWE/compensation/owner and expiry within 30 days. No approval is inferred from this file or unit tests.",
     "publicationPolicy": "Local tests do not close GitHub alerts. Publish through an authorized PR to development, transition the existing default CodeQL setup to this advanced workflow, then evaluate actual exact-ref evidence."
   },
-  "scope": "Evidence mapping for the 16 CodeQL + 1 Dependabot alerts in the 2026-11-01 snapshot, plus PR merge-ref alerts triaged per pull request: PR #6 alerts 17-29 (2026-11-06) and PR #8 alerts 68-80 (2026-11-07, refs/pull/8/merge at b8bf7d1; line shifts renumbered the app-logger sinks and the reflected-xss rule fires at the approved envelope call sites). Alert closure is only claimed as fixed_verified after the security-alerts workflow scans the exact ref/SHA. Residual risks are risk_accepted via reviewed exceptions with expiry, never silently fixed. PR #9 alerts 82-95 were source-triaged on 2026-11-08; code fixes await exact-ref scan and new intentional transport/evidence flows remain unapproved.",
+  "scope": "Evidence mapping for the 16 CodeQL + 1 Dependabot alerts in the 2026-11-01 snapshot, plus PR merge-ref alerts triaged per pull request: PR #6 alerts 17-29 (2026-11-06) and PR #8 alerts 68-80 (2026-11-07, refs/pull/8/merge at b8bf7d1; line shifts renumbered the app-logger sinks and the reflected-xss rule fires at the approved envelope call sites). Alert closure is only claimed as fixed_verified after the security-alerts workflow scans the exact ref/SHA. Residual risks are risk_accepted via reviewed exceptions with expiry, never silently fixed. PR #9 alerts 82-95 were source-triaged on 2026-11-08; code fixes await exact-ref scan and new intentional transport/evidence flows remain unapproved. User ardani17 approved seven bounded transport/evidence scopes on 2026-11-08 until 2026-12-07; six remain applicable after scan (86,89,90,92 plus 87->96 and 88->97 renumbering), and fixed93 needs no exception. High94 is source-fixed with Map/fromEntries.",
   "sourceSnapshot": {
     "checkedAt": "2026-11-01T14:24:50Z",
     "analysisRef": "refs/heads/main",
@@ -667,20 +667,22 @@
     },
     "86": {
       "package": "M07-B",
-      "state": "needs_validation",
+      "state": "risk_accepted_pending_scan",
       "pr": true,
       "rule": "js/file-access-to-http",
       "location": "lib/ui/vpn-controller.ts controllerRequest",
       "tests": ["test/internal-url.ts"],
-      "disposition": "source_review_complete; intentional authenticated internal token transport or bounded JSON evidence persistence; no new human approval recorded",
+      "disposition": "User ardani17 explicitly approved the bounded exception on 2026-11-08 in this M07 review session; only exact scoped flows still open after scan are accepted.",
       "exception": {
-        "reviewStatus": "pending_human_review",
+        "reviewStatus": "approved",
         "reason": "Intentional file-based bearer authentication between internal services; source review confirms no browser-controlled target or token path and no transport of the encryption key.",
         "scope": "lib/ui/vpn-controller.ts controllerRequest: mounted controller token in Authorization to operator-configured VPN_CONTROLLER_URL and fixed internal routes only",
         "cwe": "CWE-200",
         "compensation": "Mounted secret is isolated from browsers and logs; exact fixed routes; operator origin accepts http/https without userinfo/query/fragment/path prefix; redirect:error; loopback or isolated Compose network; authorization and actual redirect-rejection tests.",
         "owner": "ardani17",
-        "expiresAt": "2026-12-07T00:00:00.000Z"
+        "expiresAt": "2026-12-07T00:00:00.000Z",
+        "approvedBy": "ardani17",
+        "reviewedAt": "2026-11-08T13:07:40.000Z"
       }
     },
     "87": {
@@ -690,16 +692,7 @@
       "rule": "js/file-access-to-http",
       "location": "scripts/fixtures/vpn-lab.mjs probe",
       "tests": ["scripts/fixtures/vpn-evidence.test.mjs"],
-      "disposition": "source_review_complete; intentional authenticated internal token transport or bounded JSON evidence persistence; no new human approval recorded",
-      "exception": {
-        "reviewStatus": "pending_human_review",
-        "reason": "Intentional file-based bearer authentication between internal services; source review confirms no browser-controlled target or token path and no transport of the encryption key.",
-        "scope": "scripts/fixtures/vpn-lab.mjs probe/reconnect: committed dummy controller fixture token to fixed http://vpn-lab:8787 lab origin only",
-        "cwe": "CWE-200",
-        "compensation": "Mounted secret is isolated from browsers and logs; exact fixed routes; operator origin accepts http/https without userinfo/query/fragment/path prefix; redirect:error; loopback or isolated Compose network; authorization and actual redirect-rejection tests.",
-        "owner": "ardani17",
-        "expiresAt": "2026-12-07T00:00:00.000Z"
-      }
+      "disposition": "Original alert no longer present on scanned ref; same source flow renumbered to 96"
     },
     "88": {
       "package": "M07-B",
@@ -708,51 +701,46 @@
       "rule": "js/file-access-to-http",
       "location": "services/vpn-controller/src/main.ts health",
       "tests": ["test/internal-url.ts"],
-      "disposition": "source_review_complete; intentional authenticated internal token transport or bounded JSON evidence persistence; no new human approval recorded",
-      "exception": {
-        "reviewStatus": "pending_human_review",
-        "reason": "Intentional file-based bearer authentication between internal services; source review confirms no browser-controlled target or token path and no transport of the encryption key.",
-        "scope": "services/vpn-controller/src/main.ts --health: mounted controller token in Authorization to fixed http://127.0.0.1:8787/health only",
-        "cwe": "CWE-200",
-        "compensation": "Mounted secret is isolated from browsers and logs; exact fixed routes; operator origin accepts http/https without userinfo/query/fragment/path prefix; redirect:error; loopback or isolated Compose network; authorization and actual redirect-rejection tests.",
-        "owner": "ardani17",
-        "expiresAt": "2026-12-07T00:00:00.000Z"
-      }
+      "disposition": "Original alert no longer present on scanned ref; same source flow renumbered to 97"
     },
     "89": {
       "package": "M07-B",
-      "state": "needs_validation",
+      "state": "risk_accepted_pending_scan",
       "pr": true,
       "rule": "js/file-access-to-http",
       "location": "services/vpn-controller/src/main.ts profile polling",
       "tests": ["test/internal-url.ts"],
-      "disposition": "source_review_complete; intentional authenticated internal token transport or bounded JSON evidence persistence; no new human approval recorded",
+      "disposition": "User ardani17 explicitly approved the bounded exception on 2026-11-08 in this M07 review session; only exact scoped flows still open after scan are accepted.",
       "exception": {
-        "reviewStatus": "pending_human_review",
+        "reviewStatus": "approved",
         "reason": "Intentional file-based bearer authentication between internal services; source review confirms no browser-controlled target or token path and no transport of the encryption key.",
         "scope": "services/vpn-controller/src/main.ts profile polling: mounted controller token in Authorization to operator-configured GENIEACS_UI_URL /api/internal/vpn/profile only",
         "cwe": "CWE-200",
         "compensation": "Mounted secret is isolated from browsers and logs; exact fixed routes; operator origin accepts http/https without userinfo/query/fragment/path prefix; redirect:error; loopback or isolated Compose network; authorization and actual redirect-rejection tests.",
         "owner": "ardani17",
-        "expiresAt": "2026-12-07T00:00:00.000Z"
+        "expiresAt": "2026-12-07T00:00:00.000Z",
+        "approvedBy": "ardani17",
+        "reviewedAt": "2026-11-08T13:07:40.000Z"
       }
     },
     "90": {
       "package": "M07-B",
-      "state": "needs_validation",
+      "state": "risk_accepted_pending_scan",
       "pr": true,
       "rule": "js/file-access-to-http",
       "location": "services/vpn-controller/test/fixture.ts polling",
       "tests": ["test/settings-permissions.ts"],
-      "disposition": "source_review_complete; intentional authenticated internal token transport or bounded JSON evidence persistence; no new human approval recorded",
+      "disposition": "User ardani17 explicitly approved the bounded exception on 2026-11-08 in this M07 review session; only exact scoped flows still open after scan are accepted.",
       "exception": {
-        "reviewStatus": "pending_human_review",
+        "reviewStatus": "approved",
         "reason": "Intentional file-based bearer authentication between internal services; source review confirms no browser-controlled target or token path and no transport of the encryption key.",
         "scope": "services/vpn-controller/test/fixture.ts profile polling: dummy fixture token in Authorization to fixed http://ui:7583 test backend only",
         "cwe": "CWE-200",
         "compensation": "Mounted secret is isolated from browsers and logs; exact fixed routes; operator origin accepts http/https without userinfo/query/fragment/path prefix; redirect:error; loopback or isolated Compose network; authorization and actual redirect-rejection tests.",
         "owner": "ardani17",
-        "expiresAt": "2026-12-07T00:00:00.000Z"
+        "expiresAt": "2026-12-07T00:00:00.000Z",
+        "approvedBy": "ardani17",
+        "reviewedAt": "2026-11-08T13:07:40.000Z"
       }
     },
     "91": {
@@ -766,20 +754,22 @@
     },
     "92": {
       "package": "M07-B",
-      "state": "needs_validation",
+      "state": "risk_accepted_pending_scan",
       "pr": true,
       "rule": "js/http-to-file-access",
       "location": "scripts/fixtures/vpn-lab.mjs status artifact",
       "tests": ["scripts/fixtures/vpn-evidence.test.mjs"],
-      "disposition": "source_review_complete; intentional authenticated internal token transport or bounded JSON evidence persistence; no new human approval recorded",
+      "disposition": "User ardani17 explicitly approved the bounded exception on 2026-11-08 in this M07 review session; only exact scoped flows still open after scan are accepted.",
       "exception": {
-        "reviewStatus": "pending_human_review",
+        "reviewStatus": "approved",
         "reason": "Intentional non-executable lab test evidence persistence; source review confirms fixed output paths and bounded public status projection rather than raw arbitrary network data.",
         "scope": "scripts/fixtures/vpn-lab.mjs: validated public VpnStatus projection written as JSON to fixed artifacts/vpn-lab/status.json only",
         "cwe": "CWE-434, CWE-912",
         "compensation": "Fixed ignored artifacts directory; whitelist of bounded state/revision/IP/route/time fields; unknown fields and credential properties stripped; reconnect200/409 asserted; stored JSON is never executed or loaded as configuration; projection regression test.",
         "owner": "ardani17",
-        "expiresAt": "2026-12-07T00:00:00.000Z"
+        "expiresAt": "2026-12-07T00:00:00.000Z",
+        "approvedBy": "ardani17",
+        "reviewedAt": "2026-11-08T13:07:40.000Z"
       }
     },
     "93": {
@@ -789,16 +779,7 @@
       "rule": "js/http-to-file-access",
       "location": "scripts/fixtures/vpn-lab.mjs reconnect artifact",
       "tests": ["scripts/fixtures/vpn-evidence.test.mjs"],
-      "disposition": "source_review_complete; intentional authenticated internal token transport or bounded JSON evidence persistence; no new human approval recorded",
-      "exception": {
-        "reviewStatus": "pending_human_review",
-        "reason": "Intentional non-executable lab test evidence persistence; source review confirms fixed output paths and bounded public status projection rather than raw arbitrary network data.",
-        "scope": "scripts/fixtures/vpn-lab.mjs: asserted reconnect statuses and validated state written as JSON to fixed artifacts/vpn-lab/reconnect.json only",
-        "cwe": "CWE-434, CWE-912",
-        "compensation": "Fixed ignored artifacts directory; whitelist of bounded state/revision/IP/route/time fields; unknown fields and credential properties stripped; reconnect200/409 asserted; stored JSON is never executed or loaded as configuration; projection regression test.",
-        "owner": "ardani17",
-        "expiresAt": "2026-12-07T00:00:00.000Z"
-      }
+      "disposition": "code_fixed_pending_exact_ref_scan: reconnect artifact contains asserted 200/409 plus bounded validated state; no exception needed after the 2026-11-08 scan."
     },
     "94": {
       "package": "M07-A",
@@ -807,7 +788,7 @@
       "rule": "js/remote-property-injection",
       "location": "packages/app-contracts/src/settings.ts validation errors",
       "tests": ["test/app-settings.ts"],
-      "disposition": "code_fixed_pending_exact_ref_scan: Validation error dictionaries have a null prototype, including user-named unknown fields."
+      "disposition": "code_fixed_pending_exact_ref_scan: unknown property names use Map and Object.fromEntries, creating own data properties without invoking prototype setters; remaining validation dictionaries have null prototype."
     },
     "95": {
       "package": "M07-A",
@@ -817,6 +798,48 @@
       "location": "test/app-settings.ts bootstrap password fixture",
       "tests": ["test/app-settings.ts"],
       "disposition": "code_fixed_pending_exact_ref_scan: Password fixture is exclusive mode0600 under a unique mkdtemp private directory."
+    },
+    "96": {
+      "package": "M07-B",
+      "state": "risk_accepted_pending_scan",
+      "pr": true,
+      "rule": "js/file-access-to-http",
+      "location": "scripts/fixtures/vpn-lab.mjs probe",
+      "tests": ["scripts/fixtures/vpn-evidence.test.mjs"],
+      "disposition": "User ardani17 explicitly approved the bounded exception on 2026-11-08 in this M07 review session; only exact scoped flows still open after scan are accepted.",
+      "exception": {
+        "reviewStatus": "approved",
+        "reason": "Intentional file-based bearer authentication between internal services; source review confirms no browser-controlled target or token path and no transport of the encryption key.",
+        "scope": "scripts/fixtures/vpn-lab.mjs probe/reconnect: committed dummy controller fixture token to fixed http://vpn-lab:8787 lab origin only",
+        "cwe": "CWE-200",
+        "compensation": "Mounted secret is isolated from browsers and logs; exact fixed routes; operator origin accepts http/https without userinfo/query/fragment/path prefix; redirect:error; loopback or isolated Compose network; authorization and actual redirect-rejection tests.",
+        "owner": "ardani17",
+        "expiresAt": "2026-12-07T00:00:00.000Z",
+        "approvedBy": "ardani17",
+        "reviewedAt": "2026-11-08T13:07:40.000Z"
+      },
+      "renumberedFrom": 87
+    },
+    "97": {
+      "package": "M07-B",
+      "state": "risk_accepted_pending_scan",
+      "pr": true,
+      "rule": "js/file-access-to-http",
+      "location": "services/vpn-controller/src/main.ts health",
+      "tests": ["test/internal-url.ts"],
+      "disposition": "User ardani17 explicitly approved the bounded exception on 2026-11-08 in this M07 review session; only exact scoped flows still open after scan are accepted.",
+      "exception": {
+        "reviewStatus": "approved",
+        "reason": "Intentional file-based bearer authentication between internal services; source review confirms no browser-controlled target or token path and no transport of the encryption key.",
+        "scope": "services/vpn-controller/src/main.ts --health: mounted controller token in Authorization to fixed http://127.0.0.1:8787/health only",
+        "cwe": "CWE-200",
+        "compensation": "Mounted secret is isolated from browsers and logs; exact fixed routes; operator origin accepts http/https without userinfo/query/fragment/path prefix; redirect:error; loopback or isolated Compose network; authorization and actual redirect-rejection tests.",
+        "owner": "ardani17",
+        "expiresAt": "2026-12-07T00:00:00.000Z",
+        "approvedBy": "ardani17",
+        "reviewedAt": "2026-11-08T13:07:40.000Z"
+      },
+      "renumberedFrom": 88
     }
   },
   "gate": {
