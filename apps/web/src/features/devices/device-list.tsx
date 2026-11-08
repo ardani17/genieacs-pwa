@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { DataView, type DataViewProps } from "@/components/ui/data-view";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import { FilterBar } from "./filter-bar";
 import { runBulk, BULK_MAX_TARGETS } from "../tasks/bulk";
 
@@ -96,11 +98,11 @@ function BulkBar({
     <div className="space-y-2 rounded-xl border bg-card p-3">
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <span className="font-medium">{selected.length} dipilih</span>
-        <input
+        <Input
           aria-label="Tag untuk bulk"
           value={tag}
           placeholder="nama-tag"
-          className="min-h-11 rounded-md border px-3"
+          className="w-44"
           onChange={(e) => setTag(e.target.value)}
         />
         <Button
@@ -293,12 +295,10 @@ export function DeviceList() {
                       return (
                         <TableRow key={id}>
                           <TableCell className="px-2">
-                            <input
-                              type="checkbox"
+                            <Checkbox
                               aria-label={`Pilih ${id}`}
                               checked={selected.has(id)}
-                              onChange={() => toggle(id)}
-                              className="size-5"
+                              onCheckedChange={() => toggle(id)}
                             />
                           </TableCell>
                           <TableCell className="px-6">

@@ -5,8 +5,16 @@ import { hasResourceAccess } from "@/lib/permissions";
 import { apiRequest } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Field } from "@/components/ui/field";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -218,23 +226,29 @@ export function VpnProfileForm({ status }: { status?: VpnStatus | null } = {}) {
             {textField("Username VPN", "username")}
             <Field label="Aksi password">
               {({ id }) => (
-                <select
-                  id={id}
-                  className="min-h-11 w-full rounded-md border bg-background p-2"
+                <Select
                   value={form.passwordAction}
-                  onChange={(e) =>
+                  onValueChange={(v) =>
                     setForm({
                       ...form,
-                      passwordAction: e.target.value as "keep" | "replace",
+                      passwordAction: v as "keep" | "replace",
                       password: undefined,
                     })
                   }
                 >
-                  <option value="keep" disabled={!saved?.passwordConfigured}>
-                    Pertahankan password tersimpan
-                  </option>
-                  <option value="replace">Ganti password</option>
-                </select>
+                  <SelectTrigger id={id} className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem
+                      value="keep"
+                      disabled={!saved?.passwordConfigured}
+                    >
+                      Pertahankan password tersimpan
+                    </SelectItem>
+                    <SelectItem value="replace">Ganti password</SelectItem>
+                  </SelectContent>
+                </Select>
               )}
             </Field>
             {form.passwordAction === "replace" ? (
@@ -266,10 +280,10 @@ export function VpnProfileForm({ status }: { status?: VpnStatus | null } = {}) {
                 .join("; ")}
             >
               {({ id, describedBy }) => (
-                <textarea
+                <Textarea
                   id={id}
                   aria-describedby={describedBy}
-                  className="min-h-24 w-full rounded-md border bg-background p-2 text-sm"
+                  className="min-h-24"
                   value={form.routes.join("\n")}
                   onChange={(e) =>
                     setForm({ ...form, routes: e.target.value.split(/[,\n]/) })
@@ -301,24 +315,29 @@ export function VpnProfileForm({ status }: { status?: VpnStatus | null } = {}) {
               <legend className="px-1 font-medium">Alamat ACS</legend>
               <Field label="Mode alamat ACS">
                 {({ id }) => (
-                  <select
-                    id={id}
-                    className="min-h-11 w-full rounded-md border bg-background p-2"
+                  <Select
                     value={form.acs.mode}
-                    onChange={(e) =>
+                    onValueChange={(v) =>
                       setForm({
                         ...form,
                         acs: {
                           ...form.acs,
-                          mode: e.target.value as "manual" | "auto-ppp",
-                          host: e.target.value === "manual" ? "" : null,
+                          mode: v as "manual" | "auto-ppp",
+                          host: v === "manual" ? "" : null,
                         },
                       })
                     }
                   >
-                    <option value="auto-ppp">Otomatis dari IP PPP</option>
-                    <option value="manual">IP atau DNS manual</option>
-                  </select>
+                    <SelectTrigger id={id} className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="auto-ppp">
+                        Otomatis dari IP PPP
+                      </SelectItem>
+                      <SelectItem value="manual">IP atau DNS manual</SelectItem>
+                    </SelectContent>
+                  </Select>
                 )}
               </Field>
               {form.acs.mode === "manual" ? (
@@ -339,23 +358,26 @@ export function VpnProfileForm({ status }: { status?: VpnStatus | null } = {}) {
               ) : null}
               <Field label="Skema ACS">
                 {({ id }) => (
-                  <select
-                    id={id}
-                    className="min-h-11 w-full rounded-md border bg-background p-2"
+                  <Select
                     value={form.acs.scheme}
-                    onChange={(e) =>
+                    onValueChange={(v) =>
                       setForm({
                         ...form,
                         acs: {
                           ...form.acs,
-                          scheme: e.target.value as "http" | "https",
+                          scheme: v as "http" | "https",
                         },
                       })
                     }
                   >
-                    <option value="http">HTTP</option>
-                    <option value="https">HTTPS</option>
-                  </select>
+                    <SelectTrigger id={id} className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="http">HTTP</SelectItem>
+                      <SelectItem value="https">HTTPS</SelectItem>
+                    </SelectContent>
+                  </Select>
                 )}
               </Field>
               <Field label="Port ACS" error={fields["acs.port"]}>

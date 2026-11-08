@@ -6,6 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field } from "@/components/ui/field";
 import { Card, CardContent } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { buildLogQuery, type LogFilters } from "@contracts/log-query";
 import { LoggingStatus } from "./logging-status";
 
@@ -157,19 +164,22 @@ export function LogSearch({
           {input("Layanan", service, setService)}
           <Field label="Level">
             {({ id }) => (
-              <select
-                id={id}
-                className="min-h-11 w-full rounded-md border bg-background p-2"
-                value={level}
-                onChange={(e) => setLevel(e.target.value)}
+              <Select
+                value={level || "all"}
+                onValueChange={(v) => setLevel(v === "all" ? "" : v)}
               >
-                <option value="">Semua level</option>
-                {["debug", "info", "warn", "error"].map((v) => (
-                  <option key={v} value={v}>
-                    {v}
-                  </option>
-                ))}
-              </select>
+                <SelectTrigger id={id} className="w-full">
+                  <SelectValue placeholder="Semua level" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Semua level</SelectItem>
+                  {["debug", "info", "warn", "error"].map((v) => (
+                    <SelectItem key={v} value={v}>
+                      {v}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             )}
           </Field>
           {input("Request ID", requestId, setRequestId)}
