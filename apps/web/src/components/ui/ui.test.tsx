@@ -9,9 +9,28 @@ import {
   DialogDescription,
   DialogTrigger,
 } from "./dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "./alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "./dropdown-menu";
 import { Button } from "./button";
+import { Checkbox } from "./checkbox";
 import { Field } from "./field";
 import { Status } from "./status";
+import { Textarea } from "./textarea";
 import { DataView } from "./data-view";
 
 test("dialog traps focus and closes on Escape", async () => {
@@ -141,4 +160,110 @@ test("denied and unavailable states carry distinct messages", () => {
     <DataView state="unavailable" items={[]} renderReady={() => null} />,
   );
   expect(screen.getByRole("alert")).toHaveTextContent("Data belum tersedia.");
+});
+
+test("checkbox toggles through its label", async () => {
+  const user = userEvent.setup();
+  function Example() {
+    const [checked, setChecked] = useState<boolean | "indeterminate">(false);
+    return (
+      <label className="flex items-center gap-2">
+        <Checkbox checked={checked} onCheckedChange={setChecked} />
+        Pilih perangkat
+      </label>
+    );
+  }
+  render(<Example />);
+  const box = screen.getByRole("checkbox", { name: "Pilih perangkat" });
+  expect(box).toHaveAttribute("aria-checked", "false");
+  await user.click(box);
+  expect(box).toHaveAttribute("aria-checked", "true");
+});
+
+test("checkbox exposes the indeterminate mixed state", () => {
+  render(
+    <label className="flex items-center gap-2">
+      <Checkbox checked="indeterminate" onCheckedChange={() => {}} />
+      Pilih semua
+    </label>,
+  );
+  expect(screen.getByRole("checkbox", { name: "Pilih semua" })).toHaveAttribute(
+    "aria-checked",
+    "mixed",
+  );
+});
+
+test("textarea stays wired to its label and accepts input", async () => {
+  const user = userEvent.setup();
+  render(
+    <label className="flex flex-col gap-2">
+      Catatan
+      <Textarea />
+    </label>,
+  );
+  const area = screen.getByLabelText("Catatan");
+  await user.type(area, "profil L2TP kantor");
+  expect(area).toHaveValue("profil L2TP kantor");
+});
+
+test("alertDialog focuses cancel first and reports the chosen action", async () => {
+  const user = userEvent.setup();
+  const onConfirm = vi.fn();
+  function Example() {
+    const [open, setOpen] = useState(false);
+    return (
+      <AlertDialog open={open} onOpenChange={setOpen}>
+        <AlertDialogTrigger asChild>
+          <Button variant="destructive">Hapus pengguna</Button>
+        </AlertDialogTrigger>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Hapus pengguna ini?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tindakan ini tidak bisa dibatalkan.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Batal</AlertDialogCancel>
+            <AlertDialogAction onClick={onConfirm}>Ya, hapus</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    );
+  }
+  render(<Example />);
+  await user.click(screen.getByRole("button", { name: "Hapus pengguna" }));
+  const dialog = screen.getByRole("alertdialog", {
+    name: "Hapus pengguna ini?",
+  });
+  expect(dialog).toHaveAttribute("aria-modal", "true");
+  expect(screen.getByRole("button", { name: "Batal" })).toHaveFocus();
+  await user.click(screen.getByRole("button", { name: "Ya, hapus" }));
+  expect(onConfirm).toHaveBeenCalledOnce();
+  expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+});
+
+test("dropdownMenu opens, selects an item and closes with Escape", async () => {
+  const user = userEvent.setup();
+  const onSelect = vi.fn();
+  render(
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="outline">Aksi</Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent>
+        <DropdownMenuItem onSelect={onSelect}>Buka detail</DropdownMenuItem>
+        <DropdownMenuItem variant="destructive">Hapus</DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>,
+  );
+  await user.click(screen.getByRole("button", { name: "Aksi" }));
+  expect(screen.getByRole("menu")).toBeInTheDocument();
+  await user.click(screen.getByRole("menuitem", { name: "Buka detail" }));
+  expect(onSelect).toHaveBeenCalledOnce();
+  expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: "Aksi" }));
+  expect(screen.getByRole("menu")).toBeInTheDocument();
+  await user.keyboard("{Escape}");
+  expect(screen.queryByRole("menu")).not.toBeInTheDocument();
 });
