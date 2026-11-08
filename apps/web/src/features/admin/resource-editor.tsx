@@ -17,6 +17,16 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Status } from "@/components/ui/status";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -594,23 +604,31 @@ export function ResourceEditor({
           </>
         }
       />
-      <EditorDialog
+      <AlertDialog
         open={deleteTarget !== null}
         onOpenChange={(open) => {
           if (!open) setDeleteTarget(null);
         }}
-        title={`Hapus ${deleteTarget}?`}
-        description="Tindakan ini permanen dan dijalankan lewat server."
-        footer={
-          <Button
-            variant="destructive"
-            onClick={() => void remove()}
-            busy={busy}
-          >
-            Hapus
-          </Button>
-        }
-      />
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Hapus {deleteTarget}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tindakan ini permanen dan dijalankan lewat server.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={busy}>Batal</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={busy}
+              onClick={() => void remove()}
+            >
+              Hapus
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

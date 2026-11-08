@@ -9,13 +9,15 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Status } from "@/components/ui/status";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import type { ApiResult } from "@contracts/api.ts";
@@ -247,27 +249,32 @@ export function FileManager() {
           </ul>
         </CardContent>
       </Card>
-      <Dialog
+      <AlertDialog
         open={deleteTarget !== null}
         onOpenChange={(open) => {
           if (!open) setDeleteTarget(null);
         }}
       >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Hapus file {deleteTarget}?</DialogTitle>
-            <DialogDescription>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Hapus file {deleteTarget}?</AlertDialogTitle>
+            <AlertDialogDescription>
               Task firmware yang masih memakai file ini akan gagal mengunduh —
               periksa device aktif sebelum menghapus.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="destructive" onClick={() => void remove()}>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={uploading}>Batal</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={uploading}
+              onClick={() => void remove()}
+            >
               Hapus
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

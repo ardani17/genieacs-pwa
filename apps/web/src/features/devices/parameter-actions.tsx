@@ -10,13 +10,15 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Status } from "@/components/ui/status";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Field } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import {
@@ -214,20 +216,20 @@ export function ParameterActions({
             Hapus objek
           </Button>
         </div>
-        <Dialog
+        <AlertDialog
           open={confirming !== null}
           onOpenChange={(open) => {
             if (!open) setConfirming(null);
           }}
         >
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Hapus objek?</DialogTitle>
-              <DialogDescription>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Hapus objek?</AlertDialogTitle>
+              <AlertDialogDescription>
                 Ketik path objek untuk konfirmasi. Aksi ini destruktif dan
                 dijaga guard jalur ACS aktif di server.
-              </DialogDescription>
-            </DialogHeader>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
             <Field label="Konfirmasi path objek" required>
               {({ id }) => (
                 <Input
@@ -238,8 +240,9 @@ export function ParameterActions({
                 />
               )}
             </Field>
-            <DialogFooter>
-              <Button
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={busy}>Batal</AlertDialogCancel>
+              <AlertDialogAction
                 variant="destructive"
                 disabled={confirmPath !== objectRoot || busy}
                 onClick={() => {
@@ -248,10 +251,10 @@ export function ParameterActions({
                 }}
               >
                 Hapus
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </CardContent>
     </Card>
   );
