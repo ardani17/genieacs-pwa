@@ -181,19 +181,21 @@ export function FileManager() {
             </Field>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-md border px-4 text-sm font-medium">
-              Pilih file firmware
-              <input
-                type="file"
-                className="sr-only"
-                disabled={uploading}
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) upload(file);
-                  e.target.value = "";
-                }}
-              />
-            </label>
+            <Button asChild variant="outline">
+              <label className="cursor-pointer">
+                Pilih file firmware
+                <input
+                  type="file"
+                  className="sr-only"
+                  disabled={uploading}
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (file) upload(file);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+            </Button>
             {uploading ? (
               <>
                 <span aria-live="polite" className="text-sm">
