@@ -198,7 +198,7 @@ function validateAcs(raw: unknown, errors: FieldErrors): AcsAddress | null {
  * all rejected with per-field errors for ApiResult.error.fieldErrors.
  */
 export function validateVpnProfileInput(raw: unknown): SettingsValidation {
-  const errors: FieldErrors = {};
+  const errors: FieldErrors = Object.create(null);
   if (!isRecord(raw)) {
     errors[""] = "must be an object";
     return { ok: false, fieldErrors: errors };

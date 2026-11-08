@@ -4,6 +4,7 @@ import { LinuxVpnRuntime } from "./runtime.ts";
 import { createVpnServer, tokenFromFile } from "./server.ts";
 import { sendPppEvent } from "./ppp-events.ts";
 import { getVpnLogger } from "./logger.ts";
+import { internalServiceUrl } from "../../../lib/common/internal-url.ts";
 
 const token = (): Buffer | null =>
   tokenFromFile(process.env.VPN_CONTROLLER_TOKEN_FILE);
@@ -20,6 +21,7 @@ async function main(): Promise<void> {
     const response = await fetch("http://127.0.0.1:8787/health", {
       headers: headers(),
       signal: AbortSignal.timeout(3000),
+      redirect: "error",
     });
     if (!response.ok) process.exitCode = 1;
     return;
@@ -55,11 +57,15 @@ async function main(): Promise<void> {
     try {
       inFlight = new AbortController();
       const response = await fetch(
-        `${process.env.GENIEACS_UI_URL ?? "http://ui:7583"}/api/internal/vpn/profile`,
+        internalServiceUrl(
+          process.env.GENIEACS_UI_URL ?? "http://ui:7583",
+          "/api/internal/vpn/profile",
+        ),
         {
           headers: headers(),
           signal: AbortSignal.any([inFlight.signal, AbortSignal.timeout(7000)]),
           cache: "no-store",
+          redirect: "error",
         },
       );
       if (!response.ok) throw new Error("BACKEND_UNAVAILABLE");

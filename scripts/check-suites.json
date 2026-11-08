@@ -603,8 +603,15 @@
     {
       "cwd": ".",
       "command": "node",
+      "args": ["--test", "scripts/fixtures/vpn-evidence.test.mjs"]
+    },
+    {
+      "cwd": ".",
+      "command": "node",
       "args": [
         "scripts/test-ts.mjs",
+        "test/internal-url.ts",
+        "test/file-storage-cleanup.ts",
         "services/vpn-controller/test/state.test.ts",
         "services/vpn-controller/test/routes.test.ts",
         "services/vpn-controller/test/controller.test.ts",

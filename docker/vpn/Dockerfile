@@ -9,6 +9,7 @@ RUN npm ci --no-audit --no-fund
 COPY services/vpn-controller services/vpn-controller
 COPY packages/app-contracts packages/app-contracts
 COPY lib/app-logger.ts lib/app-logger.ts
+COPY lib/common/internal-url.ts lib/common/internal-url.ts
 RUN npx esbuild services/vpn-controller/src/main.ts --bundle --platform=node --target=node24 --outfile=/controller.cjs
 
 FROM node:24.22.2-bookworm-slim@sha256:c86ecead9e55a5210ac1727de38a4ca840bf03dcaf34dc9749addbf383b1920c

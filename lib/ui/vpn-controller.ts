@@ -8,6 +8,7 @@ import {
   type UpdateSettingsResult,
 } from "./app-settings.ts";
 import type { VpnStatus } from "../../packages/app-contracts/src/vpn.ts";
+import { internalServiceUrl } from "../common/internal-url.ts";
 
 export class ControllerError extends Error {
   constructor(
@@ -33,7 +34,7 @@ export async function controllerRequest<T>(
   const token = loadEngineSettingsSecrets().controllerToken;
   if (!base || !token) throw new ControllerError();
   try {
-    const response = await fetch(base + path, {
+    const response = await fetch(internalServiceUrl(base, path), {
       method:
         path === "/status" || path === "/health"
           ? "GET"
@@ -50,6 +51,7 @@ export async function controllerRequest<T>(
         : { body: JSON.stringify(body ?? {}) }),
       signal: AbortSignal.timeout(timeoutMs),
       cache: "no-store",
+      redirect: "error",
     });
     if (!response.ok)
       throw new ControllerError(

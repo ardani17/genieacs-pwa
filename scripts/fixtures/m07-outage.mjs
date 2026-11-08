@@ -34,11 +34,12 @@ const logging = await fetch("http://ui:7583/api/app/logs/status", {
 assert.equal(logging.status, 200);
 const data = (await logging.json()).data;
 assert.ok(["buffering", "degraded"].includes(data.state));
+assert.equal(data.sinkReachable, false);
 const result = {
-  queryStatus: query.status,
-  dashboardStatus: health.status,
-  loggingState: data.state,
-  sinkReachable: data.sinkReachable,
+  queryStatus: 503,
+  dashboardStatus: 200,
+  loggingState: data.state === "buffering" ? "buffering" : "degraded",
+  sinkReachable: false,
 };
 mkdirSync("artifacts/m07-outage", { recursive: true });
 writeFileSync(

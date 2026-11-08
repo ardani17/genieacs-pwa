@@ -57,6 +57,7 @@ async function load(): Promise<void> {
         "X-Request-Id": randomUUID(),
       },
       signal: AbortSignal.timeout(3000),
+      redirect: "error",
     });
     if (response.ok) {
       const result = (await response.json()) as { data: unknown };

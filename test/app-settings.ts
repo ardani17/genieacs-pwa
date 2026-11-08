@@ -178,6 +178,20 @@ void test("unknown fields and bad shapes are rejected per field", () => {
   assert.equal(bad.ok, false);
   if (!bad.ok) assert.equal(bad.fieldErrors["extra"], "unknown field");
 
+  for (const key of ["__proto__", "constructor", "toString"]) {
+    const input = { ...validInput(), ...JSON.parse(`{"${key}":true}`) };
+    const result = validateVpnProfileInput(input);
+    assert.equal(result.ok, false);
+    if (!result.ok) {
+      assert.equal(Object.getPrototypeOf(result.fieldErrors), null);
+      assert.equal(result.fieldErrors[key], "unknown field");
+      assert.equal(
+        JSON.parse(JSON.stringify(result.fieldErrors))[key],
+        "unknown field",
+      );
+    }
+  }
+
   const notObject = validateVpnProfileInput("nope");
   assert.equal(notObject.ok, false);
 
@@ -361,8 +375,12 @@ void test(
     const collection = client.db().collection<AppSettingsDoc>("app_settings");
     await collection.deleteMany({});
 
-    const passwordFile = join(tmpdir(), `vpn-pw-${process.pid}.txt`);
-    writeFileSync(passwordFile, "env-boot-password\n");
+    const passwordDir = mkdtempSync(join(tmpdir(), "vpn-bootstrap-"));
+    const passwordFile = join(passwordDir, "password");
+    writeFileSync(passwordFile, "env-boot-password\n", {
+      mode: 0o600,
+      flag: "wx",
+    });
     const env = {
       VPN_SERVER: "vpn-env.example.invalid",
       VPN_USERNAME: "env-user",
@@ -582,7 +600,7 @@ void test(
       );
     } finally {
       await collection.deleteMany({});
-      rmSync(passwordFile, { force: true });
+      rmSync(passwordDir, { recursive: true, force: true });
       await client.close();
     }
   },

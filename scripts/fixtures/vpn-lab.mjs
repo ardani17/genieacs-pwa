@@ -3,6 +3,7 @@
 import http from "node:http";
 import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { randomUUID, timingSafeEqual } from "node:crypto";
+import { statusEvidence } from "./vpn-evidence.mjs";
 const token = readFileSync("/run/controller.token", "utf8").trim();
 const headers = () => ({
   Authorization: `Bearer ${token}`,
@@ -19,14 +20,18 @@ if (process.argv.includes("--probe")) {
       headers: { ...headers(), "Content-Type": "application/json" },
       body: "{}",
       signal: AbortSignal.timeout(10000),
+      redirect: "error",
     });
     const second = await fetch("http://vpn-lab:8787/reconnect", {
       method: "POST",
       headers: { ...headers(), "Content-Type": "application/json" },
       body: "{}",
       signal: AbortSignal.timeout(10000),
+      redirect: "error",
     });
     reconnect = { first: first.status, duplicate: second.status };
+    if (reconnect.first !== 200 || reconnect.duplicate !== 409)
+      throw new Error("RECONNECT_EXPECTATION_FAILED");
   }
   let status = null;
   for (let attempt = 0; attempt < 85; ++attempt) {
@@ -34,9 +39,10 @@ if (process.argv.includes("--probe")) {
       const response = await fetch("http://vpn-lab:8787/status", {
         headers: headers(),
         signal: AbortSignal.timeout(2000),
+        redirect: "error",
       });
       if (response.ok) {
-        status = (await response.json()).data;
+        status = statusEvidence((await response.json()).data);
         if (
           (expectedRevision == null ||
             status.desiredRevision === expectedRevision) &&
@@ -55,6 +61,7 @@ if (process.argv.includes("--probe")) {
     }
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
+  if (!status) throw new Error("NO_VALID_STATUS_EVIDENCE");
   mkdirSync("artifacts/vpn-lab", { recursive: true });
   writeFileSync(
     "artifacts/vpn-lab/status.json",
@@ -64,7 +71,11 @@ if (process.argv.includes("--probe")) {
   if (reconnect) {
     writeFileSync(
       "artifacts/vpn-lab/reconnect.json",
-      JSON.stringify({ ...reconnect, state: status?.state }, null, 2) + "\n",
+      JSON.stringify(
+        { first: 200, duplicate: 409, state: status.state },
+        null,
+        2,
+      ) + "\n",
     );
     console.log(JSON.stringify(reconnect));
     if (reconnect.first !== 200 || reconnect.duplicate !== 409)

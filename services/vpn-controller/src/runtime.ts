@@ -139,14 +139,20 @@ export class LinuxVpnRuntime implements VpnRuntime {
     try {
       if (this.deps.assertHostSupported) await this.deps.assertHostSupported();
       else {
-        const device = await fs.stat("/dev/ppp");
-        if (
-          !device.isCharacterDevice() ||
-          Math.floor(device.rdev / 256) % 4096 !== 108
-        )
-          throw new Error("PPP_DEVICE");
-        const handle = await fs.open("/dev/ppp", "r+");
-        await handle.close();
+        const handle = await fs.open(
+          "/dev/ppp",
+          constants.O_RDWR | constants.O_NOFOLLOW | constants.O_NONBLOCK,
+        );
+        try {
+          const device = await handle.stat();
+          if (
+            !device.isCharacterDevice() ||
+            Math.floor(device.rdev / 256) % 4096 !== 108
+          )
+            throw new Error("PPP_DEVICE");
+        } finally {
+          await handle.close();
+        }
       }
     } catch {
       emit({ type: "host_unsupported" });

@@ -17,12 +17,16 @@
 
 import { randomBytes, createHash } from "node:crypto";
 import {
-  existsSync,
+  constants,
+  openSync,
+  closeSync,
+  fstatSync,
   mkdirSync,
   readFileSync,
-  writeFileSync,
-  chmodSync,
-  chownSync,
+  writeSync,
+  ftruncateSync,
+  fchmodSync,
+  fchownSync,
 } from "node:fs";
 import { resolve } from "node:path";
 
@@ -86,21 +90,47 @@ function parseExisting(name, content) {
   return text.length > 0 ? text : null;
 }
 
+// Open once, then inspect, read and change only that descriptor. Never
+// follow a final-component symlink or truncate a path checked earlier.
+function openSecret(path, writable, create = false) {
+  const fd = openSync(
+    path,
+    (writable ? constants.O_RDWR : constants.O_RDONLY) |
+      (constants.O_NOFOLLOW ?? 0) |
+      (constants.O_NONBLOCK ?? 0) |
+      (create ? constants.O_CREAT | constants.O_EXCL : 0),
+    0o600,
+  );
+  try {
+    const stat = fstatSync(fd);
+    if (!stat.isFile() || stat.nlink !== 1 || stat.size > 4096)
+      throw new Error("Secret must be a small regular file with one link");
+    return fd;
+  } catch (err) {
+    closeSync(fd);
+    throw err;
+  }
+}
+
 if (checkOnly) {
   const problems = [];
-  if (!existsSync(dir)) problems.push(`missing directory ${dir}`);
-  else
-    for (const name of Object.keys(FILES)) {
-      const path = resolve(dir, name);
-      if (!existsSync(path)) {
-        problems.push(`missing ${path}`);
-        continue;
+  for (const name of Object.keys(FILES)) {
+    const path = resolve(dir, name);
+    try {
+      const fd = openSecret(path, false);
+      let parsed;
+      try {
+        parsed = parseExisting(name, readFileSync(fd));
+      } finally {
+        closeSync(fd);
       }
-      const parsed = parseExisting(name, readFileSync(path));
       if (parsed == null) problems.push(`unparseable ${path}`);
       else if (FILES[name].kind === "key")
         console.log(`key ${path} keyId=${keyFingerprint(parsed)}`);
+    } catch {
+      problems.push(`missing or unsafe ${path}`);
     }
+  }
   if (problems.length) {
     console.error(problems.join("\n"));
     process.exit(1);
@@ -109,40 +139,58 @@ if (checkOnly) {
   process.exit(0);
 }
 
-if (!existsSync(resolve(dir, KEY_FILE)) && !flag("--init-key"))
-  throw new Error(
-    "Missing settings key: restore from backup; use --init-key only for a new installation",
-  );
 mkdirSync(dir, { recursive: true, mode: 0o700 });
 const created = [];
 const kept = [];
 
 for (const [name, spec] of Object.entries(FILES)) {
   const path = resolve(dir, name);
-  if (existsSync(path)) {
-    const existing = parseExisting(name, readFileSync(path));
-    if (existing == null) {
+  let fd;
+  let isNew = false;
+  try {
+    fd = openSecret(path, true);
+  } catch (err) {
+    if (err.code !== "ENOENT") throw err;
+    if (spec.kind === "key" && !flag("--init-key")) {
+      throw new Error(
+        "Missing settings key: restore from backup; use --init-key only for a new installation",
+      );
+    }
+    // If another creator wins this race, fail rather than overwrite it.
+    fd = openSecret(path, true, true);
+    isNew = true;
+  }
+  try {
+    const existing = isNew ? null : parseExisting(name, readFileSync(fd));
+    if (!isNew && existing == null) {
       throw new Error(
         `Refusing to overwrite damaged secret ${name}; restore from backup`,
       );
     }
-    if (force && spec.kind !== "key") {
-      writeFileSync(path, spec.generate() + "\n", { mode: 0o600 });
-      created.push(`${name} (rotated)`);
-      continue;
+    fchmodSync(fd, 0o600);
+    if (process.getuid?.() === 0) fchownSync(fd, ownerUid, ownerGid);
+    if (isNew || (force && spec.kind !== "key")) {
+      const content = Buffer.from(spec.generate() + "\n");
+      let offset = 0;
+      while (offset < content.length)
+        offset += writeSync(
+          fd,
+          content,
+          offset,
+          content.length - offset,
+          offset,
+        );
+      ftruncateSync(fd, content.length);
+      created.push(isNew ? name : `${name} (rotated)`);
+    } else {
+      kept.push(
+        spec.kind === "key"
+          ? `${name} keyId=${keyFingerprint(existing)}`
+          : name,
+      );
     }
-    kept.push(
-      spec.kind === "key" ? `${name} keyId=${keyFingerprint(existing)}` : name,
-    );
-    continue;
+  } finally {
+    closeSync(fd);
   }
-  writeFileSync(path, spec.generate() + "\n", { mode: 0o600, flag: "wx" });
-  created.push(name);
-}
-
-for (const name of Object.keys(FILES)) {
-  const path = resolve(dir, name);
-  chmodSync(path, 0o600);
-  if (process.getuid?.() === 0) chownSync(path, ownerUid, ownerGid);
 }
 console.log(JSON.stringify({ dir, created, kept }, null, 2));
