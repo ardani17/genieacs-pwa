@@ -9,6 +9,14 @@ import type { ReactNode } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Status } from "@/components/ui/status";
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
   evaluateToText,
   evaluateUiExpression,
   type UiExpression,
@@ -160,39 +168,36 @@ function nativeParameterTableView(
   );
   return (
     <div className="overflow-hidden rounded-xl border">
-      <table
-        className="w-full text-sm"
-        aria-label={labelText(node.label, ctx) || "Parameter"}
-      >
-        <thead>
-          <tr className="border-b bg-accent/40">
-            <th scope="col" className="p-2 text-left text-xs font-medium">
+      <Table aria-label={labelText(node.label, ctx) || "Parameter"}>
+        <TableHeader className="bg-accent/40">
+          <TableRow>
+            <TableHead scope="col" className="h-auto p-2 text-xs">
               Instance
-            </th>
+            </TableHead>
             {children.map((child, i) => (
-              <th
+              <TableHead
                 key={configChildKey(child, i)}
                 scope="col"
-                className="p-2 text-left text-xs font-medium"
+                className="h-auto p-2 text-xs"
               >
                 {labelText(child.label, ctx) || `Kolom ${i + 1}`}
-              </th>
+              </TableHead>
             ))}
-          </tr>
-        </thead>
-        <tbody>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {instances.map((instance) => (
-            <tr key={instance} className="border-b last:border-b-0">
-              <th
+            <TableRow key={instance}>
+              <TableHead
                 scope="row"
-                className="max-w-72 break-all p-2 text-left text-xs font-normal text-muted-foreground"
+                className="h-auto max-w-72 whitespace-normal break-all p-2 text-xs font-normal text-muted-foreground"
               >
                 {instance}
-              </th>
+              </TableHead>
               {children.map((child, i) => (
-                <td
+                <TableCell
                   key={configChildKey(child, i)}
-                  className="break-all p-2 font-mono text-xs"
+                  className="whitespace-normal break-all p-2 font-mono text-xs"
                 >
                   {renderChild(
                     {
@@ -206,22 +211,22 @@ function nativeParameterTableView(
                     },
                     ctx,
                   )}
-                </td>
+                </TableCell>
               ))}
-            </tr>
+            </TableRow>
           ))}
           {!instances.length ? (
-            <tr>
-              <td
+            <TableRow>
+              <TableCell
                 className="p-2 text-xs text-muted-foreground"
                 colSpan={children.length + 1}
               >
                 Tidak ada instance.
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           ) : null}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   );
 }
@@ -240,26 +245,23 @@ function legacyParameterTableView(
       : [];
   return (
     <div className="overflow-hidden rounded-xl border">
-      <table
-        className="w-full text-sm"
-        aria-label={labelText(node.label, ctx) || "Parameter"}
-      >
-        <tbody>
+      <Table aria-label={labelText(node.label, ctx) || "Parameter"}>
+        <TableBody>
           {parameters.map((p) => (
-            <tr key={p} className="border-b last:border-b-0">
-              <th
+            <TableRow key={p}>
+              <TableHead
                 scope="row"
-                className="max-w-72 break-all p-2 text-left text-xs font-normal text-muted-foreground"
+                className="h-auto max-w-72 whitespace-normal break-all p-2 text-xs font-normal text-muted-foreground"
               >
                 {p}
-              </th>
-              <td className="break-all p-2 font-mono text-xs">
+              </TableHead>
+              <TableCell className="whitespace-normal break-all p-2 font-mono text-xs">
                 {evaluateToText(["PARAM", p] as never, ctx.device, ctx.now)}
-              </td>
-            </tr>
+              </TableCell>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
+        </TableBody>
+      </Table>
     </div>
   );
 }

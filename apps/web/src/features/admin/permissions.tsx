@@ -25,6 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Table, TableBody, TableCell, TableRow } from "@/components/ui/table";
 import type { ApiResult } from "@contracts/api.ts";
 
 const RESOURCES = [
@@ -168,19 +169,23 @@ export function PermissionManager() {
       <Card>
         <CardContent className="space-y-2">
           <div className="overflow-hidden rounded-xl border">
-            <table className="w-full text-sm" aria-label="Daftar permission">
-              <tbody>
+            <Table aria-label="Daftar permission">
+              <TableBody>
                 {rows.map((row) => (
-                  <tr key={row._id} className="border-b last:border-b-0">
-                    <td className="p-2 font-mono text-xs">{row.role}</td>
-                    <td className="p-2 text-xs">{row.resource}</td>
-                    <td className="p-2 text-center font-mono text-xs">
+                  <TableRow key={row._id}>
+                    <TableCell className="p-2 font-mono text-xs">
+                      {row.role}
+                    </TableCell>
+                    <TableCell className="p-2 text-xs">
+                      {row.resource}
+                    </TableCell>
+                    <TableCell className="p-2 text-center font-mono text-xs">
                       {row.access}
-                    </td>
-                    <td className="max-w-56 break-all p-2 font-mono text-xs text-muted-foreground">
+                    </TableCell>
+                    <TableCell className="max-w-56 whitespace-normal break-all p-2 font-mono text-xs text-muted-foreground">
                       {row.filter ?? "—"}
-                    </td>
-                    <td className="p-2 text-right">
+                    </TableCell>
+                    <TableCell className="p-2 text-right">
                       <Button
                         variant="outline"
                         size="sm"
@@ -189,11 +194,11 @@ export function PermissionManager() {
                       >
                         Hapus
                       </Button>
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
           <Button variant="outline" size="sm" onClick={() => setAdding(true)}>
             Tambah permission
