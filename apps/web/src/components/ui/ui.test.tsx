@@ -267,3 +267,24 @@ test("dropdownMenu opens, selects an item and closes with Escape", async () => {
   await user.keyboard("{Escape}");
   expect(screen.queryByRole("menu")).not.toBeInTheDocument();
 });
+
+test("alertDialogAction renders the destructive variant", () => {
+  render(
+    <AlertDialog open={true}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Hapus?</AlertDialogTitle>
+          <AlertDialogDescription>Tindakan permanen.</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>Batal</AlertDialogCancel>
+          <AlertDialogAction variant="destructive">Hapus</AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>,
+  );
+  expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+  const action = screen.getByRole("button", { name: "Hapus" });
+  expect(action.className).toContain("bg-destructive");
+  expect(action.className).not.toContain("bg-primary");
+});

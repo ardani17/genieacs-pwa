@@ -10,6 +10,16 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Status } from "@/components/ui/status";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Dialog,
   DialogContent,
   DialogFooter,
@@ -60,6 +70,7 @@ export function PermissionManager() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [adding, setAdding] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
   const [role, setRole] = useState("");
   const [resource, setResource] = useState("devices");
   const [access, setAccess] = useState("1");
@@ -190,7 +201,7 @@ export function PermissionManager() {
                         variant="outline"
                         size="sm"
                         disabled={busy}
-                        onClick={() => void remove(row._id)}
+                        onClick={() => setDeleteTarget(row._id)}
                       >
                         Hapus
                       </Button>
@@ -284,6 +295,36 @@ export function PermissionManager() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <AlertDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Hapus permission ini?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Permission {deleteTarget} dihapus permanen lewat server; sesi
+              aktif yang memakainya kehilangan akses dalam jendela snapshot.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={busy}>Batal</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={busy}
+              onClick={() => {
+                const target = deleteTarget;
+                setDeleteTarget(null);
+                if (target) void remove(target);
+              }}
+            >
+              Hapus
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
