@@ -690,13 +690,12 @@ router.get("/blob/files/:id", async (ctx) => {
   // Single-range download support (M06-C): the Range header is parsed
   // server-side; an unsatisfiable range answers 416, everything else
   // streams the slice with 206/Content-Range.
+  const file = await collections.files.findOne({ _id: id });
+  if (!file) return void (ctx.status = 404);
   const rangeHeader = singleParam(ctx.request.headers["range"]) ?? "";
   const range = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader.trim());
   if (range && (range[1] !== "" || range[2] !== "")) {
-    const doc = (await collections.files.findOne({
-      _id: id,
-    })) as unknown as { length?: number } | null;
-    const size = typeof doc?.length === "number" ? doc.length : 0;
+    const size = file.length;
     // Suffix ranges (`bytes=-N`) name the LAST N bytes; open ranges
     // (`bytes=N-`) run to the end.
     const suffix = range[1] === "";
@@ -717,12 +716,12 @@ router.get("/blob/files/:id", async (ctx) => {
     ctx.set("Content-Range", `bytes ${start}-${end}/${size}`);
     ctx.set("Accept-Ranges", "bytes");
     ctx.set("Content-Length", String(end - start + 1));
-    ctx.body = db.downloadFileRange(id, start, end);
+    ctx.body = db.downloadFileRange(id, start, end, file);
     return;
   }
 
   ctx.set("Accept-Ranges", "bytes");
-  ctx.body = db.downloadFile(id);
+  ctx.body = db.downloadFile(id, file);
   ctx.attachment(id);
 });
 

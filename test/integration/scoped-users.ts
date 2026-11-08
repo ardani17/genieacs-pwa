@@ -159,6 +159,60 @@ void test("scoped user mutations: filter scope, validator, last admin", async (t
     });
 
     await t.test(
+      "native role validators accept allowed roles and reject escalation",
+      async () => {
+        await collections.permissions.updateOne(
+          { _id: "scopedAdmin:users:3" },
+          { $set: { validate: 'object.roles = "fixtureOperator"' } },
+        );
+        await app.refreshSnapshot();
+        try {
+          const created = await app.appRequest(
+            "/api/app/admin/users",
+            {
+              method: "POST",
+              body: JSON.stringify({
+                username: "managed-created",
+                password: PASSWORD,
+                roles: ["fixtureOperator"],
+              }),
+            },
+            "managed-delegate",
+          );
+          assert.equal(created.status, 200);
+          const updated = await app.appRequest(
+            "/api/app/admin/users/managed-target/roles",
+            {
+              method: "PUT",
+              body: JSON.stringify({ roles: ["fixtureOperator"] }),
+            },
+            "managed-delegate",
+          );
+          assert.equal(updated.status, 200);
+          const denied = await app.appRequest(
+            "/api/app/admin/users/managed-target/roles",
+            {
+              method: "PUT",
+              body: JSON.stringify({ roles: ["fixtureAdmin"] }),
+            },
+            "managed-delegate",
+          );
+          assert.equal(denied.status, 403);
+          assert.equal(
+            (await collections.users.findOne({ _id: "managed-target" }))?.roles,
+            "fixtureOperator",
+          );
+        } finally {
+          await collections.permissions.updateOne(
+            { _id: "scopedAdmin:users:3" },
+            { $set: { validate: "true" } },
+          );
+          await app.refreshSnapshot();
+        }
+      },
+    );
+
+    await t.test(
       "legacy PUT creates a new user (upstream create-or-update)",
       async () => {
         // The upstream Mithril UI creates users via PUT with the new

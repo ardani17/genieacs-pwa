@@ -10,7 +10,7 @@
 // Shift+Ctrl+F) and Ctrl+S runs the caller's save handler — provision
 // code is NEVER executed in the browser.
 import { useEffect, useRef, useState } from "react";
-import type { Editor, EditorConfiguration } from "codemirror";
+import type { Editor, EditorChange, EditorConfiguration } from "codemirror";
 import "codemirror/addon/dialog/dialog.css";
 
 export type CodeLanguage = "javascript" | "yaml" | "expression";
@@ -131,7 +131,10 @@ export function CodeEditor({
     input.setAttribute("role", "textbox");
     input.setAttribute("aria-multiline", "true");
     if (readOnly) input.setAttribute("aria-readonly", "true");
-    const changeHandler = (): void => {
+    const changeHandler = (_editor: Editor, change: EditorChange): void => {
+      // Prop synchronization (including masking) must not replace the draft
+      // or mark the form dirty. Native user edits retain their own origins.
+      if (change.origin === "setValue") return;
       onChangeRef.current?.(editor.getValue());
     };
     editor.on("change", changeHandler);
@@ -160,6 +163,13 @@ export function CodeEditor({
       });
     }
   }, [value, ready]);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor || !ready) return;
+    editor.setOption("readOnly", !!readOnly);
+    editor.getInputField().setAttribute("aria-readonly", String(!!readOnly));
+  }, [readOnly, ready]);
 
   return (
     <div ref={hostRef} className="overflow-hidden rounded-lg border text-sm" />

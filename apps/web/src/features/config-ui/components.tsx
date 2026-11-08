@@ -120,8 +120,8 @@ function instanceParameter(value: unknown, instance: string): unknown {
   if (typeof value === "string") return `${instance}.${value}`;
   if (Array.isArray(value))
     return map(value as never, (e) => {
-      if (Array.isArray(e) && e[0] === "PARAM" && typeof e[1] === "string")
-        return ["PARAM", `${instance}.${e[1]}`] as never;
+      if (Array.isArray(e) && e[0] === "PARAM")
+        return ["PARAM", ["||", instance, ".", e[1]]] as never;
       return e;
     });
   return value;
@@ -136,14 +136,28 @@ function nativeParameterTableView(
   ctx: RenderContext,
   renderChild: (child: ConfigNode, ctx: RenderContext) => ReactNode,
 ): ReactNode {
-  const object = evaluateUiExpression(
-    parameterExpression(node.parameter) as never,
-    ctx.device,
-    ctx.now,
-  );
+  const parameter = parameterExpression(node.parameter);
+  // Object nodes have no scalar value: evaluate PARAM's path operand, as
+  // upstream does, rather than looking up the collection's nonexistent value.
+  const path =
+    Array.isArray(parameter) && parameter[0] === "PARAM" ? parameter[1] : null;
+  const object =
+    typeof path === "string"
+      ? path
+      : evaluateUiExpression(path as never, ctx.device, ctx.now);
   const children = componentList(node.childParameters);
   if (typeof object !== "string" || !object || !children.length) return null;
-  const instances = instancePaths(ctx.device, object);
+  const instances = instancePaths(ctx.device, object).filter(
+    (instance) =>
+      node.filter == null ||
+      Boolean(
+        evaluateUiExpression(
+          instanceParameter(node.filter, instance) as never,
+          ctx.device,
+          ctx.now,
+        ),
+      ),
+  );
   return (
     <div className="overflow-hidden rounded-xl border">
       <table
@@ -276,6 +290,11 @@ export function ContainerView({
   ctx: RenderContext;
   renderChild: (child: ConfigNode, ctx: RenderContext) => ReactNode;
 }): ReactNode {
+  if (
+    "filter" in node &&
+    !evaluateUiExpression(node.filter as never, ctx.device, ctx.now)
+  )
+    return null;
   return (
     <Card>
       <CardContent className="space-y-3">

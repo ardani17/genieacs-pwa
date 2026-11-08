@@ -36,6 +36,16 @@ const CRITICAL_PARAMETERS = new Set([
   "NATEnabled",
   "ExternalIPAddress",
   "AddressingType",
+  "IPAddress",
+  "SubnetMask",
+  "LowerLayers",
+  "Username",
+  "Password",
+  "VLANID",
+  "VLANIDMark",
+  "X_ZTE-COM_VLANID",
+  "X_ZTE-COM_VLANEnable",
+  "DefaultGateway",
 ]);
 
 const CRURL_PATHS = [
@@ -56,31 +66,50 @@ export function managementWanInstances(
   device: WanDevice,
   resolvedHosts: string[] = [],
 ): ManagementWanIdentity {
-  const requestUrl = CRURL_PATHS.map((p) => value(device, p)).find(
-    (v): v is string => typeof v === "string" && !!v,
-  );
-  let host: string | null = null;
-  if (typeof requestUrl === "string" && requestUrl) {
-    try {
-      host = new URL(requestUrl).hostname;
-    } catch {
-      host = null;
-    }
-  }
+  const host = managementCrurlHost(device);
   if (!host) return { paths: [], ambiguous: false };
-
+  const hosts = [host, ...resolvedHosts].map(normalizeAddress);
   const matches = new Set<string>();
   for (const key of Object.keys(device)) {
-    const match = key.match(WAN_INSTANCE);
-    if (!match) continue;
-    const instance = match[1];
-    const ip = value(device, `${instance}.ExternalIPAddress`);
-    if (typeof ip !== "string" || !ip || ip === "0.0.0.0") continue;
-    // Direct literal match, or the server-resolved address of the CRURL
-    // host (DNS names never equal a WAN IP by string comparison).
-    if (ip === host || resolvedHosts.includes(ip)) matches.add(instance);
+    let instance: string | undefined;
+    if (key.endsWith(".ExternalIPAddress"))
+      instance = key.match(WAN_INSTANCE)?.[1];
+    instance ??= key.match(
+      /^(Device\.IP\.Interface\.\d+)\.IPv[46]Address\.\d+\.IPAddress$/,
+    )?.[1];
+    instance ??= key.match(
+      /^(Device\.PPP\.Interface\.\d+)\.ExternalIPAddress$/,
+    )?.[1];
+    if (!instance) continue;
+    const ip = value(device, key);
+    if (
+      typeof ip === "string" &&
+      ip &&
+      ip !== "0.0.0.0" &&
+      hosts.includes(normalizeAddress(ip))
+    )
+      matches.add(instance);
   }
-  return { paths: [...matches].sort(), ambiguous: matches.size > 1 };
+  const ambiguous = matches.size > 1;
+  // TR-181 describes a stack. Disabling PPP or a VLAN below the matched IP
+  // interface severs the same management path. Follow LowerLayers with a set
+  // so malformed/cyclic device data cannot loop indefinitely.
+  const paths = new Set(matches);
+  for (const path of paths) {
+    const lower = value(device, `${path}.LowerLayers`);
+    if (typeof lower !== "string") continue;
+    for (const entry of lower.split(",")) {
+      const layer = normalizeTargetPath(entry.trim());
+      if (layer && WAN_ROOTS.some((root) => layer.startsWith(`${root}.`)))
+        paths.add(layer);
+    }
+  }
+  return { paths: [...paths].sort(), ambiguous };
+}
+
+function normalizeAddress(address: string): string {
+  // URL.hostname includes IPv6 brackets while device IPAddress values do not.
+  return address.replace(/^\[|\]$/g, "").toLowerCase();
 }
 
 function destructiveTargets(task: GuardedWanTask): string[] {
@@ -88,18 +117,6 @@ function destructiveTargets(task: GuardedWanTask): string[] {
   // instance living underneath a deleted collection.
   if (task.name === "deleteObject" && task.objectName) return [task.objectName];
   return [];
-}
-
-// Every WAN instance path present on the device. When the management
-// identity cannot be determined, ANY of these may be the active ACS
-// path — this is the candidate set the unidentifiable branch guards.
-function wanInstancePaths(device: WanDevice): string[] {
-  const instances = new Set<string>();
-  for (const key of Object.keys(device)) {
-    const match = key.match(WAN_INSTANCE);
-    if (match) instances.add(match[1]);
-  }
-  return [...instances].sort();
 }
 
 function criticalSpvInstances(
@@ -110,20 +127,18 @@ function criticalSpvInstances(
   const instances = new Set<string>();
   for (const [path] of task.parameterValues ?? []) {
     const normalized = trimTrailingDots(path);
-    // Wildcard segments (…WANIPConnection.*.Enable) expand at the
-    // device to EVERY instance under the prefix: flag when any
-    // management instance falls under the wildcard prefix.
-    const wildcardAt = normalized.indexOf(".*");
-    if (wildcardAt !== -1) {
-      const prefix = normalized.slice(0, wildcardAt);
-      if (managementPaths.some((p) => p.startsWith(`${prefix}.`)))
-        instances.add(`${prefix}.*`);
+    const parts = normalized.split(".");
+    if (
+      !parts.includes("*") &&
+      !CRITICAL_PARAMETERS.has(parts[parts.length - 1])
+    )
       continue;
+    if (!managementPaths.length) {
+      if (touchesWan(normalized)) instances.add(normalized);
+    } else {
+      for (const candidate of managementPaths)
+        if (pathOverlaps(normalized, candidate)) instances.add(candidate);
     }
-    const match = normalized.match(WAN_INSTANCE);
-    if (!match) continue;
-    const leaf = normalized.slice(match[1].length + 1);
-    if (CRITICAL_PARAMETERS.has(leaf)) instances.add(match[1]);
   }
   return [...instances];
 }
@@ -153,40 +168,28 @@ export function assertManagementWanSafe(
   resolvedHosts: string[] = [],
 ): void {
   const identity = managementWanInstances(device, resolvedHosts);
-  const host = crurlHost(device);
   const paths = identity.paths;
-  // The management identity is UNKNOWABLE when there is no CRURL at
-  // all, or when the CRURL host is a name that resolved to nothing.
-  // Missing evidence is not permission: destructive deletes, critical
-  // SPV and risky provisions are held against EVERY WAN instance — any
-  // of them may be the active ACS path (PR #8 review: critical SPV
-  // used to pass here and could sever the unknown management WAN).
+  // Neither an unmatched literal address nor missing inventory proves that
+  // a WAN is safe. Fail closed until the current management path is known.
   if (paths.length === 0) {
-    const hostUnidentifiable =
-      host == null || (!/^[0-9.]+$/.test(host) && !host.includes(":"));
-    if (hostUnidentifiable) {
-      const candidates = wanInstancePaths(device);
-      const unidentifiedReject = (what: string): never => {
-        throw new ManagementWanGuardError(
-          `VALIDATION Jalur manajemen tidak dapat ditentukan (ConnectionRequestURL tidak ada atau host tidak teresolusi); ${what} pada WAN ditahan. Jalankan diagnosis sebelum mengubah WAN.`,
-        );
-      };
-      for (const task of tasks) {
-        if (
-          task.name === "deleteObject" &&
-          task.objectName &&
-          touchesWan(task.objectName)
-        )
-          unidentifiedReject("hapus objek");
-        if (candidates.length === 0) continue;
-        if (criticalSpvInstances(task, candidates).length)
-          unidentifiedReject("SPV kritis");
-        if (
-          task.name === "provisions" &&
-          touchesManagementProvision(task, candidates)
-        )
-          unidentifiedReject("provision");
-      }
+    const rejectUnknown = (): never => {
+      throw new ManagementWanGuardError(
+        "VALIDATION Jalur manajemen tidak dapat ditentukan; perubahan WAN kritis ditahan. Jalankan diagnosis sebelum mengubah WAN.",
+      );
+    };
+    for (const task of tasks) {
+      if (
+        task.name === "deleteObject" &&
+        task.objectName &&
+        touchesWan(task.objectName)
+      )
+        rejectUnknown();
+      if (criticalSpvInstances(task).length) rejectUnknown();
+      if (
+        task.name === "provisions" &&
+        touchesManagementProvision(task, WAN_ROOTS)
+      )
+        rejectUnknown();
     }
     return;
   }
@@ -212,8 +215,7 @@ export function assertManagementWanSafe(
     for (const target of destructiveTargets(task)) {
       const normalized = normalizeTargetPath(target);
       for (const instance of paths) {
-        const hit =
-          normalized === instance || instance.startsWith(`${normalized}.`);
+        const hit = pathOverlaps(normalized, instance);
         if (!hit) continue;
         if (identity.ambiguous)
           reject(
@@ -232,22 +234,35 @@ export function assertManagementWanSafe(
   }
 }
 
-function crurlHost(device: WanDevice): string | null {
+export function managementCrurlHost(device: WanDevice): string | null {
   const requestUrl = CRURL_PATHS.map((p) => value(device, p)).find(
     (v): v is string => typeof v === "string" && !!v,
   );
   if (!requestUrl) return null;
   try {
-    return new URL(requestUrl).hostname;
+    return normalizeAddress(new URL(requestUrl).hostname);
   } catch {
     return null;
   }
 }
 
-const WAN_ROOT_PREFIX = /^InternetGatewayDevice\.WANDevice\.\d+/;
+const WAN_ROOTS = [
+  "InternetGatewayDevice.WANDevice",
+  "Device.IP.Interface",
+  "Device.PPP.Interface",
+  "Device.Ethernet.Interface",
+  "Device.Ethernet.Link",
+  "Device.Ethernet.VLANTermination",
+  "Device.ATM.Link",
+  "Device.PTM.Link",
+  "Device.DSL.Channel",
+  "Device.DSL.Line",
+  "Device.Bridging.Bridge",
+];
 
 function touchesWan(objectName: string): boolean {
-  return WAN_ROOT_PREFIX.test(normalizeTargetPath(objectName));
+  const normalized = normalizeTargetPath(objectName);
+  return WAN_ROOTS.some((root) => pathOverlaps(normalized, root));
 }
 
 interface ProvisionTask extends GuardedWanTask {
@@ -294,7 +309,7 @@ function touchesManagementProvision(
       // Trailing dots normalize away; only WAN-shaped paths can hit a
       // management instance.
       const normalized = trimTrailingDots(arg);
-      if (!WAN_ROOT_PREFIX.test(normalized)) continue;
+      if (!touchesWan(normalized)) continue;
       if (riskyProvisionArg(normalized, managementPaths)) return true;
     }
   }

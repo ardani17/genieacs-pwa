@@ -28,6 +28,7 @@ import {
 import {
   ManagementWanGuardError,
   assertManagementWanSafe,
+  managementCrurlHost,
 } from "../../packages/device-profiles/src/management-wan.ts";
 import type { WanDevice } from "../../packages/device-profiles/src/wan-types.ts";
 import {
@@ -85,17 +86,8 @@ export async function resolveCrurlHosts(
   device: WanDevice,
   resolver?: (host: string) => Promise<string[]>,
 ): Promise<string[]> {
-  const raw = value2(
-    device,
-    "InternetGatewayDevice.ManagementServer.ConnectionRequestURL",
-  );
-  if (typeof raw !== "string" || !raw) return [];
-  let host: string;
-  try {
-    host = new URL(raw).hostname;
-  } catch {
-    return [];
-  }
+  const host = managementCrurlHost(device);
+  if (!host) return [];
   // IP literals need no resolution.
   if (/^[0-9.]+$/.test(host) || host.includes(":")) return [host];
   try {
@@ -104,14 +96,6 @@ export async function resolveCrurlHosts(
   } catch {
     return [];
   }
-}
-
-function value2(
-  device: WanDevice,
-  path: string,
-): string | number | boolean | undefined {
-  return (device[path] as { value?: [string | number | boolean, string] })
-    ?.value?.[0];
 }
 
 export interface ExecutorDeps {
@@ -127,6 +111,7 @@ export interface ExecutorDeps {
   awaitSessionEnd(deviceId: string, timeout: number): Promise<boolean>;
   insertTasks(tasks: Task[]): Promise<Task[]>;
   deleteTask(id: ObjectId): Promise<unknown>;
+  taskPending(taskId: string): Promise<boolean>;
   countFaults(deviceId: string, taskId: string): Promise<number>;
   faultCode(deviceId: string, taskId: string): Promise<string | undefined>;
   resolveHosts?(host: string): Promise<string[]>;
@@ -138,6 +123,11 @@ export const defaultExecutorDeps: ExecutorDeps = {
   awaitSessionEnd: apiFunctions.awaitSessionEnd,
   insertTasks: apiFunctions.insertTasks,
   deleteTask: (id) => db.deleteTask(id),
+  taskPending: async (taskId) =>
+    (await collections.tasks.countDocuments(
+      { _id: new ObjectId(taskId) },
+      { limit: 1 },
+    )) > 0,
   countFaults: (deviceId, taskId) =>
     collections.faults.countDocuments({
       _id: `${deviceId}:task_${taskId}`,
@@ -515,7 +505,9 @@ export async function executeAuthorizedTasks(
           // CWMP session drops expired tasks WITHOUT writing one —
           // execution is unproven, never "done".
           statuses[i].status = "expired";
-        } else {
+        } else if (!(await deps.taskPending(t._id))) {
+          // A session can end before CWMP attempts a queued task. Its row
+          // must have been consumed before absence of a fault proves done.
           statuses[i].status = "done";
         }
       }

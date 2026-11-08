@@ -98,7 +98,9 @@ test("a broken commit response keeps the operation id for recovery", async ({
   // The link opens the id-based lookup — never a resubmission.
   await page.unroute("**/api/app/devices/*/commands");
   await recovery.click();
-  await expect(page.getByText("Hasil operasi")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Hasil operasi", exact: true }),
+  ).toBeVisible();
 });
 
 test("operator without devices:3 sees the server refusal, not success", async ({

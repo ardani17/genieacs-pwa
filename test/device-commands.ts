@@ -11,6 +11,8 @@ import { startApp } from "./helpers/app.ts";
 import { collections } from "../lib/db/db.ts";
 import {
   CommandExecutionError,
+  defaultExecutorDeps,
+  resolveCrurlHosts,
   executeAuthorizedTasks,
   normalizeTaskOutcome,
   type ExecutorDeps,
@@ -21,8 +23,26 @@ import {
 } from "../lib/ui/operation-store.ts";
 import Authorizer from "../lib/common/authorizer.ts";
 import { getRevision } from "../lib/ui/local-cache.ts";
+import { insertTasks } from "../lib/api-functions.ts";
 
 // ---- pure outcome normalization (no database) ----
+
+void test("TR-181 CRURL hostnames use the same server resolver", async () => {
+  const seen: string[] = [];
+  const hosts = await resolveCrurlHosts(
+    {
+      "Device.ManagementServer.ConnectionRequestURL": {
+        value: ["http://tr181.example.invalid:7547/", "xsd:string"],
+      },
+    } as never,
+    async (host) => {
+      seen.push(host);
+      return ["192.0.2.10"];
+    },
+  );
+  assert.deepEqual(seen, ["tr181.example.invalid"]);
+  assert.deepEqual(hosts, ["192.0.2.10"]);
+});
 
 void test("pending and CR failure cannot become success", () => {
   assert.equal(
@@ -165,6 +185,9 @@ function stubDeps(over: Partial<ExecutorDeps> = {}): {
     },
     async deleteTask() {
       state.delete++;
+    },
+    async taskPending() {
+      return false;
     },
     async countFaults(deviceId, taskId) {
       return state.faults.includes(`${deviceId}:task_${taskId}`) ? 1 : 0;
@@ -486,6 +509,29 @@ void test("executor: guards, idempotency, outcomes, cleanup, legacy parity", asy
       );
       assert.equal(t2.state, "unknown");
     });
+
+    await t.test(
+      "session end with a task still queued is unknown and cleans up without replay",
+      async () => {
+        const { deps } = stubDeps({
+          insertTasks,
+          taskPending: defaultExecutorDeps.taskPending,
+          deleteTask: (id) => collections.tasks.deleteOne({ _id: id }),
+        });
+        const result = await executeAuthorizedTasks(
+          base,
+          "TEST-CMD-1",
+          [{ name: "reboot" }],
+          { deps },
+        );
+        assert.equal(result.state, "unknown");
+        assert.equal(result.statuses[0].status, "pending");
+        assert.equal(
+          await collections.tasks.countDocuments({ device: "TEST-CMD-1" }),
+          0,
+        );
+      },
+    );
 
     await t.test(
       "task expired before execution is never reported succeeded",

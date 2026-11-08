@@ -27,7 +27,7 @@ export function DeviceTaskFault({ deviceId }: { deviceId: string }) {
     const t = window.setTimeout(() => {
       void fetch(
         `/api/app/resources/faults?page=1&pageSize=25&filter=${encodeURIComponent(
-          stringify(["=", ["PARAM", "DeviceID.ID"], deviceId]),
+          stringify(["=", ["PARAM", "device"], deviceId]),
         )}`,
         { cache: "no-store", signal: controller.signal },
       )

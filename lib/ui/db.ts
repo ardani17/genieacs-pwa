@@ -1,11 +1,17 @@
 import { validateAdminScript } from "./script-validation.ts";
-import { Readable, Transform } from "node:stream";
-import { randomUUID } from "node:crypto";
+import { Readable } from "node:stream";
 import { Collection, ObjectId, WithoutId } from "mongodb";
 import { encodeTag } from "../util.ts";
 import { evaluate } from "../common/expression/util.ts";
 import { Expression, Fault, Task } from "../types.ts";
-import { collections, filesBucket } from "../db/db.ts";
+import { collections } from "../db/db.ts";
+import {
+  downloadStoredFile,
+  replaceStoredFile,
+  deleteStoredFile,
+  FILE_MAX_BYTES,
+} from "../file-storage.ts";
+export { FILE_MAX_BYTES, FileTooLargeError } from "../file-storage.ts";
 import { convertOldPrecondition, optimizeProjection } from "../db/util.ts";
 import * as MongoTypes from "../db/types.ts";
 import { parse, parseList, stringify } from "../common/expression/parser.ts";
@@ -517,23 +523,21 @@ export async function deleteUser(id: string): Promise<void> {
   await collections.users.deleteOne({ _id: id });
 }
 
-export function downloadFile(filename: string): Readable {
-  return filesBucket.openDownloadStreamByName(filename);
+export function downloadFile(
+  filename: string,
+  snapshot?: MongoTypes.File,
+): Readable {
+  return downloadStoredFile(filename, {}, snapshot);
 }
 
-// Partial download for HTTP Range requests. `end` is INCLUSIVE (HTTP
-// semantics); this driver's openDownloadStreamByName `end` option
-// delivers end-start bytes (exclusive), so it is translated here — the
-// integration test pins the delivered byte count.
+// HTTP end is inclusive; GridFS end is exclusive.
 export function downloadFileRange(
   filename: string,
   start: number,
   end: number,
+  snapshot?: MongoTypes.File,
 ): Readable {
-  return filesBucket.openDownloadStreamByName(filename, {
-    start,
-    end: end + 1,
-  });
+  return downloadStoredFile(filename, { start, end: end + 1 }, snapshot);
 }
 
 export function putFile(
@@ -541,139 +545,19 @@ export function putFile(
   metadata: Record<string, string>,
   contentStream: Readable,
 ): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const uploadStream = filesBucket.openUploadStreamWithId(
-      filename as unknown as ObjectId,
-      filename,
-      {
-        metadata: metadata,
-      },
-    );
-
-    let readableEnded = false;
-    contentStream.on("end", () => {
-      readableEnded = true;
-    });
-    contentStream.on("close", () => {
-      // In Node versions prior to 15, the stream will not emit an error if the
-      // connection is closed before the stream is finished.
-      // For Node 12.9+ we can just use stream.readableEnded
-      if (!readableEnded)
-        uploadStream.destroy(new Error("Stream closed prematurely"));
-    });
-
-    contentStream.on("error", (err) => {
-      uploadStream.destroy(err);
-    });
-
-    uploadStream.on("error", reject);
-    uploadStream.on("finish", resolve);
-    contentStream.pipe(uploadStream);
-  });
+  return replaceStoredFile(filename, metadata, contentStream);
 }
 
-export const FILE_MAX_BYTES = 100 * 1024 * 1024;
-
-export class FileTooLargeError extends Error {
-  status = 413;
-
-  constructor() {
-    super("File melebihi batas 100 MiB");
-    this.name = "FileTooLargeError";
-  }
-}
-
-// Atomic file replacement (PR #8 review: the old route deleted the
-// previous version BEFORE the replacement stream finished — an abort or
-// stream failure left the id with no version at all). The replacement
-// uploads to a TEMP GridFS id with a server-side byte cap; only a
-// fully-completed stream is published over the public id, and any
-// failure cleans the temp, leaving the old version downloadable with
-// its checksum unchanged.
 export function replaceFile(
   filename: string,
   metadata: Record<string, string>,
   contentStream: Readable,
 ): Promise<void> {
-  const tempId = `${filename}__replace__${randomUUID()}`;
-  const uploadStream = filesBucket.openUploadStreamWithId(
-    tempId as unknown as ObjectId,
-    filename,
-    { metadata },
-  );
-
-  let readableEnded = false;
-  let bytes = 0;
-  const capped = new Transform({
-    transform(chunk: Buffer, _enc, cb) {
-      bytes += chunk.length;
-      if (bytes > FILE_MAX_BYTES) {
-        cb(new FileTooLargeError());
-        return;
-      }
-      cb(null, chunk);
-    },
-  });
-
-  contentStream.on("end", () => {
-    readableEnded = true;
-  });
-  contentStream.on("close", () => {
-    if (!readableEnded) capped.destroy(new Error("Stream closed prematurely"));
-  });
-  contentStream.on("error", (err) => capped.destroy(err));
-  // pipe() does not forward errors: the cap/abort failure must reach
-  // the upload stream or the promise never settles (and the transform's
-  // 'error' would be unhandled).
-  capped.on("error", (err) => uploadStream.destroy(err));
-
-  const cleanupTemp = async (): Promise<void> => {
-    try {
-      await collections.files.deleteOne({ _id: tempId });
-      await collections.fsChunks.deleteMany({ files_id: tempId });
-    } catch {
-      // best-effort — nothing references the temp id
-    }
-  };
-
-  return new Promise<void>((resolve, reject) => {
-    uploadStream.on("error", (err) => {
-      void cleanupTemp().finally(() => reject(err));
-    });
-    uploadStream.on("finish", () => {
-      void (async () => {
-        try {
-          // Publish only now that the replacement is fully durable:
-          // old doc+chunks out first (no chunk-id collision), temp
-          // chunks retargeted, temp doc re-inserted under the public
-          // id. A crash inside this server-local window is recoverable
-          // — the temp record still holds the uploaded bytes.
-          await collections.fsChunks.deleteMany({ files_id: filename });
-          await collections.files.deleteOne({ _id: filename });
-          await collections.fsChunks.updateMany(
-            { files_id: tempId },
-            { $set: { files_id: filename } },
-          );
-          const tempDoc = await collections.files.findOne({ _id: tempId });
-          if (!tempDoc) throw new Error("uploaded file record missing");
-          await collections.files.insertOne({
-            ...tempDoc,
-            _id: filename,
-          } as never);
-          await collections.files.deleteOne({ _id: tempId });
-          resolve();
-        } catch (err) {
-          await cleanupTemp();
-          reject(err);
-        }
-      })();
-    });
-    contentStream.pipe(capped).pipe(uploadStream);
-  });
+  return replaceStoredFile(filename, metadata, contentStream, FILE_MAX_BYTES);
 }
 
 export async function deleteFile(filename: string): Promise<void> {
-  await filesBucket.delete(filename as any);
+  await deleteStoredFile(filename);
 }
 
 export async function deleteFault(id: string): Promise<void> {

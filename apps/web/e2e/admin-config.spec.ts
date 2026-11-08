@@ -104,12 +104,43 @@ test("credential config is masked by the server until an explicit reveal", async
   await page.getByRole("link", { name: "app.testSecret", exact: true }).click();
   // The SERVER sends the sentinel — the raw value never crossed before
   // the reveal (M06-B).
-  await expect(page.getByText(/disembunyikan/i)).toBeVisible();
+  await expect(
+    page.getByText("Nilai tampak seperti kredensial dan disembunyikan.", {
+      exact: true,
+    }),
+  ).toBeVisible();
   await expect(page.locator(".CodeMirror")).toContainText("••••••••");
+  await expect(page.getByRole("textbox", { name: "Kode" })).toHaveAttribute(
+    "aria-readonly",
+    "true",
+  );
+  await expect(
+    page.getByRole("button", { name: "Simpan", exact: true }),
+  ).toBeDisabled();
   // Reveal is an explicit permission-checked round trip.
   await page.getByRole("button", { name: "Tampilkan nilai" }).click();
   await expect(page.locator(".CodeMirror")).toContainText(
     "super-fixture-value",
+  );
+  await expect(page.getByRole("textbox", { name: "Kode" })).toHaveAttribute(
+    "aria-readonly",
+    "false",
+  );
+  await expect(
+    page.getByRole("button", { name: "Simpan", exact: true }),
+  ).toBeDisabled();
+  await typeInEditor(page, '"edited-fixture-value"');
+  await expect(page.locator(".CodeMirror")).toContainText(
+    "edited-fixture-value",
+  );
+  await page.getByRole("button", { name: "Sembunyikan" }).click();
+  await expect(page.getByRole("textbox", { name: "Kode" })).toHaveAttribute(
+    "aria-readonly",
+    "true",
+  );
+  await page.getByRole("button", { name: "Tampilkan nilai" }).click();
+  await expect(page.locator(".CodeMirror")).toContainText(
+    "edited-fixture-value",
   );
   // Cleanup: delete the fixture row.
   await page.getByRole("button", { name: "Hapus", exact: true }).click();

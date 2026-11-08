@@ -7,8 +7,19 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Readable } from "node:stream";
 import { createHash } from "node:crypto";
+import { pipeline } from "node:stream/promises";
 import { startApp } from "../helpers/app.ts";
-import { collections } from "../../lib/db/db.ts";
+import {
+  collections,
+  filesBucket,
+  fileContentsBucket,
+  connect,
+  disconnect,
+} from "../../lib/db/db.ts";
+import * as engineServer from "../../lib/server.ts";
+import { ObjectId, MongoClient } from "mongodb";
+import { listener as fsListener } from "../../lib/fs.ts";
+import { listener as nbiListener } from "../../lib/nbi.ts";
 import {
   FILE_MAX_BYTES,
   FileTooLargeError,
@@ -19,6 +30,13 @@ const FILE_ID = "fw-replace-test.bin";
 
 void test("file replacement: abort/limit failures keep the old version", async (t) => {
   const app = await startApp();
+  const contentClient = await MongoClient.connect(process.env.MONGO_URL!);
+  const contentDb = contentClient.db();
+  const privateCounts = async (): Promise<[number, number]> =>
+    Promise.all([
+      contentDb.collection("file_contents.files").countDocuments({}),
+      contentDb.collection("file_contents.chunks").countDocuments({}),
+    ]);
   try {
     const put = await app.appRequest(
       `/api/files/${FILE_ID}`,
@@ -51,7 +69,38 @@ void test("file replacement: abort/limit failures keep the old version", async (
     const before = await checksumOf();
     assert.equal(await checksumOf(), before);
 
+    await t.test(
+      "publication failure preserves the published firmware",
+      async () => {
+        const fail = async (): Promise<never> => {
+          throw new Error("injected publication failure");
+        };
+        const oldSwap = t.mock.method(collections.fsChunks, "updateMany", fail);
+        const pointerSwap = t.mock.method(
+          collections.files,
+          "findOneAndReplace",
+          fail,
+        );
+        try {
+          await assert.rejects(
+            () =>
+              replaceFile(
+                FILE_ID,
+                {},
+                Readable.from(["unpublished replacement"]),
+              ),
+            /injected publication failure/,
+          );
+        } finally {
+          oldSwap.mock.restore();
+          pointerSwap.mock.restore();
+        }
+        assert.equal(await checksumOf(), before);
+      },
+    );
+
     await t.test("aborted replacement keeps the old version", async () => {
+      const countsBefore = await privateCounts();
       const broken = new Readable({
         read() {
           this.push("partial-new-");
@@ -62,13 +111,7 @@ void test("file replacement: abort/limit failures keep the old version", async (
         replaceFile(FILE_ID, { fileType: "1 Firmware Upgrade Image" }, broken),
       );
       assert.equal(await checksumOf(), before);
-      // No temp records survive the failed attempt.
-      assert.equal(
-        await collections.files.countDocuments({
-          _id: new RegExp("__replace__"),
-        }),
-        0,
-      );
+      assert.deepEqual(await privateCounts(), countsBefore);
     });
 
     await t.test(
@@ -76,6 +119,7 @@ void test("file replacement: abort/limit failures keep the old version", async (
       async () => {
         // 8 MiB chunks cross the cap on the 13th push — fast, and no
         // Content-Length is involved (the cap counts streamed bytes).
+        const countsBefore = await privateCounts();
         const chunk = Buffer.alloc(8 * 1024 * 1024, 1);
         let sent = 0;
         const huge = new Readable({
@@ -91,12 +135,7 @@ void test("file replacement: abort/limit failures keep the old version", async (
           (err: unknown) => err instanceof FileTooLargeError,
         );
         assert.equal(await checksumOf(), before);
-        assert.equal(
-          await collections.files.countDocuments({
-            _id: new RegExp("__replace__"),
-          }),
-          0,
-        );
+        assert.deepEqual(await privateCounts(), countsBefore);
       },
     );
 
@@ -162,9 +201,155 @@ void test("file replacement: abort/limit failures keep the old version", async (
         assert.equal(invalid.status, 416);
       },
     );
+
+    await t.test(
+      "concurrent replacements publish one complete version",
+      async () => {
+        const versions = ["a", "b", "c"].map((letter) =>
+          Buffer.alloc(600_000, letter),
+        );
+        await Promise.all(
+          versions.map((data, index) =>
+            replaceFile(
+              FILE_ID,
+              { version: String(index) },
+              Readable.from([data]),
+            ),
+          ),
+        );
+        const downloaded = await app.appRequest(
+          `/api/blob/files/${FILE_ID}`,
+          {},
+          "admin",
+        );
+        assert.equal(downloaded.status, 200);
+        const bytes = Buffer.from(await downloaded.arrayBuffer());
+        const current = await collections.files.findOne({ _id: FILE_ID });
+        assert.ok(current);
+        assert.deepEqual(bytes, versions[Number(current.metadata?.version)]);
+        assert.equal(
+          await collections.files.countDocuments({ _id: FILE_ID }),
+          1,
+        );
+      },
+    );
+
+    await t.test(
+      "lost publication response retains the committed content",
+      async () => {
+        const publish = collections.files.findOneAndReplace.bind(
+          collections.files,
+        );
+        const mock = t.mock.method(
+          collections.files,
+          "findOneAndReplace",
+          async (...args: Parameters<typeof publish>) => {
+            await publish(...args);
+            throw new Error("lost publication response");
+          },
+        );
+        try {
+          await assert.rejects(
+            () =>
+              replaceFile(
+                FILE_ID,
+                {},
+                Readable.from(["committed despite lost response"]),
+              ),
+            /lost publication response/,
+          );
+        } finally {
+          mock.mock.restore();
+        }
+        const downloaded = await app.appRequest(
+          `/api/blob/files/${FILE_ID}`,
+          {},
+          "admin",
+        );
+        assert.equal(downloaded.status, 200);
+        assert.equal(
+          await downloaded.text(),
+          "committed despite lost response",
+        );
+      },
+    );
   } finally {
     const { deleteFile } = await import("../../lib/ui/db.ts");
     await deleteFile(FILE_ID).catch(() => undefined);
+    // Completed publication failures deliberately retain recovery bytes.
+    // Remove only this fixture's private versions at the end of the test.
+    for await (const file of fileContentsBucket.find({ filename: FILE_ID }))
+      await fileContentsBucket.delete(file._id).catch(() => undefined);
+    await contentClient.close();
     await app.stop();
+  }
+});
+
+void test("native FS and NBI retain legacy and new string file IDs", async () => {
+  await connect();
+  const legacyId = `${FILE_ID}-legacy`;
+  const base = "http://127.0.0.1:8959";
+  engineServer.start(
+    { port: 8959, host: "127.0.0.1", ssl: null, timeout: 15000 },
+    async (req, res) => {
+      if (req.url.startsWith("/nbi/")) {
+        req.url = req.url.slice(4);
+        return nbiListener(req, res);
+      }
+      return fsListener(req, res);
+    },
+  );
+  try {
+    for (let attempt = 0; attempt < 50; attempt++) {
+      try {
+        if (
+          (
+            await fetch(`${base}/__probe__`, {
+              signal: AbortSignal.timeout(1000),
+            })
+          ).status === 404
+        )
+          break;
+      } catch {
+        /* listener starting */
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    await collections.files.deleteOne({ _id: legacyId });
+    await collections.fsChunks.deleteMany({ files_id: legacyId });
+    await pipeline(
+      Readable.from(["legacy-content"]),
+      filesBucket.openUploadStreamWithId(
+        legacyId as unknown as ObjectId,
+        legacyId,
+      ),
+    );
+    const legacy = await fetch(`${base}/${legacyId}`);
+    assert.equal(legacy.status, 200);
+    assert.equal(await legacy.text(), "legacy-content");
+    await replaceFile(legacyId, {}, Readable.from(["ui-replacement"]));
+    const current = await fetch(`${base}/${legacyId}`);
+    assert.equal(current.status, 200);
+    assert.equal(await current.text(), "ui-replacement");
+    const uploaded = await fetch(`${base}/nbi/files/${legacyId}`, {
+      method: "PUT",
+      body: "nbi-replacement",
+    });
+    assert.equal(uploaded.status, 201);
+    const replaced = await fetch(`${base}/${legacyId}`, {
+      headers: { Range: "bytes=0-2" },
+    });
+    assert.equal(replaced.status, 206);
+    assert.equal(await replaced.text(), "nbi");
+    const removed = await fetch(`${base}/nbi/files/${legacyId}`, {
+      method: "DELETE",
+    });
+    assert.equal(removed.status, 200);
+    assert.equal((await fetch(`${base}/${legacyId}`)).status, 404);
+  } finally {
+    await collections.files.deleteOne({ _id: legacyId });
+    await collections.fsChunks.deleteMany({ files_id: legacyId });
+    await engineServer.stop();
+    await disconnect();
   }
 });

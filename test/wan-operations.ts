@@ -116,7 +116,7 @@ function wanDeviceDoc(
   crIp: string,
   model = "F670",
 ): Record<string, unknown> {
-  return {
+  const doc = {
     _id: id,
     _lastInform: new Date(),
     _registered: new Date(),
@@ -183,6 +183,15 @@ function wanDeviceDoc(
       },
     },
   };
+  // Guard now refuses an unmatched literal CRURL. Give positive fixtures a
+  // separate, identifiable management WAN instead of relying on that bypass.
+  if (crIp !== "192.0.2.50")
+    setTreeParam(
+      doc,
+      "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.9.WANIPConnection.1.ExternalIPAddress",
+      crIp,
+    );
+  return doc;
 }
 
 // Navigate/create the tree doc and set a parameter leaf.
@@ -225,6 +234,9 @@ function fakeCwmpDeps(options: {
 } {
   const state = { insert: 0, cr: 0, applied: 0, skipped: 0 };
   const deps: ExecutorDeps = {
+    async taskPending() {
+      return false;
+    },
     async connectionRequest() {
       state.cr++;
       if (options.failCrFrom != null && state.cr >= options.failCrFrom)

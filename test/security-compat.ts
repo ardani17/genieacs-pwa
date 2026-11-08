@@ -17,7 +17,12 @@ import { collections, connect, disconnect, filesBucket } from "../lib/db/db.ts";
 import type { Device } from "../lib/db/types.ts";
 import { set as cacheSet, pop as cachePop } from "../lib/cache.ts";
 import { acquireLock, releaseLock } from "../lib/lock.ts";
-import { putFile, downloadFile, deleteFile } from "../lib/ui/db.ts";
+import {
+  putFile,
+  downloadFile,
+  downloadFileRange,
+  deleteFile,
+} from "../lib/ui/db.ts";
 import { generateSalt, hashPassword } from "../lib/auth.ts";
 import * as engineServer from "../lib/server.ts";
 import { listener } from "../lib/ui.ts";
@@ -224,11 +229,11 @@ void test(
     );
     assert.equal(full.length, content.length);
 
-    // Byte-range via the driver stream options (end is exclusive).
+    // Public range helper uses HTTP's inclusive end, and resolves either
+    // legacy chunks or the atomically published immutable content version.
     const ranged = await new Promise<Buffer>((resolve, reject) => {
       const chunks = [];
-      filesBucket
-        .openDownloadStreamByName(fileId, { start: 100, end: 200 } as any)
+      downloadFileRange(fileId, 100, 199)
         .on("data", (c) => chunks.push(c))
         .on("error", reject)
         .on("end", () => resolve(Buffer.concat(chunks)));

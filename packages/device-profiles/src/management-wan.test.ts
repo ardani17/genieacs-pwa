@@ -42,6 +42,86 @@ test("identifies the management WAN from the CRURL host", () => {
   assert.equal(ambiguous, false);
 });
 
+test("TR-181 management interface and its lower layers are protected", () => {
+  const d = {
+    "Device.ManagementServer.ConnectionRequestURL": {
+      value: ["http://192.0.2.10:7547/", "xsd:string"],
+    },
+    "Device.IP.Interface.1.IPv4Address.1.IPAddress": {
+      value: ["192.0.2.10", "xsd:string"],
+    },
+    "Device.IP.Interface.1.LowerLayers": {
+      value: ["Device.PPP.Interface.4.", "xsd:string"],
+    },
+    "Device.PPP.Interface.4.LowerLayers": {
+      value: ["Device.Ethernet.VLANTermination.2", "xsd:string"],
+    },
+    "Device.IP.Interface.2.IPv4Address.1.IPAddress": {
+      value: ["192.0.2.20", "xsd:string"],
+    },
+  } as never;
+  for (const path of [
+    "Device.IP.Interface.1",
+    "Device.PPP.Interface.4",
+    "Device.Ethernet.VLANTermination.2",
+  ]) {
+    assert.throws(
+      () => assertManagementWanSafe(d, [spv(path, "Enable", false)]),
+      ManagementWanGuardError,
+    );
+    assert.throws(
+      () =>
+        assertManagementWanSafe(d, [
+          { name: "deleteObject", objectName: path },
+        ]),
+      ManagementWanGuardError,
+    );
+    assert.throws(
+      () =>
+        assertManagementWanSafe(d, [
+          {
+            name: "provisions",
+            provisions: [["value", `${path}.Enable`, false]],
+          },
+        ]),
+      ManagementWanGuardError,
+    );
+  }
+  assert.throws(
+    () =>
+      assertManagementWanSafe(d, [
+        spv("Device.IP.Interface.1.IPv4Address.1", "IPAddress", "192.0.2.99"),
+      ]),
+    ManagementWanGuardError,
+  );
+  assert.doesNotThrow(() =>
+    assertManagementWanSafe(d, [spv("Device.IP.Interface.2", "Enable", false)]),
+  );
+});
+
+test("unmatched literal CRURL and absent WAN evidence hold critical edits", () => {
+  const d = managementFixture();
+  d[CRURL].value[0] = "http://192.0.2.250:7547/";
+  assert.throws(
+    () => assertManagementWanSafe(d, [spv(WAN_IP_INSTANCE, "Enable", false)]),
+    ManagementWanGuardError,
+  );
+  assert.throws(
+    () =>
+      assertManagementWanSafe({} as never, [
+        spv("Device.IP.Interface.1", "Enable", false),
+      ]),
+    ManagementWanGuardError,
+  );
+  assert.throws(
+    () =>
+      assertManagementWanSafe({} as never, [
+        { name: "deleteObject", objectName: "Device.IP.Interface" },
+      ]),
+    ManagementWanGuardError,
+  );
+});
+
 test("DNS-named CRURL hosts match through server-provided resolutions only", () => {
   const d = makeZteWan({});
   d[`${WAN_IP_INSTANCE}.ExternalIPAddress`].value[0] = "192.0.2.50";
@@ -57,6 +137,11 @@ test("DNS-named CRURL hosts match through server-provided resolutions only", () 
 
 test("rejects critical SPV on the management WAN but allows other WANs and benign fields", () => {
   const d = managementFixture();
+  for (const leaf of ["X_ZTE-COM_VLANEnable", "DefaultGateway"])
+    assert.throws(
+      () => assertManagementWanSafe(d, [spv(WAN_IP_INSTANCE, leaf, 0)]),
+      ManagementWanGuardError,
+    );
   assert.throws(
     () =>
       assertManagementWanSafe(d, [

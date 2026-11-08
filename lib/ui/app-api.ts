@@ -589,7 +589,7 @@ router.post("/app/admin/users", async (ctx) => {
   }
   const validate = ctx.state.authorizer.getValidator("users", {
     _id: username,
-    roles,
+    roles: roles.join(","),
   });
   if (!validate("put")) {
     emitPermissionDenied(ctx, "Create user");
@@ -659,7 +659,7 @@ router.put("/app/admin/users/:id/roles", async (ctx) => {
   }
   const validate = ctx.state.authorizer.getValidator("users", {
     _id: ctx.params.id,
-    roles,
+    roles: roles.join(","),
   });
   if (!validate("put")) {
     emitPermissionDenied(ctx, "Update user roles");

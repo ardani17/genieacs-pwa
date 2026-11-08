@@ -24,6 +24,37 @@ const device = {
 const ctx = { device, now: 1730000000000 };
 
 describe("ConfigRenderer safety", () => {
+  it.each([
+    { filter: false },
+    { filter: ["=", ["PARAM", "DeviceID.ProductClass"], "other-model"] },
+  ])("hides containers whose native filter is false: %j", ({ filter }) => {
+    render(
+      <ConfigRenderer
+        node={
+          { type: "container", label: "Conditional section", filter } as never
+        }
+        context={ctx}
+      />,
+    );
+    expect(screen.queryByText("Conditional section")).toBeNull();
+  });
+
+  it("shows containers whose native parameter filter matches", () => {
+    render(
+      <ConfigRenderer
+        node={
+          {
+            type: "container",
+            label: "Matching section",
+            filter: ["=", ["PARAM", "DeviceID.ProductClass"], "F670"],
+          } as never
+        }
+        context={ctx}
+      />,
+    );
+    expect(screen.getByText("Matching section")).toBeVisible();
+  });
+
   it("unsafe anchor cannot execute script and unknown node is visible", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     render(
@@ -187,13 +218,10 @@ describe("native bootstrap DTO", () => {
     },
     // The bare collection object node — upstream parameter-table renders
     // nothing without it.
-    "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection":
-      {
-        value: [
-          "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection",
-          "xsd:string",
-        ],
-      },
+    "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection": {
+      object: true,
+      writable: true,
+    },
     "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.MACAddress":
       {
         value: ["aa:bb", "xsd:string"],
@@ -272,6 +300,29 @@ describe("native bootstrap DTO", () => {
     expect(
       screen.getByRole("rowheader", { name: `${WAN_IP}.2` }),
     ).toBeVisible();
+  });
+
+  it("applies native instance filters and dynamic child parameter paths", () => {
+    render(
+      <ConfigRenderer
+        node={
+          {
+            type: "parameter-table",
+            parameter: ["PARAM", ["||", WAN_IP, ""]],
+            filter: ["=", ["PARAM", "IPAddress"], "192.0.2.2"],
+            childParameters: {
+              "0": {
+                label: "MAC",
+                parameter: ["PARAM", ["||", "MAC", "Address"]],
+              },
+            },
+          } as never
+        }
+        context={nativeCtx}
+      />,
+    );
+    expect(screen.getByText("cc:dd")).toBeVisible();
+    expect(screen.queryByText("aa:bb")).toBeNull();
   });
 
   it("renders chart-joined overview dots from the overview config", () => {

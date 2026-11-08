@@ -2,6 +2,8 @@ import { PageHeader } from "@/components/page-header";
 import { ConfigEditor } from "@/features/admin/config-editor";
 import { cookies } from "next/headers";
 import { APP_COOKIE_NAME, engineFetch } from "@/server/genieacs-client";
+import { hasResourceAccess } from "@/lib/permissions";
+import type { SessionDTO } from "@contracts/api.ts";
 
 export const dynamic = "force-dynamic";
 
@@ -16,13 +18,8 @@ export default async function AdminConfigPage() {
     try {
       const res = await engineFetch("/api/session", { cookie });
       if (res.ok) {
-        const dto = (await res.json()) as {
-          permissionSets?: Record<string, { access?: number }>[];
-        };
-        canReveal = (dto.permissionSets ?? []).some(
-          (set) =>
-            set["config"]?.access !== undefined && set["config"].access >= 3,
-        );
+        const dto = (await res.json()) as SessionDTO;
+        canReveal = hasResourceAccess(dto, "config", 3);
       }
     } catch {
       canReveal = false;

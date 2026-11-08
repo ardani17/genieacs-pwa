@@ -129,11 +129,13 @@ function ResourceEditorPane({
             />
           )}
         </Field>
-        {masked ? (
+        {masked || revealed ? (
           <div className="space-y-1">
-            <Status tone="warning">
-              Nilai tampak seperti kredensial dan disembunyikan.
-            </Status>
+            {masked ? (
+              <Status tone="warning">
+                Nilai tampak seperti kredensial dan disembunyikan.
+              </Status>
+            ) : null}
             {canRevealSecrets ? (
               <Button variant="outline" size="sm" onClick={onToggleReveal}>
                 {revealed ? "Sembunyikan" : "Tampilkan nilai"}
@@ -518,7 +520,7 @@ export function ResourceEditor({
           language={language}
           draft={draft}
           hasExistingId={!!selected?.["_id"]}
-          masked={maskedSource !== source}
+          masked={masked}
           maskedSource={maskedSource}
           revealed={revealed}
           canRevealSecrets={canRevealSecrets}
@@ -540,13 +542,17 @@ export function ResourceEditor({
               resource,
               String(selected["_id"]),
               (doc) => {
-                setSelected(doc);
-                setDraft(doc);
-                setSource(
-                  config.serialize
-                    ? config.serialize(doc)
-                    : String(doc[sourceField] ?? ""),
-                );
+                // Reveal rechecks permission, but must preserve unsaved edits
+                // and their original revision baseline after a hide toggle.
+                if (!dirty) {
+                  setSelected(doc);
+                  setDraft(doc);
+                  setSource(
+                    config.serialize
+                      ? config.serialize(doc)
+                      : String(doc[sourceField] ?? ""),
+                  );
+                }
                 setRevealed(true);
               },
               setError,

@@ -25,29 +25,13 @@ import {
   SheetTrigger,
 } from "./ui/sheet";
 import { cn } from "@/lib/utils";
+import { hasResourceAccess } from "@/lib/permissions";
 import { useSession } from "./session-provider";
 import {
   FEATURE_AVAILABILITY,
   NAV_ITEMS,
   type NavItem,
 } from "./navigation-items";
-
-function hasResource(
-  session: { permissionSets: Record<string, { access: number }>[] },
-  resource: string,
-  minAccess: number,
-): boolean {
-  return session.permissionSets.some((set) => {
-    const entry = Object.values(set).find(
-      (v) => (v as { resource?: string }).resource === undefined,
-    );
-    void entry;
-    return Object.entries(set).some(
-      ([key, value]) =>
-        key === resource && (value as { access: number }).access >= minAccess,
-    );
-  });
-}
 
 const icons = {
   "/overview": LayoutDashboard,
@@ -68,10 +52,8 @@ export function Navigation() {
       FEATURE_AVAILABILITY[item.href] === true &&
       (!item.requiredResource ||
         (session &&
-          hasResource(
-            session as unknown as {
-              permissionSets: Record<string, { access: number }>[];
-            },
+          hasResourceAccess(
+            session,
             item.requiredResource,
             item.minAccess ?? 1,
           ))),
