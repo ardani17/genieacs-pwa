@@ -1,8 +1,8 @@
 // Public fs.files IDs remain native string filenames. New content is immutable
 // in a separate bucket, so publishing a complete version is one atomic document
 // replacement, including on standalone MongoDB (no GridFS transaction needed).
-import { Readable, Transform } from "node:stream";
-import { pipeline } from "node:stream/promises";
+import { Readable } from "node:stream";
+import { finished } from "node:stream/promises";
 import { ObjectId, type GridFSBucketReadStreamOptions } from "mongodb";
 import { collections, filesBucket, fileContentsBucket } from "./db/db.ts";
 import type { File } from "./db/types.ts";
@@ -66,18 +66,41 @@ export async function replaceStoredFile(
 ): Promise<void> {
   const contentId = new ObjectId();
   const upload = fileContentsBucket.openUploadStreamWithId(contentId, filename);
-  let bytes = 0;
-  const capped = new Transform({
-    transform(chunk: Buffer, _encoding, callback) {
-      bytes += chunk.length;
-      callback(bytes > maxBytes ? new FileTooLargeError() : null, chunk);
-    },
+  const uploaded = finished(upload, { cleanup: true });
+  // An index/construct failure may occur while waiting for the first input
+  // byte. Interrupt that wait rather than leaving an upload request hanging.
+  void uploaded.catch((err) => {
+    if (!input.destroyed) input.destroy(err);
   });
+  let bytes = 0;
   try {
-    await pipeline(input, capped, upload);
+    for await (const value of input) {
+      const chunk = Buffer.isBuffer(value) ? value : Buffer.from(value);
+      bytes += chunk.length;
+      if (bytes > maxBytes) throw new FileTooLargeError();
+      // GridFS destroy/abort does not await in-flight chunk inserts. Await
+      // every write and limit it to one insert before cleanup can begin;
+      // otherwise a late insert can recreate chunks after bucket.delete().
+      for (
+        let offset = 0;
+        offset < chunk.length;
+        offset += upload.chunkSizeBytes
+      ) {
+        await new Promise<void>((resolve, reject) => {
+          upload.write(
+            chunk.subarray(offset, offset + upload.chunkSizeBytes),
+            (err) => (err ? reject(err) : resolve()),
+          );
+        });
+      }
+    }
+    upload.end();
+    await uploaded;
   } catch (err) {
-    // GridFS can leave partial chunks after an interrupted upload. delete()
-    // removes those too, even when no completed file document exists.
+    input.destroy();
+    upload.destroy();
+    await uploaded.catch(() => undefined);
+    // No chunk insert remains pending, even when there is no completed file.
     await fileContentsBucket.delete(contentId).catch(() => undefined);
     throw err;
   }

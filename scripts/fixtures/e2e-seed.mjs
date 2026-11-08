@@ -187,6 +187,29 @@ async function main() {
       validate: "true",
     })),
   );
+  permissions.push(
+    {
+      _id: "fixtureAdmin:vpn:3",
+      role: "fixtureAdmin",
+      resource: "vpn",
+      access: 3,
+      validate: "true",
+    },
+    {
+      _id: "fixtureAdmin:logs:3",
+      role: "fixtureAdmin",
+      resource: "logs",
+      access: 3,
+      validate: "true",
+    },
+    {
+      _id: "fixtureOperator:vpn:1",
+      role: "fixtureOperator",
+      resource: "vpn",
+      access: 1,
+      validate: "true",
+    },
+  );
   await db.collection("permissions").insertMany(permissions);
 
   await db.collection("devices").deleteMany({});

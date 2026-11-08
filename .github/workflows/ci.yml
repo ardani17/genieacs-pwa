@@ -117,7 +117,7 @@ jobs:
       - name: Build verification images
         run:
           docker compose -f compose.test.yaml build verify victorialogs vector
-          web
+          web vpn-build
       - name: Start the fixture mongo and wait for it
         run: |
           docker compose -f compose.test.yaml up -d mongo

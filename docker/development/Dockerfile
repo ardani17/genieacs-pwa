@@ -5,6 +5,7 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /workspace
+RUN mkdir -p /logs && chown 10001:10001 /logs
 # Bake the root toolchain into the image: a FRESH verify_modules volume
 # then self-populates from here on first mount (Docker copies image
 # content into empty named volumes), so the check harness works on any

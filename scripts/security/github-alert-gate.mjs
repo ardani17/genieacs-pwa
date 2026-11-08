@@ -347,6 +347,107 @@ export const ALERT_MAPPING = {
     fixedInPr:
       "unconditional post-refresh authorization before client-selected binding decisions",
   },
+  // PR #9 M07 source review. New alert numbers retain the same exact-ref
+  // verification and named-human exception requirements as earlier PRs.
+  82: {
+    package: "M07-A",
+    tests: ["test/security/error-response.ts"],
+    required: true,
+    pr: true,
+    envelope: "json",
+  },
+  83: {
+    package: "M07-A",
+    tests: ["docker/bootstrap-secrets.test.mjs"],
+    required: true,
+    pr: true,
+  },
+  84: {
+    package: "M07-A",
+    tests: ["docker/bootstrap-secrets.test.mjs"],
+    required: true,
+    pr: true,
+  },
+  85: {
+    package: "M07-B",
+    tests: ["services/vpn-controller/test/recovery.test.ts"],
+    required: true,
+    pr: true,
+  },
+  86: {
+    package: "M07-B",
+    tests: ["test/internal-url.ts"],
+    required: true,
+    pr: true,
+  },
+  87: {
+    package: "M07-B",
+    tests: ["scripts/fixtures/vpn-evidence.test.mjs"],
+    required: true,
+    pr: true,
+  },
+  88: {
+    package: "M07-B",
+    tests: ["test/internal-url.ts"],
+    required: true,
+    pr: true,
+  },
+  89: {
+    package: "M07-B",
+    tests: ["test/internal-url.ts"],
+    required: true,
+    pr: true,
+  },
+  90: {
+    package: "M07-B",
+    tests: ["test/settings-permissions.ts"],
+    required: true,
+    pr: true,
+  },
+  91: {
+    package: "M07-C",
+    tests: ["scripts/fixtures/m07-outage.mjs"],
+    required: true,
+    pr: true,
+  },
+  92: {
+    package: "M07-B",
+    tests: ["scripts/fixtures/vpn-evidence.test.mjs"],
+    required: true,
+    pr: true,
+  },
+  93: {
+    package: "M07-B",
+    tests: ["scripts/fixtures/vpn-evidence.test.mjs"],
+    required: true,
+    pr: true,
+  },
+  94: {
+    package: "M07-A",
+    tests: ["test/app-settings.ts"],
+    required: true,
+    pr: true,
+  },
+  95: {
+    package: "M07-A",
+    tests: ["test/app-settings.ts"],
+    required: true,
+    pr: true,
+  },
+  96: {
+    package: "M07-B",
+    tests: ["scripts/fixtures/vpn-evidence.test.mjs"],
+    required: true,
+    pr: true,
+    renumberedFrom: 87,
+  },
+  97: {
+    package: "M07-B",
+    tests: ["test/internal-url.ts"],
+    required: true,
+    pr: true,
+    renumberedFrom: 88,
+  },
   dependabot1: {
     package: "M01-B",
     ticket: "ARD-165",

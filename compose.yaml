@@ -62,11 +62,37 @@ services:
     # Structured app logs (auth/permission events) flow on the shared
     # volume Vector reads; per-service file so four engine processes
     # never share one rotation (WORKER_PROCESSES=0 keeps each single).
+    #
+    # Saved-settings secret material (M07-A): generated on the HOST by
+    # `node docker/bootstrap-secrets.mjs` into the Git-ignored secrets/
+    # directory, mounted read-only. Without it the mounts fall back to
+    # /dev/null: settings reads/writes then fail STORAGE_ERROR (surfaced,
+    # never a .env fallback) and the dashboard keeps running.
     environment:
       <<: *engine-env
       GENIEACS_UI_APP_LOG_FILE: /logs/ui/app.ndjson
+      SETTINGS_SECRET_KEY_FILE: /run/secrets/settings-secret.key
+      VPN_CONTROLLER_TOKEN_FILE: /run/secrets/vpn-controller.token
+      ACS_ADDRESS_TOKEN_FILE: /run/secrets/acs-address.token
+      VPN_SERVER: ${VPN_SERVER:-}
+      VPN_USERNAME: ${VPN_USERNAME:-}
+      VPN_PASSWORD_FILE: /run/secrets/vpn-password
+      VPN_ROUTES: ${VPN_ROUTES:-}
+      VPN_MTU: ${VPN_MTU:-1400}
+      ACS_HOST: ${ACS_HOST:-}
+      ACS_PORT: ${ACS_PORT:-7547}
+      ACS_SCHEME: ${ACS_SCHEME:-http}
+      ACS_PATH: ${ACS_PATH:-/}
+      INSTALLATION_ID: ${INSTALLATION_ID:-}
+      VPN_CONTROLLER_URL: http://vpn:8787
+      VECTOR_METRICS_URL: http://vector:9598/metrics
+      LOG_URL: http://victorialogs:9428
     volumes:
       - app_logs:/logs
+      - ${SETTINGS_SECRET_KEY_HOSTFILE:-./secrets/settings-secret.key}:/run/secrets/settings-secret.key:ro
+      - ${VPN_CONTROLLER_TOKEN_HOSTFILE:-./secrets/vpn-controller.token}:/run/secrets/vpn-controller.token:ro
+      - ${ACS_ADDRESS_TOKEN_HOSTFILE:-./secrets/acs-address.token}:/run/secrets/acs-address.token:ro
+      - ${VPN_PASSWORD_HOSTFILE:-/dev/null}:/run/secrets/vpn-password:ro
     healthcheck:
       test: ["CMD", "node", "docker/health.mjs", "7583"]
       interval: 15s
@@ -120,7 +146,17 @@ services:
     restart: unless-stopped
     logging: *logging
     environment:
-      VPN_PROFILE: ${VPN_PROFILE:-}
+      GENIEACS_UI_URL: http://ui:7583
+      VPN_CONTROLLER_TOKEN_FILE: /run/secrets/vpn-controller.token
+      VPN_PROTECTED_CIDRS: ${VPN_PROTECTED_CIDRS:-}
+      APP_LOG_FILE: /logs/vpn/app.ndjson
+      NODE_ENV: production
+    volumes:
+      - vpn_private:/vpn-private
+      - app_logs:/logs
+      - ${VPN_CONTROLLER_TOKEN_HOSTFILE:-./secrets/vpn-controller.token}:/run/secrets/vpn-controller.token:ro
+    networks:
+      - app
     # CWMP/FS ports live on the vpn namespace (their shared network).
     ports:
       - "${CWMP_BIND:-7547}:7547"
@@ -138,6 +174,7 @@ services:
     logging: *logging
     command:
       - -retentionPeriod=14d
+      - -storageDataPath=/storage
       - -retention.maxDiskSpaceUsageBytes=10000000000
       - -storage.minFreeDiskSpaceBytes=2147483648
       - -httpListenAddr=:9428
@@ -217,3 +254,4 @@ volumes:
   app_logs:
   vector_buffer:
   victoria_logs_data:
+  vpn_private:

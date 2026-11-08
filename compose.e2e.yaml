@@ -25,8 +25,18 @@ services:
       # Structured engine events on the shared test volume, exercising
       # the same wiring as the production stack.
       GENIEACS_UI_APP_LOG_FILE: /logs/ui/app.ndjson
+      SETTINGS_SECRET_KEY_FILE: /run/settings/key.fixture
+      VPN_CONTROLLER_TOKEN_FILE: /run/settings/controller.fixture
+      ACS_ADDRESS_TOKEN_FILE: /run/settings/acs.fixture
+      VPN_PASSWORD_FILE: /run/settings/password.fixture
+      VPN_SERVER: vpn-initial.example.invalid
+      VPN_USERNAME: fixture-vpn-user
+      VPN_CONTROLLER_URL: http://vpn-controller-fixture:8787
+      LOG_URL: http://victorialogs:9428
+      VECTOR_METRICS_URL: http://vector:9598/metrics
     volumes:
       - app_logs_test:/logs
+      - ./test/fixtures/settings:/run/settings:ro
     healthcheck:
       test: ["CMD", "node", "docker/health.mjs", "7583"]
       interval: 5s
@@ -57,6 +67,18 @@ services:
       ui:
         condition: service_healthy
 
+  vpn-controller-fixture:
+    image: genieacs-pwa-verify:local
+    working_dir: /workspace
+    init: true
+    environment:
+      VPN_CONTROLLER_TOKEN_FILE: /run/settings/controller.fixture
+    volumes:
+      - .:/workspace
+      - verify_modules:/workspace/node_modules
+      - ./test/fixtures/settings:/run/settings:ro
+    command: ["node", "scripts/fixtures/vpn-controller.mjs"]
+
   web:
     environment:
       # The real engine UI (overriding the base stack's no-engine
@@ -64,6 +86,8 @@ services:
       GENIEACS_UI_URL: http://ui:7583
       ENGINE_STATUS_URL: http://ui:7583/status
     depends_on:
+      vpn-controller-fixture:
+        condition: service_started
       ui:
         condition: service_healthy
       seed:

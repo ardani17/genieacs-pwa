@@ -553,5 +553,99 @@
       "args": ["scripts/test-ts.mjs", "test/integration/config-masking.ts"],
       "artifacts": ["artifacts/tests/test/integration/config-masking.test.cjs"]
     }
+  ],
+  "M07-A": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["--test", "docker/bootstrap-secrets.test.mjs"]
+    },
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": [
+        "scripts/test-ts.mjs",
+        "test/app-settings.ts",
+        "test/settings-permissions.ts"
+      ],
+      "artifacts": [
+        "artifacts/tests/test/app-settings.test.cjs",
+        "artifacts/tests/test/settings-permissions.test.cjs"
+      ]
+    },
+    {
+      "cwd": "apps/web",
+      "command": "npm",
+      "args": ["run", "typecheck"]
+    },
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": [
+        "docker/bootstrap-secrets.mjs",
+        "--dir",
+        "artifacts/secrets",
+        "--init-key"
+      ]
+    },
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": [
+        "docker/bootstrap-secrets.mjs",
+        "--dir",
+        "artifacts/secrets",
+        "--check"
+      ]
+    }
+  ],
+  "M07-B": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["--test", "scripts/fixtures/vpn-evidence.test.mjs"]
+    },
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": [
+        "scripts/test-ts.mjs",
+        "test/internal-url.ts",
+        "test/file-storage-cleanup.ts",
+        "services/vpn-controller/test/state.test.ts",
+        "services/vpn-controller/test/routes.test.ts",
+        "services/vpn-controller/test/controller.test.ts",
+        "services/vpn-controller/test/profile.test.ts",
+        "services/vpn-controller/test/recovery.test.ts"
+      ],
+      "artifacts": [
+        "artifacts/tests/services/vpn-controller/test/state.test.test.cjs",
+        "artifacts/tests/services/vpn-controller/test/routes.test.test.cjs",
+        "artifacts/tests/services/vpn-controller/test/controller.test.test.cjs",
+        "artifacts/tests/services/vpn-controller/test/profile.test.test.cjs"
+      ]
+    },
+    {
+      "cwd": ".",
+      "command": "npx",
+      "args": ["eslint", "services/vpn-controller/**/*.ts"]
+    },
+    { "cwd": ".", "command": "npx", "args": ["tsc", "--noEmit"] }
+  ],
+  "M07-C": [
+    {
+      "cwd": ".",
+      "command": "node",
+      "args": ["scripts/test-ts.mjs", "test/log-results.ts"],
+      "artifacts": ["artifacts/tests/test/log-results.test.cjs"]
+    },
+    { "cwd": "apps/web", "command": "npm", "args": ["run", "test"] },
+    { "cwd": "apps/web", "command": "npm", "args": ["run", "typecheck"] },
+    {
+      "cwd": "apps/web",
+      "command": "npm",
+      "args": ["run", "build"],
+      "artifacts": ["apps/web/.next/BUILD_ID"]
+    }
   ]
 }

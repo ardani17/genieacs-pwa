@@ -19,6 +19,7 @@
     "./lib/**/*",
     "./ui/**/*",
     "./test/**/*",
-    "./build/**/*"
+    "./build/**/*",
+    "./services/vpn-controller/**/*.ts"
   ]
 }

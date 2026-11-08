@@ -1,6 +1,7 @@
 import { MongoClient, Collection, GridFSBucket } from "mongodb";
 import { get } from "../config.ts";
 import * as MongoTypes from "./types.ts";
+import type { AppSettingsDoc } from "../ui/app-settings.ts";
 
 export let filesBucket: GridFSBucket;
 export let fileContentsBucket: GridFSBucket;
@@ -26,6 +27,7 @@ export const collections = {
   // App-side idempotency/diagnosis store (contracts.md "app_operations");
   // never a durable work queue — holds fingerprints and outcomes only.
   appOperations: null as Collection<AppOperationDoc>,
+  appSettings: null as Collection<AppSettingsDoc>,
 };
 
 export interface AppOperationDoc {
@@ -75,6 +77,7 @@ export async function connect(): Promise<void> {
   collections.locks = db.collection("locks");
   collections.fsChunks = db.collection("fs.chunks");
   collections.appOperations = db.collection("app_operations");
+  collections.appSettings = db.collection("app_settings");
   filesBucket = new GridFSBucket(db);
   fileContentsBucket = new GridFSBucket(db, { bucketName: "file_contents" });
 

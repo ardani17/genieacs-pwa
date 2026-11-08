@@ -1,0 +1,36 @@
+# Optional live L2TP lab. Profile JSON is local and ignored by Git. This
+# overlay never uses deployment services or the production database.
+services:
+  vpn-lab-source:
+    image: genieacs-pwa-verify:local
+    working_dir: /workspace
+    init: true
+    volumes:
+      - .:/workspace
+      - verify_modules:/workspace/node_modules
+      - ./secrets/m07-lab-profile.json:/run/lab-profile.json:ro
+      - ./test/fixtures/settings/controller.fixture:/run/controller.token:ro
+    command: ["node", "scripts/fixtures/vpn-lab.mjs"]
+  vpn-lab:
+    image: genieacs-pwa-vpn-check:local
+    init: true
+    cap_add: [NET_ADMIN]
+    devices: ["/dev/ppp:/dev/ppp"]
+    environment:
+      GENIEACS_UI_URL: http://vpn-lab-source:7583
+      VPN_CONTROLLER_TOKEN_FILE: /run/controller.token
+    volumes:
+      - vpn_lab_private:/vpn-private
+      - ./test/fixtures/settings/controller.fixture:/run/controller.token:ro
+    depends_on: [vpn-lab-source]
+  vpn-lab-probe:
+    image: genieacs-pwa-verify:local
+    working_dir: /workspace
+    init: true
+    volumes:
+      - .:/workspace
+      - verify_modules:/workspace/node_modules
+      - ./test/fixtures/settings/controller.fixture:/run/controller.token:ro
+    command: ["node", "scripts/fixtures/vpn-lab.mjs", "--probe"]
+volumes:
+  vpn_lab_private:

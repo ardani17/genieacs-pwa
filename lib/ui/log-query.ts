@@ -50,6 +50,44 @@ export function buildLogQuery(
   limit: number;
   offset: number;
 } {
+  if (!filters || typeof filters !== "object" || Array.isArray(filters))
+    throw new LogQueryError("filters must be an object");
+  const allowed = new Set([
+    "start",
+    "end",
+    "service",
+    "level",
+    "requestId",
+    "operationId",
+    "deviceId",
+    "limit",
+    "offset",
+  ]);
+  for (const [key, value] of Object.entries(filters)) {
+    if (!allowed.has(key))
+      throw new LogQueryError(
+        key === "query"
+          ? "raw query expressions are not allowed"
+          : "unknown filter field",
+      );
+    if (
+      [
+        "start",
+        "end",
+        "service",
+        "level",
+        "requestId",
+        "operationId",
+        "deviceId",
+      ].includes(key) &&
+      (typeof value !== "string" ||
+        value.length > 256 ||
+        Array.from(value).some(
+          (c) => c.charCodeAt(0) < 32 || c.charCodeAt(0) === 127,
+        ))
+    )
+      throw new LogQueryError("invalid filter value");
+  }
   if (filters.query !== undefined)
     throw new LogQueryError("raw query expressions are not allowed");
 

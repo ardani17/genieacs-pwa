@@ -57,7 +57,7 @@ export function diagnosticTarget(
 
 export interface DiagnosticCheck {
   name: string;
-  source: "device";
+  source: "device" | "vpn-controller";
   target: string | null;
   status: "ok" | "unreachable" | "timeout" | "unavailable";
   observedAt: string;
@@ -70,6 +70,11 @@ export interface DiagnosticCheck {
 export async function runDeviceDiagnostics(
   device: Record<string, unknown>,
   controllerAvailable = false,
+  probe?: (target: DiagnosticTarget) => Promise<{
+    status: DiagnosticCheck["status"];
+    durationMs: number;
+    observedAt: string;
+  }>,
 ): Promise<{ checks: DiagnosticCheck[] }> {
   let target: DiagnosticTarget;
   try {
@@ -90,7 +95,7 @@ export async function runDeviceDiagnostics(
     };
   }
 
-  if (!controllerAvailable) {
+  if (!controllerAvailable && !probe) {
     return {
       checks: [
         {
@@ -105,6 +110,38 @@ export async function runDeviceDiagnostics(
         },
       ],
     };
+  }
+
+  if (probe) {
+    try {
+      const result = await probe(target);
+      return {
+        checks: [
+          {
+            ...result,
+            name: "tcp-connect",
+            source: "vpn-controller",
+            target: `${target.host}:${target.port}`,
+            evidence: null,
+          },
+        ],
+      };
+    } catch {
+      return {
+        checks: [
+          {
+            name: "tcp-connect",
+            source: "vpn-controller",
+            target: `${target.host}:${target.port}`,
+            status: "unavailable",
+            observedAt: new Date().toISOString(),
+            durationMs: null,
+            evidence:
+              "VPN probe unavailable or target outside installed ONT routes",
+          },
+        ],
+      };
+    }
   }
 
   const started = Date.now();
