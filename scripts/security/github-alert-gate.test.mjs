@@ -326,3 +326,27 @@ test("an instance fixed earlier on the same ref verifies once the exact-SHA anal
     assert.equal(unverified.passed, false);
   }
 });
+
+test("WAN alert 81 requires fixed evidence and successful exact-ref analyses", () => {
+  const ref = "refs/pull/8/merge";
+  for (const state of ["open", "fixed"]) {
+    const result = evaluateGithubAlerts({
+      alerts: [
+        {
+          ...OPEN_ALERT(81, "high"),
+          state,
+          most_recent_instance: INSTANCE(state, "old", ref),
+        },
+      ],
+      analyses: FRESH("sha-new", ref),
+      expectedRef: ref,
+      expectedSha: "sha-new",
+      exceptions: [],
+    });
+    assert.equal(result.passed, state === "fixed");
+    assert.equal(
+      result.alerts[0].state,
+      state === "fixed" ? "fixed_verified" : "needs_validation",
+    );
+  }
+});

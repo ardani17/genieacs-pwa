@@ -338,6 +338,15 @@ export const ALERT_MAPPING = {
     pr: true,
     renumberedFrom: 24,
   },
+  81: {
+    package: "M05-C",
+    ticket: "ARD-221",
+    tests: ["test/wan-operations.ts"],
+    required: true,
+    pr: true,
+    fixedInPr:
+      "unconditional post-refresh authorization before client-selected binding decisions",
+  },
   dependabot1: {
     package: "M01-B",
     ticket: "ARD-165",
