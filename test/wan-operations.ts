@@ -526,53 +526,60 @@ void test("wan operations: phases, partials, guards, idempotency", async (t) => 
     );
 
     await t.test(
-      "permission revoked during refresh stops the binding reapply",
+      "permission revoked during refresh stops every follow-up even with matching bindings",
       async () => {
-        await seedDevices();
-        const fake = fakeCwmpDeps({
-          deviceId: "TEST-WAN-2",
-          dropOnFirstWrite: ["X_ZTE-COM_LanInterface"],
-        });
-        const original = fake.deps.awaitSessionEnd.bind(fake.deps);
-        let calls = 0;
-        fake.deps.awaitSessionEnd = async (deviceId, timeout) => {
-          if (++calls === 2) {
-            // Revoke devices:3 while the refresh session is still held.
-            await collections.permissions.deleteOne({
-              _id: "fixtureWanOnly:devices:3",
-            });
+        for (const [index, dropOnFirstWrite] of [
+          [],
+          ["X_ZTE-COM_LanInterface"],
+        ].entries()) {
+          await seedDevices();
+          const fake = fakeCwmpDeps({
+            deviceId: "TEST-WAN-2",
+            dropOnFirstWrite,
+          });
+          const original = fake.deps.awaitSessionEnd.bind(fake.deps);
+          let calls = 0;
+          fake.deps.awaitSessionEnd = async (deviceId, timeout) => {
+            if (++calls === 2) {
+              // Revoke devices:3 while the refresh session is still held.
+              await collections.permissions.deleteOne({
+                _id: "fixtureWanOnly:devices:3",
+              });
+              await app.refreshSnapshot();
+            }
+            return original(deviceId, timeout);
+          };
+          try {
+            const outcome = await executeWanOperation(
+              ctx,
+              wanRequest(41 + index, "TEST-WAN-2", {
+                settings: bridgeSettings(),
+              }),
+              { deps: fake.deps },
+            );
+            assert.equal(outcome.state, "partial");
+            assert.deepEqual(
+              outcome.phases.map((p) => p.name),
+              ["write", "refresh"],
+            );
+            assert.ok(outcome.warnings.some((w) => /izin berubah/i.test(w)));
+            // Only write + refresh ran — no binding or cleanup mutation.
+            assert.equal(fake.calls.insert, 2);
+          } finally {
+            await collections.permissions.updateOne(
+              { _id: "fixtureWanOnly:devices:3" },
+              {
+                $set: {
+                  role: "fixtureWanOnly",
+                  resource: "devices",
+                  access: 3,
+                  validate: "true",
+                },
+              },
+              { upsert: true },
+            );
             await app.refreshSnapshot();
           }
-          return original(deviceId, timeout);
-        };
-        try {
-          const outcome = await executeWanOperation(
-            ctx,
-            wanRequest(41, "TEST-WAN-2", { settings: bridgeSettings() }),
-            { deps: fake.deps },
-          );
-          assert.equal(outcome.state, "partial");
-          assert.deepEqual(
-            outcome.phases.map((p) => p.name),
-            ["write", "refresh"],
-          );
-          assert.ok(outcome.warnings.some((w) => /reapply/i.test(w)));
-          // Only write + refresh ran — no binding or cleanup mutation.
-          assert.equal(fake.calls.insert, 2);
-        } finally {
-          await collections.permissions.updateOne(
-            { _id: "fixtureWanOnly:devices:3" },
-            {
-              $set: {
-                role: "fixtureWanOnly",
-                resource: "devices",
-                access: 3,
-                validate: "true",
-              },
-            },
-            { upsert: true },
-          );
-          await app.refreshSnapshot();
         }
       },
     );

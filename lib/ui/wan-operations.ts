@@ -365,7 +365,6 @@ export async function executeWanOperation(
     const refresh = await run(reauth, [
       { name: "refreshObject", objectName: collection },
     ]);
-    const freshDevice = await fetchAuthorizedDevice(reauth, deviceId);
     phase(
       "refresh",
       refresh.state,
@@ -374,6 +373,26 @@ export async function executeWanOperation(
     await recordPhases(operationId, phases);
     if (refresh.state !== "succeeded") {
       // Write applied, confirmation missing: partial, no follow-up.
+      return await finish(operationId, deviceId, "partial", phases, warnings);
+    }
+
+    // Refresh may take minutes. Always renew authorization at this phase
+    // boundary, before any client-selected binding or instance decisions.
+    const reauthAfterRefresh = await reauthorize(ctx);
+    if (!reauthAfterRefresh || !reauthAfterRefresh.hasAccess("devices", 3)) {
+      warnings.push(
+        "Izin berubah selama refresh; fase lanjutan dihentikan (partial).",
+      );
+      return await finish(operationId, deviceId, "partial", phases, warnings);
+    }
+    const freshDevice = await fetchAuthorizedDevice(
+      reauthAfterRefresh,
+      deviceId,
+    );
+    if (!freshDevice) {
+      warnings.push(
+        "Perangkat tidak lagi dalam cakupan izin; fase lanjutan dihentikan (partial).",
+      );
       return await finish(operationId, deviceId, "partial", phases, warnings);
     }
 
@@ -439,26 +458,8 @@ export async function executeWanOperation(
           "",
       );
       if (desiredBind && currentBind !== desiredBind) {
-        // Permission is re-checked from the CURRENT snapshot before
-        // EVERY mutating follow-up phase — the pre-refresh snapshot can
-        // be minutes stale across the refresh session, and a revocation
-        // during refresh must stop the reapply (PR #8 review).
-        const reauthApply = await reauthorize(ctx);
-        if (!reauthApply || !reauthApply.hasAccess("devices", 3)) {
-          warnings.push(
-            "Izin berubah selama refresh; reapply binding dihentikan (partial).",
-          );
-          return await finish(
-            operationId,
-            deviceId,
-            "partial",
-            phases,
-            warnings,
-            observedInstance,
-          );
-        }
         if (!(await renewLease())) ensureLease();
-        const reapply = await run(reauthApply, [
+        const reapply = await run(reauthAfterRefresh, [
           {
             name: "setParameterValues",
             parameterValues: [
