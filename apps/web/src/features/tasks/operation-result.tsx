@@ -92,7 +92,7 @@ export function OperationResult({
           </Button>
         ) : null}
         <a
-          className="inline-flex min-h-11 items-center text-sm text-primary hover:underline"
+          className="inline-flex min-h-(--control-height-sm) items-center text-sm text-primary hover:underline"
           href={`/tasks?operation=${encodeURIComponent(outcome.operationId)}`}
         >
           Lihat detail operasi

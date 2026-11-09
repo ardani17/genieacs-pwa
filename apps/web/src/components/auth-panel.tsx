@@ -18,7 +18,7 @@ export function AuthPanel({
 }) {
   return (
     <main className="flex min-h-dvh items-center justify-center px-4 py-8">
-      <div className="w-full max-w-md space-y-8">
+      <div className="w-full max-w-sm space-y-6">
         <Link
           href="/"
           className="mx-auto flex min-h-11 w-fit items-center gap-3 text-lg font-semibold"
@@ -31,7 +31,7 @@ export function AuthPanel({
         </Link>
         <Card>
           <CardHeader>
-            <CardTitle className="text-2xl" role="heading" aria-level={1}>
+            <CardTitle className="text-xl" role="heading" aria-level={1}>
               {title}
             </CardTitle>
             <CardDescription>{description}</CardDescription>

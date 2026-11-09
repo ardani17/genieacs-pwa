@@ -20,14 +20,15 @@ export const buttonVariants = cva(
         link: "text-primary underline-offset-4 hover:underline",
       },
       size: {
-        default: "h-11 px-4 py-2 has-[>svg]:px-3",
-        xs: "h-11 gap-1 rounded-md px-2 text-xs has-[>svg]:px-1.5 [&_svg:not([class*='size-'])]:size-3",
-        sm: "h-11 gap-1.5 rounded-md px-3 has-[>svg]:px-2.5",
-        lg: "h-12 rounded-md px-6 has-[>svg]:px-4",
-        icon: "size-11",
-        "icon-xs": "size-11 rounded-md [&_svg:not([class*='size-'])]:size-3",
-        "icon-sm": "size-11",
-        "icon-lg": "size-12",
+        default: "h-(--control-height) px-3 py-1.5 has-[>svg]:px-2.5",
+        xs: "h-(--control-height-xs) gap-1 rounded-md px-2 py-1 text-xs has-[>svg]:px-1.5 [&_svg:not([class*='size-'])]:size-3",
+        sm: "h-(--control-height-sm) gap-1.5 rounded-md px-2.5 py-1 has-[>svg]:px-2",
+        lg: "h-(--control-height-lg) rounded-md px-4 py-2 has-[>svg]:px-3",
+        icon: "size-(--control-height)",
+        "icon-xs":
+          "size-(--control-height-xs) rounded-md [&_svg:not([class*='size-'])]:size-3",
+        "icon-sm": "size-(--control-height-sm)",
+        "icon-lg": "size-(--control-height-lg)",
       },
     },
     defaultVariants: {

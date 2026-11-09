@@ -237,7 +237,7 @@ export function ConfigDeviceActionsView({
   return (
     <a
       href={`/devices/${encodeURIComponent(deviceId)}`}
-      className="inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline"
+      className="inline-flex min-h-(--control-height-sm) items-center text-sm font-medium text-primary hover:underline"
     >
       Buka aksi perangkat ({deviceId})
     </a>

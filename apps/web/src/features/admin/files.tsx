@@ -241,7 +241,7 @@ export function FileManager() {
                 <div className="flex gap-2">
                   <a
                     href={`/api/app/files/${encodeURIComponent(row._id)}/content`}
-                    className="inline-flex min-h-11 items-center px-3 text-sm font-medium text-primary hover:underline"
+                    className="inline-flex min-h-(--control-height-sm) items-center px-3 text-sm font-medium text-primary hover:underline"
                   >
                     Unduh
                   </a>

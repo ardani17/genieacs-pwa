@@ -2,6 +2,12 @@ import { expect, test } from "@playwright/test";
 
 test.use({ storageState: "../../artifacts/auth/admin.json" });
 
+async function expectedControlHeight(page: import("@playwright/test").Page) {
+  return page.evaluate(() =>
+    matchMedia("(min-width: 48rem) and (pointer: fine)").matches ? 36 : 44,
+  );
+}
+
 test("forms and mobile menu remain accessible at the configured viewport", async ({
   page,
 }, info) => {
@@ -9,9 +15,16 @@ test("forms and mobile menu remain accessible at the configured viewport", async
   await expect(
     page.getByRole("heading", { name: "Masuk", exact: true }),
   ).toBeVisible();
-  expect(
-    (await page.getByLabel("Nama pengguna").boundingBox())?.height,
-  ).toBeGreaterThanOrEqual(44);
+  expect((await page.getByLabel("Nama pengguna").boundingBox())?.height).toBe(
+    await expectedControlHeight(page),
+  );
+  if ((page.viewportSize()?.width ?? 0) < 768) {
+    expect(
+      await page
+        .getByLabel("Nama pengguna")
+        .evaluate((input) => parseFloat(getComputedStyle(input).fontSize)),
+    ).toBeGreaterThanOrEqual(16);
+  }
   expect(
     await page.evaluate(
       () =>
@@ -27,7 +40,9 @@ test("forms and mobile menu remain accessible at the configured viewport", async
     fullPage: true,
   });
   await page.goto("/devices");
-  if ((page.viewportSize()?.width ?? 0) < 768) {
+  if ((page.viewportSize()?.width ?? 0) < 1024) {
+    await expect(page.getByTestId("main-nav-mobile")).toBeVisible();
+    await expect(page.getByTestId("main-nav")).toBeHidden();
     const more = page.getByRole("button", { name: "Lainnya" });
     await more.click();
     await expect(page.getByRole("dialog", { name: "Menu" })).toBeVisible();
@@ -48,11 +63,27 @@ test("shared shell and controls fit the configured viewport", async ({
     page.getByRole("link", { name: "TEST-DEVICE-00001", exact: true }),
   ).toBeVisible();
   const input = page.getByLabel("Cari perangkat", { exact: true });
-  expect((await input.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+  const height = await expectedControlHeight(page);
+  expect((await input.boundingBox())?.height).toBe(height);
+  if ((page.viewportSize()?.width ?? 0) < 640) {
+    expect(
+      (
+        await page
+          .getByRole("search", { name: "Filter perangkat" })
+          .boundingBox()
+      )?.height,
+    ).toBeLessThanOrEqual(280);
+  }
   expect(
     (await page.getByRole("button", { name: "Ekspor CSV" }).boundingBox())
       ?.height,
-  ).toBeGreaterThanOrEqual(44);
+  ).toBe(height);
+  if (height === 36) {
+    const deviceRow = page.getByRole("row").filter({
+      has: page.getByRole("link", { name: "TEST-DEVICE-00001", exact: true }),
+    });
+    expect((await deviceRow.boundingBox())?.height).toBeLessThanOrEqual(44);
+  }
   expect(
     await page.evaluate(
       () =>
@@ -79,6 +110,50 @@ test("shared shell and controls fit the configured viewport", async ({
   await page.screenshot({
     path: info.outputPath("overview.png"),
     fullPage: true,
+  });
+});
+
+test("wide desktop keeps a bounded workspace and a usable short sidebar", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1920, height: 480 });
+  await page.goto("/devices");
+  const content = page.locator("#main-content > div");
+  expect((await content.boundingBox())?.width).toBeLessThanOrEqual(1024);
+  await expect(page.getByTestId("main-nav")).toBeVisible();
+  const accountLink = page
+    .getByTestId("main-nav")
+    .getByRole("link", { name: "Akun", exact: true });
+  await accountLink.focus();
+  await expect(accountLink).toBeInViewport();
+});
+
+test.describe("large touchscreen", () => {
+  test.use({ hasTouch: true });
+
+  test("controls stay comfortable even at desktop width", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto("/devices");
+    const input = page.getByLabel("Cari perangkat", { exact: true });
+    expect((await input.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+    expect(
+      await input.evaluate((element) =>
+        parseFloat(getComputedStyle(element).fontSize),
+      ),
+    ).toBeGreaterThanOrEqual(16);
+    const select = page.getByRole("combobox", { name: "Ukuran halaman" });
+    expect((await select.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+    await select.click();
+    const option = page.getByRole("option", { name: "50", exact: true });
+    await expect
+      .poll(async () => (await option.boundingBox())?.height)
+      .toBeGreaterThanOrEqual(44);
+    await option.click();
+    await expect(page).toHaveURL(/pageSize=50/);
+    expect(
+      (await page.getByRole("button", { name: "Ekspor CSV" }).boundingBox())
+        ?.height,
+    ).toBeGreaterThanOrEqual(44);
   });
 });
 

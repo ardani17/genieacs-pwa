@@ -86,7 +86,7 @@ export function TagEditor({ deviceId }: { deviceId: string }) {
         {tags.map((t) => (
           <span
             key={t}
-            className="inline-flex min-h-11 items-center gap-2 rounded-full border px-3 text-sm"
+            className="inline-flex min-h-(--control-height-sm) items-center gap-2 rounded-full border px-3 text-sm"
           >
             {t}
             <Button

@@ -7,7 +7,7 @@ export default function Home() {
   return (
     <main className="app-shell py-16">
       <Card className="mx-auto max-w-xl">
-        <CardContent className="space-y-6">
+        <CardContent className="space-y-4">
           <Network className="size-10 text-primary" aria-hidden="true" />
           <PageHeader
             title="GenieACS PWA"

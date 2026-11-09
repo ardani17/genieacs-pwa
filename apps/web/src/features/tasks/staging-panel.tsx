@@ -229,7 +229,7 @@ export function StagingPanel() {
           )}
           <Link
             href="/tasks"
-            className="inline-flex min-h-11 items-center text-sm text-primary hover:underline"
+            className="inline-flex min-h-(--control-height-sm) items-center text-sm text-primary hover:underline"
           >
             Kembali ke staging
           </Link>
@@ -302,7 +302,7 @@ export function StagingPanel() {
                 {r.operationId ? (
                   <Link
                     href={`/tasks?operation=${encodeURIComponent(r.operationId)}`}
-                    className="inline-flex min-h-11 items-center text-sm text-primary hover:underline"
+                    className="inline-flex min-h-(--control-height-sm) items-center text-sm text-primary hover:underline"
                   >
                     Lihat hasil operasi berdasarkan ID
                   </Link>

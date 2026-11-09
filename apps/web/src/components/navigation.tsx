@@ -69,14 +69,17 @@ export function Navigation() {
         href={item.href}
         aria-current={active(item.href) ? "page" : undefined}
         className={cn(
-          "flex min-h-11 items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground",
+          "flex min-h-(--control-height-sm) items-center gap-2 rounded-md px-2.5 py-1.5 text-sm font-medium transition-colors hover:bg-accent hover:text-accent-foreground",
           active(item.href)
             ? "bg-accent text-primary"
             : "text-muted-foreground",
-          mobile && "flex-1 flex-col gap-1 px-2 py-2 text-xs",
+          mobile && "min-h-14 flex-1 flex-col gap-1 px-2 py-2 text-xs",
         )}
       >
-        <Icon className="size-5 shrink-0" aria-hidden="true" />
+        <Icon
+          className={cn("size-4 shrink-0", mobile && "size-5")}
+          aria-hidden="true"
+        />
         {item.label}
       </Link>
     );
@@ -102,26 +105,26 @@ export function Navigation() {
       >
         Lewati ke konten
       </a>
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-60 flex-col border-r bg-card p-6 md:flex">
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-56 flex-col overflow-y-auto border-r bg-card p-4 lg:flex">
         {brand}
-        <p className="mb-3 mt-10 text-xs font-medium tracking-wider text-muted-foreground">
+        <p className="mb-2 mt-6 text-xs font-medium tracking-wider text-muted-foreground">
           RUANG KERJA
         </p>
         <nav
           aria-label="Navigasi utama"
           data-testid="main-nav"
-          className="space-y-2"
+          className="space-y-1"
         >
           {visible.map((item) => link(item))}
         </nav>
-        <div className="mt-auto border-t pt-5">
+        <div className="mt-auto border-t pt-4">
           <p className="text-xs text-muted-foreground">Masuk sebagai</p>
           <p className="mt-1 truncate text-sm font-medium">
             {session?.username ?? "Pengguna"}
           </p>
         </div>
       </aside>
-      <header className="flex items-center justify-between border-b bg-card px-4 py-3 md:hidden">
+      <header className="flex items-center justify-between border-b bg-card px-4 py-2 lg:hidden">
         {brand}
         <CircleUserRound
           className="size-5 text-muted-foreground"
@@ -131,7 +134,7 @@ export function Navigation() {
       <nav
         aria-label="Navigasi utama"
         data-testid="main-nav-mobile"
-        className="fixed inset-x-0 bottom-0 z-40 flex items-stretch border-t bg-card px-2 pb-[env(safe-area-inset-bottom)] md:hidden"
+        className="fixed inset-x-0 bottom-0 z-40 flex items-stretch border-t bg-card px-2 pb-[env(safe-area-inset-bottom)] lg:hidden"
       >
         {visible.slice(0, 3).map((item) => link(item, true))}
         <Sheet open={menuOpen} onOpenChange={setMenuOpen}>

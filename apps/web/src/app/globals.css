@@ -23,7 +23,22 @@
   --border: #cbd5e1;
   --input: #cbd5e1;
   --ring: #1d4ed8;
-  --radius: 0.75rem;
+  --radius: 0.5rem;
+  --control-height: 2.75rem;
+  --control-height-sm: 2.75rem;
+  --control-height-xs: 2.75rem;
+  --control-height-lg: 3rem;
+  --checkbox-hit-inset: -0.75rem;
+}
+/* Keep touch controls comfortable, including on large touchscreens. */
+@media (min-width: 48rem) and (pointer: fine) {
+  :root {
+    --control-height: 2.25rem;
+    --control-height-sm: 2rem;
+    --control-height-xs: 1.75rem;
+    --control-height-lg: 2.5rem;
+    --checkbox-hit-inset: -0.375rem;
+  }
 }
 @theme inline {
   --color-background: var(--background);
@@ -58,7 +73,7 @@
     @apply border-border;
   }
   body {
-    @apply m-0 bg-background font-sans text-foreground antialiased;
+    @apply m-0 bg-background font-sans text-sm text-foreground antialiased;
   }
   button,
   a,
@@ -77,13 +92,13 @@
 }
 @layer components {
   .app-shell {
-    @apply mx-auto w-full max-w-7xl p-4 md:p-8;
+    @apply mx-auto w-full max-w-5xl p-4 md:p-6;
   }
   .form-stack {
-    @apply space-y-6;
+    @apply space-y-4;
   }
   .detail-grid {
-    @apply grid gap-6 sm:grid-cols-2;
+    @apply grid gap-4 sm:grid-cols-2;
   }
   .detail-grid dt {
     @apply mb-1 text-sm text-muted-foreground;
