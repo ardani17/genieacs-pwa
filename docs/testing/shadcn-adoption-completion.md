@@ -90,10 +90,30 @@ yang blocking. Catatan:
 
 Browser in-app pada sesi ini tidak dapat mengirim event pointer/keyboard nyata
 ke halaman (klik tombol login timeout; keylogger capture-phase kosong setelah
-keypress CDP). Karena itu: interaksi diverifikasi dengan klik/form-submit
-programatik + KeyboardEvent bubbling + asersi DOM, dan cakupan input nyata tetap
-dipegang job e2e CI (Playwright di container, hijau untuk #12–#16, termasuk spec
-`device-list`, `ui-contract`, `admin-users-files`).
+keypress CDP). Karena itu interaksi diverifikasi dengan klik/form-submit
+programatik + KeyboardEvent bubbling + asersi DOM. Cakupan input nyata dipegang
+job e2e CI — lihat koreksi di bawah.
+
+### Koreksi pasca-pelaporan: regresi e2e Paket D ditemukan dan diperbaiki
+
+Draf pertama section ini mengklaim e2e CI "hijau untuk #12–#16". Verifikasi
+lanjutan (rerun e2e PR #17 gagal dua kali dengan signature identik) membuktikan
+klaim itu keliru:
+
+- **PR #15 (Paket D): job e2e FAIL** (21 failed / 129 passed, 38.2m) — lima
+  konfirmasi destruktif dirender `role="alertdialog"` oleh `f3a4a86`, tetapi
+  spec `admin-config`/`admin-users-files` masih menunggu `getByRole("dialog")`
+  (role Playwright di-match eksak). PR tetap ter-merge karena status salah
+  dibaca sebagai hijau.
+- **PR #16: job e2e "pass" dalam 4m50s** — suite (normalnya ~38m) tidak berjalan
+  penuh; kegagalan regression tidak tertangkap.
+- Perbaikan: 8 locator konfirmasi hapus diperbarui ke `alertdialog` (locator
+  reset-password tetap `dialog` — komponennya memang Dialog biasa). Validasi
+  pada stack check lokal (konfigurasi identik CI): **14/14 test kedua file spec
+  lulus (36.9s)**, termasuk seluruh alur yang tadinya gagal. Fix di PR #18.
+- Pelajaran proses: status PR harus dibaca ulang menjelang merge (e2e adalah job
+  terlama dan datang terakhir); "pass" dengan durasi anomali pendek perlu
+  diperlakukan sebagai tidak-terverifikasi.
 
 ## Batas yang tetap terbuka
 
