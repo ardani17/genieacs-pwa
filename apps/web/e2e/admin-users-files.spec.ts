@@ -74,7 +74,7 @@ test("admin can reset a user password and delete the user", async ({
     .getByRole("button", { name: "Hapus" })
     .click();
   await page
-    .getByRole("dialog")
+    .getByRole("alertdialog")
     .getByRole("button", { name: "Hapus", exact: true })
     .click();
   await expect(
@@ -116,7 +116,7 @@ test("file upload streams, lists metadata and deletes", async ({ page }) => {
     .getByRole("button", { name: "Hapus" })
     .click();
   await page
-    .getByRole("dialog")
+    .getByRole("alertdialog")
     .getByRole("button", { name: "Hapus", exact: true })
     .click();
   await expect(
@@ -176,7 +176,7 @@ test("file download serves checksums and partial content through the real endpoi
     .getByRole("button", { name: "Hapus" })
     .click();
   await page
-    .getByRole("dialog")
+    .getByRole("alertdialog")
     .getByRole("button", { name: "Hapus", exact: true })
     .click();
   await expect(
@@ -230,7 +230,7 @@ test("deleted user sessions die within the snapshot window", async ({
     .getByRole("button", { name: "Hapus" })
     .click();
   await page
-    .getByRole("dialog")
+    .getByRole("alertdialog")
     .getByRole("button", { name: "Hapus", exact: true })
     .click();
   await expect(
