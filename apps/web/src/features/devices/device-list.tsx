@@ -233,10 +233,10 @@ export function DeviceList() {
   }
 
   return (
-    <div className="min-w-0 space-y-6">
+    <div className="min-w-0 space-y-4">
       <FilterBar />
       <Card className="min-w-0 gap-0 overflow-hidden pb-0">
-        <CardHeader className="mb-6 flex flex-wrap items-center justify-between gap-4">
+        <CardHeader className="mb-4 flex flex-wrap items-center justify-between gap-4">
           <div className="space-y-1">
             <CardTitle role="heading" aria-level={2}>
               Daftar perangkat
@@ -282,7 +282,7 @@ export function DeviceList() {
                       </TableHead>
                       {["ID", "Model", "Firmware", "Terakhir inform", "IP"].map(
                         (label) => (
-                          <TableHead scope="col" key={label} className="px-6">
+                          <TableHead scope="col" key={label} className="px-4">
                             {label}
                           </TableHead>
                         ),
@@ -301,9 +301,9 @@ export function DeviceList() {
                               onCheckedChange={() => toggle(id)}
                             />
                           </TableCell>
-                          <TableCell className="px-6">
+                          <TableCell className="px-4">
                             <a
-                              className="inline-flex min-h-11 items-center gap-2 font-medium text-primary hover:underline"
+                              className="inline-flex min-h-(--control-height-sm) items-center gap-2 font-medium text-primary hover:underline"
                               href={"/devices/" + encodeURIComponent(id)}
                             >
                               {id}
@@ -313,19 +313,19 @@ export function DeviceList() {
                               />
                             </a>
                           </TableCell>
-                          <TableCell className="px-6">
+                          <TableCell className="px-4">
                             {value(device, "DeviceID.ProductClass") || "—"}
                           </TableCell>
-                          <TableCell className="px-6">
+                          <TableCell className="px-4">
                             {value(
                               device,
                               "InternetGatewayDevice.DeviceInfo.SoftwareVersion",
                             ) || "—"}
                           </TableCell>
-                          <TableCell className="px-6 text-muted-foreground">
+                          <TableCell className="px-4 text-muted-foreground">
                             {lastInformText(device)}
                           </TableCell>
-                          <TableCell className="px-6 font-mono text-xs">
+                          <TableCell className="px-4 font-mono text-xs">
                             {value(
                               device,
                               "InternetGatewayDevice.WANDevice.1.WANConnectionDevice.1.WANIPConnection.1.ExternalIPAddress",
@@ -344,7 +344,7 @@ export function DeviceList() {
                     <CardContent key={id} className="space-y-3 py-4">
                       <a
                         href={"/devices/" + encodeURIComponent(id)}
-                        className="flex min-h-11 items-center justify-between gap-2 break-all text-sm font-semibold text-primary"
+                        className="flex min-h-(--control-height-sm) items-center justify-between gap-2 break-all text-sm font-semibold text-primary"
                       >
                         {id}
                         <ArrowUpRight
@@ -382,7 +382,7 @@ export function DeviceList() {
             </>
           )}
         />
-        <div className="flex flex-wrap items-center justify-between gap-3 border-t p-4 md:px-6">
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3">
           <span className="text-xs text-muted-foreground" aria-live="polite">
             Halaman {currentPage}
             {page?.total != null

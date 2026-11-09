@@ -49,9 +49,9 @@ export default async function DashboardLayout({
           <Navigation />
           <main
             id="main-content"
-            className="min-w-0 px-4 pb-28 pt-6 md:ml-60 md:px-8 md:pb-8 md:pt-8"
+            className="min-w-0 px-4 pb-24 pt-4 lg:ml-56 lg:px-6 lg:pb-6 lg:pt-5"
           >
-            <div className="mx-auto max-w-7xl space-y-6">
+            <div className="mx-auto max-w-5xl space-y-4">
               <ConnectionStatus />
               {children}
             </div>

@@ -17,9 +17,8 @@ function Checkbox({
     <CheckboxPrimitive.Root
       data-slot="checkbox"
       className={cn(
-        // The visual box stays size-6; the invisible after-pseudo-element
-        // expands the hit area to 44 px per the design contract.
-        "peer relative size-6 shrink-0 rounded-[4px] border border-input shadow-xs outline-none transition-[color,box-shadow] after:absolute after:-inset-2.5 after:content-[''] disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:bg-input/30 dark:aria-invalid:border-destructive",
+        // A 20 px visual box with a 44 px touch or 32 px desktop hit area.
+        "peer relative size-5 shrink-0 rounded-[4px] border border-input shadow-xs outline-none transition-[color,box-shadow] after:absolute after:inset-(--checkbox-hit-inset) after:content-[''] disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:bg-input/30 dark:aria-invalid:border-destructive",
         "focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50",
         "data-[state=checked]:border-primary data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground",
         "data-[state=indeterminate]:border-primary data-[state=indeterminate]:bg-primary data-[state=indeterminate]:text-primary-foreground",

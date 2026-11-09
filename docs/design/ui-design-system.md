@@ -48,11 +48,17 @@ sr-only pada overview dipertahankan sebagai alternatif pembaca layar.
 | warning              | #92400E |
 | destructive          | #B91C1C |
 
-Font system-ui lokal. Skala spacing 4/8/12/16/24/32 px; radius dasar 12 px;
-kontrol interaktif/touch target minimal 44 px. Token shadcn seperti background,
-foreground, card, primary, secondary, muted, accent, destructive, border, input
-dan ring dipetakan ke tema ini. Focus ring terlihat dan status selalu memakai
-teks/ikon.
+Font system-ui lokal. Skala spacing 4/8/12/16/24/32 px; radius dasar 8 px.
+Revisi ukuran 9 November 2026 atas permintaan pengguna: kontrol interaktif dan
+target sentuh minimal 44 px secara default, termasuk pada layar sentuh besar.
+Pada viewport minimal 768 px dengan pointer presisi, tinggi kontrol default 36
+px, sm 32 px, xs 28 px dan lg 40 px. Input pada perangkat sentuh tetap memakai
+font 16 px. Card memakai padding/gap 16 px, jarak bagian 16 px, judul halaman
+20–24 px dan tinggi baris daftar perangkat sekitar 40 px pada desktop presisi.
+Token CSS ukuran dipakai bersama oleh primitive dan fitur. Token shadcn seperti
+background, foreground, card, primary, secondary, muted, accent, destructive,
+border, input dan ring dipetakan ke tema ini. Focus ring terlihat dan status
+selalu memakai teks/ikon.
 
 Tipografi, padding, ukuran kontrol, border, shadow, radius, kepadatan tabel dan
 pola judul/subjudul ditentukan di fondasi bersama. Warna makna dan variant
@@ -77,10 +83,12 @@ komponen dipakai konsisten di seluruh halaman.
 
 ## Shell dan responsivitas
 
-- Desktop: sidebar tetap, header halaman dan area konten dengan padding seragam.
-  Header menyajikan status aplikasi/VPN/logging sebagai bukti yang terpisah.
-- Mobile: topbar ringkas, bottom navigation untuk rute tersedia, dan Sheet
-  Lainnya. Halaman perangkat memakai card dengan field dan aksi setara desktop.
+- Desktop mulai 1024 px: sidebar tetap selebar 224 px dan dapat discroll, header
+  halaman dan area konten maksimal 1024 px dengan padding 16–24 px. Header
+  menyajikan status aplikasi/VPN/logging sebagai bukti yang terpisah.
+- Mobile dan tablet di bawah 1024 px: topbar ringkas, bottom navigation untuk
+  rute tersedia, dan Sheet Lainnya. Halaman perangkat memakai card dengan field
+  dan aksi setara desktop.
 - Lebar uji wajib 360×800, 768×1024 dan 1440×900. Halaman tidak overflow;
   tabel/parameter panjang memakai area scroll berlabel.
 - Halaman yang sudah ada: login, setup, akun/password, overview, daftar

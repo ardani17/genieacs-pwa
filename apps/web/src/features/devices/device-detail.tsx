@@ -162,22 +162,22 @@ export function DeviceDetail({ deviceId }: { deviceId: string }) {
     ],
   };
   return (
-    <div className="min-w-0 space-y-6">
+    <div className="min-w-0 space-y-4">
       <Link
         href="/devices"
-        className="inline-flex min-h-11 items-center gap-2 text-sm font-medium text-primary hover:underline"
+        className="inline-flex min-h-(--control-height-sm) items-center gap-2 text-sm font-medium text-primary hover:underline"
       >
         <ArrowLeft className="size-4" aria-hidden="true" />
         Kembali ke perangkat
       </Link>
       <Card>
         <CardContent className="flex items-center gap-4">
-          <span className="flex size-12 shrink-0 items-center justify-center rounded-xl bg-accent text-primary">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-accent text-primary">
             <Router aria-hidden="true" />
           </span>
           <div className="min-w-0">
             <p className="mb-1 text-xs text-muted-foreground">ID perangkat</p>
-            <h2 className="break-all text-base font-semibold md:text-xl">
+            <h2 className="break-all text-base font-semibold md:text-lg">
               {deviceId}
             </h2>
           </div>
@@ -197,7 +197,7 @@ export function DeviceDetail({ deviceId }: { deviceId: string }) {
         <Tabs
           value={tab}
           onValueChange={(value) => setTab(value as Tab)}
-          className="min-w-0 gap-6"
+          className="min-w-0 gap-4"
         >
           <div className="overflow-x-auto pb-1">
             <TabsList

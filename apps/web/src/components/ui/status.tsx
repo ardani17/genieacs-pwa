@@ -25,7 +25,7 @@ export function Status({
     <Badge
       variant="outline"
       className={cn(
-        "max-w-full gap-2 whitespace-normal px-3 py-2 text-xs leading-relaxed",
+        "max-w-full gap-1.5 whitespace-normal px-2 py-1 text-xs leading-relaxed",
         tones[tone],
       )}
       role="status"

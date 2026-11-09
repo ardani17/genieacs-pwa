@@ -88,14 +88,14 @@ export function FilterBar() {
       <CardContent
         role="search"
         aria-label="Filter perangkat"
-        className="space-y-4"
+        className="space-y-3"
       >
-        <div className="grid gap-4 lg:grid-cols-[1fr_auto_auto]">
-          <div className="space-y-2">
+        <div className="grid grid-cols-2 gap-3 xl:grid-cols-[minmax(0,1fr)_auto_auto]">
+          <div className="col-span-2 space-y-1.5 xl:col-span-1">
             <Label htmlFor="device-search">Cari perangkat</Label>
             <div className="relative">
               <Search
-                className="pointer-events-none absolute left-3 top-3.5 size-4 text-muted-foreground"
+                className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
                 aria-hidden="true"
               />
               <Input
@@ -108,7 +108,7 @@ export function FilterBar() {
               />
             </div>
           </div>
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             <Label htmlFor="device-sort">Urutkan</Label>
             <Select
               value={params.get("sort") ?? "default"}
@@ -121,7 +121,7 @@ export function FilterBar() {
             >
               <SelectTrigger
                 id="device-sort"
-                className="w-full min-w-40"
+                className="w-full min-w-0 xl:min-w-40"
                 aria-label="Urutkan perangkat"
               >
                 <SelectValue placeholder="Urutan khusus" />
@@ -135,7 +135,7 @@ export function FilterBar() {
               </SelectContent>
             </Select>
           </div>
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             <Label htmlFor="page-size">Per halaman</Label>
             <Select
               value={params.get("pageSize") ?? "25"}
@@ -143,7 +143,7 @@ export function FilterBar() {
             >
               <SelectTrigger
                 id="page-size"
-                className="w-full min-w-24"
+                className="w-full min-w-0 xl:min-w-24"
                 aria-label="Ukuran halaman"
               >
                 <SelectValue />
@@ -158,8 +158,8 @@ export function FilterBar() {
             </Select>
           </div>
         </div>
-        <div className="flex flex-wrap items-end gap-3 border-t pt-4">
-          <div className="min-w-0 flex-1 basis-56 space-y-2">
+        <div className="flex flex-wrap items-end gap-2 border-t pt-3">
+          <div className="min-w-0 flex-1 basis-40 space-y-1.5">
             <Label htmlFor="native-filter">Filter lanjutan</Label>
             <Input
               key={currentExpression}
@@ -168,7 +168,7 @@ export function FilterBar() {
               defaultValue={currentExpression}
               placeholder={'Contoh: DeviceID.ProductClass = "F670"'}
               aria-label="Ekspresi filter native"
-              className="font-mono text-xs md:text-xs"
+              className="font-mono text-base md:pointer-fine:text-xs"
               ref={expressionRef}
               onKeyDown={onExpressionKeyDown}
             />

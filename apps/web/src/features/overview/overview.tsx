@@ -132,12 +132,12 @@ export function Overview() {
         : "Memuat…"
       : count.toLocaleString("id-ID");
   return (
-    <section aria-label="Ringkasan instalasi" className="space-y-6">
+    <section aria-label="Ringkasan instalasi" className="space-y-4">
       <Card className="border-primary/20 bg-primary text-primary-foreground">
-        <CardContent className="flex flex-wrap items-center justify-between gap-6">
+        <CardContent className="flex flex-wrap items-center justify-between gap-4">
           <div className="space-y-2">
             <p className="text-sm text-white/80">Total perangkat</p>
-            <div className="text-4xl font-semibold tracking-tight">
+            <div className="text-3xl font-semibold tracking-tight">
               {total == null && !observedAt ? (
                 <Skeleton className="h-10 w-24 bg-white/20" />
               ) : (
@@ -148,7 +148,7 @@ export function Overview() {
               Perangkat yang dapat diakses oleh akun Anda.
             </p>
           </div>
-          <Cable className="size-12 text-white/60" aria-hidden="true" />
+          <Cable className="size-10 text-white/60" aria-hidden="true" />
         </CardContent>
       </Card>
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -174,7 +174,7 @@ export function Overview() {
         />
       ) : null}
       {customConfig?.length ? (
-        <div className="grid min-w-0 grid-cols-1 gap-6 xl:grid-cols-2">
+        <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-2">
           {customConfig.map((child, i) => (
             <ConfigRenderer
               key={configChildKey(child, i)}
@@ -184,7 +184,7 @@ export function Overview() {
           ))}
         </div>
       ) : null}
-      <div className="grid min-w-0 grid-cols-1 gap-6 xl:grid-cols-2">
+      <div className="grid min-w-0 grid-cols-1 gap-4 xl:grid-cols-2">
         {charts.map((chart) => (
           <Card key={chart.key} className="min-w-0">
             <CardHeader>

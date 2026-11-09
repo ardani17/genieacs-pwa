@@ -70,7 +70,7 @@ function ResourceListPane({
                   e.preventDefault();
                   onOpen(String(item["_id"]));
                 }}
-                className="flex min-h-11 items-center break-all text-sm text-primary hover:underline"
+                className="flex min-h-(--control-height-sm) items-center break-all text-sm text-primary hover:underline"
                 aria-current={selectedId === item["_id"] ? "true" : undefined}
               >
                 {String(item["_id"])}
@@ -519,7 +519,7 @@ export function ResourceEditor({
     return <Status tone="danger">Resource tidak dapat dimuat.</Status>;
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[240px_1fr]">
+    <div className="grid min-w-0 gap-4 xl:grid-cols-[208px_minmax(0,1fr)]">
       <ResourceListPane
         resource={resource}
         items={items}

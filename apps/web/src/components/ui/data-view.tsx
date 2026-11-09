@@ -41,7 +41,7 @@ export function DataView<T>({
   if (state === "empty")
     return (
       <Card>
-        <CardContent className="flex flex-col items-center gap-4 py-10 text-center">
+        <CardContent className="flex flex-col items-center gap-3 py-6 text-center">
           <Inbox className="size-8 text-muted-foreground" aria-hidden="true" />
           <p className="font-medium">Belum ada data.</p>
           {emptyAction}

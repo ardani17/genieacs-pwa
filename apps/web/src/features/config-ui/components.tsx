@@ -339,7 +339,7 @@ export function AnchorView({
       href={rawHref}
       rel="noopener noreferrer"
       target={rawHref.startsWith("/") ? undefined : "_blank"}
-      className="inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline"
+      className="inline-flex min-h-(--control-height-sm) items-center text-sm font-medium text-primary hover:underline"
     >
       {children.length ? children : (node.label ?? rawHref)}
     </a>
@@ -414,7 +414,7 @@ export function LongTextView({
 }): ReactNode {
   return (
     <details className="rounded-lg border p-3">
-      <summary className="min-h-11 cursor-pointer text-sm font-medium">
+      <summary className="min-h-(--control-height-sm) cursor-pointer text-sm font-medium">
         {labelText(node.label, ctx) || "Teks panjang"}
       </summary>
       <p className="mt-2 whitespace-pre-wrap break-all font-mono text-xs">
@@ -449,7 +449,7 @@ export function DeviceLinkView({
   return (
     <a
       href={`/devices/${encodeURIComponent(deviceId)}`}
-      className="inline-flex min-h-11 items-center text-sm font-medium text-primary hover:underline"
+      className="inline-flex min-h-(--control-height-sm) items-center text-sm font-medium text-primary hover:underline"
     >
       {componentList(node.components).map((child, i) => (
         <span key={configChildKey(child, i)}>{renderChild(child, ctx)}</span>

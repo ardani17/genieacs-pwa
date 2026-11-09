@@ -118,7 +118,7 @@ export default function AccountPasswordPage() {
         </Button>
         <Link
           href="/overview"
-          className="flex min-h-11 items-center justify-center text-sm font-medium text-primary hover:underline"
+          className="flex min-h-(--control-height-sm) items-center justify-center text-sm font-medium text-primary hover:underline"
         >
           Kembali ke ringkasan
         </Link>

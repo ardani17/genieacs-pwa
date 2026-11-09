@@ -67,7 +67,7 @@ export function VpnSettings() {
     state.phase === "authenticated" &&
     hasResourceAccess(state.session, "vpn", 3);
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {canRead ? (
         <VpnStatusPanel canEdit={canEdit} onStatus={setStatus} />
       ) : (
