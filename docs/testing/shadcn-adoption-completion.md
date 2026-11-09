@@ -105,15 +105,19 @@ klaim itu keliru:
   spec `admin-config`/`admin-users-files` masih menunggu `getByRole("dialog")`
   (role Playwright di-match eksak). PR tetap ter-merge karena status salah
   dibaca sebagai hijau.
-- **PR #16: job e2e "pass" dalam 4m50s** — suite (normalnya ~38m) tidak berjalan
-  penuh; kegagalan regression tidak tertangkap.
+- **PR #16 (Paket E): e2e-nya sah untuk branch-nya** — "150 passed (2.8m)" —
+  tetapi basis branch E adalah `117870a` (merge #14), **sebelum** D masuk, jadi
+  CI #16 menguji kode tanpa migrasi AlertDialog dengan spec lama. Merge #16 ke
+  `development` yang sudah berisi D menghasilkan kombinasi (AlertDialog + spec
+  lama) yang tidak pernah diuji CI mana pun.
 - Perbaikan: 8 locator konfirmasi hapus diperbarui ke `alertdialog` (locator
   reset-password tetap `dialog` — komponennya memang Dialog biasa). Validasi
   pada stack check lokal (konfigurasi identik CI): **14/14 test kedua file spec
-  lulus (36.9s)**, termasuk seluruh alur yang tadinya gagal. Fix di PR #18.
-- Pelajaran proses: status PR harus dibaca ulang menjelang merge (e2e adalah job
-  terlama dan datang terakhir); "pass" dengan durasi anomali pendek perlu
-  diperlakukan sebagai tidak-terverifikasi.
+  lulus (36.9s)**; e2e CI PR #18 juga lulus penuh (150 passed). Fix di PR #18.
+- Pelajaran proses: (1) status e2e wajib dibaca ulang menjelang merge — job
+  terlama datang terakhir dan #15 ter-merge saat merah; (2) dua PR hijau
+  terpisah bisa menghasilkan integrasi merah — PR yang ditumpuk (E di atas D)
+  perlu di-rebase dan di-CI ulang pada basis terbaru sebelum merge.
 
 ## Batas yang tetap terbuka
 
