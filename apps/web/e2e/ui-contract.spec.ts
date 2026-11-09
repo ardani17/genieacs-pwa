@@ -135,6 +135,8 @@ test.describe("large touchscreen", () => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto("/devices");
     const input = page.getByLabel("Cari perangkat", { exact: true });
+    // The streamed form can exist inside a hidden Suspense boundary first.
+    await expect(input).toBeVisible();
     expect((await input.boundingBox())?.height).toBeGreaterThanOrEqual(44);
     expect(
       await input.evaluate((element) =>

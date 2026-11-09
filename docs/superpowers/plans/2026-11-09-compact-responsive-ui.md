@@ -74,3 +74,8 @@ layar.
   lokal disimpan di `artifacts/ui-density-audit/` yang diabaikan Git.
 - Image produksi `genieacs-pwa-review-web:compact-ui` berhasil dibangun dan
   preview lokal port 5300 telah diperbarui.
+- CI Chromium Linux memperlihatkan race pada pengukuran input: form sudah ada di
+  DOM tetapi masih berada dalam boundary Suspense tersembunyi. Pengujian kini
+  menunggu input terlihat sebelum mengukur bounding box, dengan batas ukuran 44
+  px tetap dipertahankan. Reproduksi Linux sebelum perbaikan gagal; setelah
+  perbaikan, pengulangan lima kali pada tiga konfigurasi lulus 15/15.
