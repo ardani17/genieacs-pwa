@@ -468,8 +468,9 @@ export function ResourceEditor({
   };
 
   const remove = async (): Promise<void> => {
-    if (!deleteTarget) return;
+    if (!deleteTarget || busy) return;
     setBusy(true);
+    setError(null);
     try {
       const res = await fetch(
         `/api/app/resources/${resource}/${encodeURIComponent(deleteTarget)}`,
@@ -607,7 +608,7 @@ export function ResourceEditor({
       <AlertDialog
         open={deleteTarget !== null}
         onOpenChange={(open) => {
-          if (!open) setDeleteTarget(null);
+          if (!open && !busy) setDeleteTarget(null);
         }}
       >
         <AlertDialogContent>
@@ -617,12 +618,16 @@ export function ResourceEditor({
               Tindakan ini permanen dan dijalankan lewat server.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {error ? <Status tone="warning">{error}</Status> : null}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={busy}>Batal</AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
               disabled={busy}
-              onClick={() => void remove()}
+              onClick={(event) => {
+                event.preventDefault();
+                void remove();
+              }}
             >
               Hapus
             </AlertDialogAction>

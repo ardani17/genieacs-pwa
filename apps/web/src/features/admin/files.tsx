@@ -40,6 +40,7 @@ export function FileManager() {
   >("loading");
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [progress, setProgress] = useState<number | null>(null);
   const [fileId, setFileId] = useState("");
   const [fileType, setFileType] = useState("1 Firmware Upgrade Image");
@@ -124,19 +125,27 @@ export function FileManager() {
   };
 
   const remove = async (): Promise<void> => {
-    if (!deleteTarget) return;
-    const res = await fetch(
-      `/api/app/resources/files/${encodeURIComponent(deleteTarget)}`,
-      {
-        method: "DELETE",
-        headers: { "X-App-Request": "1" },
-        cache: "no-store",
-      },
-    );
-    if (!res.ok) setError("File tidak dapat dihapus.");
-    else {
-      setDeleteTarget(null);
-      await load();
+    if (!deleteTarget || deleting || uploading) return;
+    setDeleting(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        `/api/app/resources/files/${encodeURIComponent(deleteTarget)}`,
+        {
+          method: "DELETE",
+          headers: { "X-App-Request": "1" },
+          cache: "no-store",
+        },
+      );
+      if (!res.ok) setError("File tidak dapat dihapus.");
+      else {
+        setDeleteTarget(null);
+        await load();
+      }
+    } catch {
+      setError("File tidak dapat dihapus — koneksi terputus.");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -252,7 +261,7 @@ export function FileManager() {
       <AlertDialog
         open={deleteTarget !== null}
         onOpenChange={(open) => {
-          if (!open) setDeleteTarget(null);
+          if (!open && !deleting) setDeleteTarget(null);
         }}
       >
         <AlertDialogContent>
@@ -263,12 +272,16 @@ export function FileManager() {
               periksa device aktif sebelum menghapus.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {error ? <Status tone="warning">{error}</Status> : null}
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={uploading}>Batal</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleting}>Batal</AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
-              disabled={uploading}
-              onClick={() => void remove()}
+              disabled={uploading || deleting}
+              onClick={(event) => {
+                event.preventDefault();
+                void remove();
+              }}
             >
               Hapus
             </AlertDialogAction>

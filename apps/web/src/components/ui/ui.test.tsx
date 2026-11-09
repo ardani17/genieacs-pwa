@@ -241,6 +241,40 @@ test("alertDialog focuses cancel first and reports the chosen action", async () 
   await user.click(screen.getByRole("button", { name: "Ya, hapus" }));
   expect(onConfirm).toHaveBeenCalledOnce();
   expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: "Hapus pengguna" }),
+    ).toHaveFocus(),
+  );
+});
+
+test("programmatic alertDialog restores focus to its opener on cancellation", async () => {
+  const user = userEvent.setup();
+  function Example() {
+    const [open, setOpen] = useState(false);
+    return (
+      <>
+        <Button onClick={() => setOpen(true)}>Hapus permission</Button>
+        <AlertDialog open={open} onOpenChange={setOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Hapus permission ini?</AlertDialogTitle>
+              <AlertDialogDescription>
+                Tindakan permanen.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogCancel>Batal</AlertDialogCancel>
+          </AlertDialogContent>
+        </AlertDialog>
+      </>
+    );
+  }
+  render(<Example />);
+  const opener = screen.getByRole("button", { name: "Hapus permission" });
+  await user.click(opener);
+  expect(screen.getByRole("button", { name: "Batal" })).toHaveFocus();
+  await user.keyboard("{Escape}");
+  await waitFor(() => expect(opener).toHaveFocus());
 });
 
 test("dropdownMenu opens, selects an item and closes with Escape", async () => {

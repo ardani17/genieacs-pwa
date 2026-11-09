@@ -179,7 +179,7 @@ export function UserManager() {
   };
 
   const removeUser = async (): Promise<void> => {
-    if (!deleteTarget) return;
+    if (!deleteTarget || busy) return;
     setBusy(true);
     setError(null);
     try {
@@ -348,7 +348,7 @@ export function UserManager() {
       <AlertDialog
         open={deleteTarget !== null}
         onOpenChange={(open) => {
-          if (!open) setDeleteTarget(null);
+          if (!open && !busy) setDeleteTarget(null);
         }}
       >
         <AlertDialogContent>
@@ -360,12 +360,16 @@ export function UserManager() {
               pemulihan memakai runbook reset admin.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {error ? <Status tone="warning">{error}</Status> : null}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={busy}>Batal</AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
               disabled={busy}
-              onClick={() => void removeUser()}
+              onClick={(event) => {
+                event.preventDefault();
+                void removeUser();
+              }}
             >
               Hapus
             </AlertDialogAction>

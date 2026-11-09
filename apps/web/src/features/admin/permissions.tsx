@@ -147,6 +147,7 @@ export function PermissionManager() {
   };
 
   const remove = async (id: string): Promise<void> => {
+    if (busy) return;
     setBusy(true);
     setError(null);
     try {
@@ -159,7 +160,12 @@ export function PermissionManager() {
         },
       );
       if (!res.ok) setError("Permission tidak dapat dihapus.");
-      else await load();
+      else {
+        setDeleteTarget(null);
+        await load();
+      }
+    } catch {
+      setError("Permission tidak dapat dihapus — koneksi terputus.");
     } finally {
       setBusy(false);
     }
@@ -298,7 +304,7 @@ export function PermissionManager() {
       <AlertDialog
         open={deleteTarget !== null}
         onOpenChange={(open) => {
-          if (!open) setDeleteTarget(null);
+          if (!open && !busy) setDeleteTarget(null);
         }}
       >
         <AlertDialogContent>
@@ -309,14 +315,15 @@ export function PermissionManager() {
               aktif yang memakainya kehilangan akses dalam jendela snapshot.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {error ? <Status tone="warning">{error}</Status> : null}
           <AlertDialogFooter>
             <AlertDialogCancel disabled={busy}>Batal</AlertDialogCancel>
             <AlertDialogAction
               variant="destructive"
               disabled={busy}
-              onClick={() => {
+              onClick={(event) => {
+                event.preventDefault();
                 const target = deleteTarget;
-                setDeleteTarget(null);
                 if (target) void remove(target);
               }}
             >
