@@ -145,7 +145,7 @@ test("credential config is masked by the server until an explicit reveal", async
   // Cleanup: delete the fixture row.
   await page.getByRole("button", { name: "Hapus", exact: true }).click();
   await page
-    .getByRole("dialog")
+    .getByRole("alertdialog")
     .getByRole("button", { name: "Hapus", exact: true })
     .click();
   await expect(
@@ -177,7 +177,7 @@ test("editor find and keyboard save work through the CodeMirror keymap", async (
     .click();
   await page.getByRole("button", { name: "Hapus", exact: true }).click();
   await page
-    .getByRole("dialog")
+    .getByRole("alertdialog")
     .getByRole("button", { name: "Hapus", exact: true })
     .click();
   await expect(
@@ -192,10 +192,10 @@ test("deleting a provision requires confirmation", async ({ page }) => {
     .click();
   await page.getByRole("button", { name: "Hapus", exact: true }).click();
   await expect(
-    page.getByRole("dialog").getByText(/Hapus fixture-provision\?/),
+    page.getByRole("alertdialog").getByText(/Hapus fixture-provision\?/),
   ).toBeVisible();
   await page
-    .getByRole("dialog")
+    .getByRole("alertdialog")
     .getByRole("button", { name: "Hapus", exact: true })
     .click();
   await expect(
